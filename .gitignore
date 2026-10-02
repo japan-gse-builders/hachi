@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Call recordings and exported data
+*.wav
+*.mp3
+*.log
+.firebase/
+
+# Service account keys and certificates
+*-sa.json
+service-account*.json
+credentials*.json
+*.pem
+*.key
+*.p12
+*.pfx

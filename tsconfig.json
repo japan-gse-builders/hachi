@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/store" },
+    { "path": "packages/cloud" },
+    { "path": "services/api" },
+    { "path": "services/telephony" },
+    { "path": "services/voice-gateway" },
+    { "path": "services/notifier" },
+    { "path": "services/analyzer" }
+  ]
+}

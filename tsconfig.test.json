@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "paths": {
+      "@hachi/core": ["./packages/core/src/index.ts"],
+      "@hachi/store": ["./packages/store/src/index.ts"],
+      "@hachi/cloud": ["./packages/cloud/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src", "packages/*/test", "services/*/src", "services/*/test"]
+}

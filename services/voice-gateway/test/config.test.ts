@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
+
+const base = {
+  GOOGLE_CLOUD_PROJECT: 'hachi-test',
+  RECORDINGS_BUCKET: 'hachi-recordings',
+  TELEPHONY_BASE_URL: 'https://telephony.example.run.app/',
+  TASKS_INVOKER_SA: 'hachi-tasks@hachi-test.iam.gserviceaccount.com',
+};
+
+describe('loadConfig', () => {
+  it('applies defaults', () => {
+    expect(loadConfig(base)).toEqual({
+      port: 8080,
+      project: 'hachi-test',
+      gemini: { location: 'us-central1', model: 'gemini-3.8-live', voice: 'Aoede' },
+      recordingsBucket: 'hachi-recordings',
+      telephonyBaseUrl: 'https://telephony.example.run.app',
+      appBaseUrl: 'https://hachi-test.web.app',
+      tasks: { location: 'asia-northeast1', emergencyQueue: 'emergency-calls', notifyQueue: 'notifications', analysisQueue: 'call-analysis', invokerServiceAccount: base.TASKS_INVOKER_SA },
+      maxConversationSec: 480,
+    });
+  });
+
+  it('reads overrides', () => {
+    const c = loadConfig({
+      ...base,
+      PORT: '9000',
+      GEMINI_LOCATION: 'us',
+      GEMINI_MODEL: 'other-model',
+      GEMINI_VOICE: 'Kore',
+      APP_BASE_URL: 'https://app.example.org',
+      TASKS_LOCATION: 'us-central1',
+      EMERGENCY_QUEUE: 'urgent',
+      MAX_CONVERSATION_SEC: '600',
+      NOTIFIER_BASE_URL: 'https://notifier.example/',
+      NOTIFY_QUEUE: 'n2',
+      ANALYZER_BASE_URL: 'https://analyzer.example/',
+      ANALYSIS_QUEUE: 'a2',
+    });
+    expect(c.notifierBaseUrl).toBe('https://notifier.example');
+    expect(c.analyzerBaseUrl).toBe('https://analyzer.example');
+    expect(c.tasks.notifyQueue).toBe('n2');
+    expect(c.tasks.analysisQueue).toBe('a2');
+    expect(c.port).toBe(9000);
+    expect(c.gemini).toEqual({ location: 'us', model: 'other-model', voice: 'Kore' });
+    expect(c.appBaseUrl).toBe('https://app.example.org');
+    expect(c.tasks.location).toBe('us-central1');
+    expect(c.tasks.emergencyQueue).toBe('urgent');
+    expect(c.maxConversationSec).toBe(600);
+  });
+
+  it.each([
+    [{ GOOGLE_CLOUD_PROJECT: '' }, /GOOGLE_CLOUD_PROJECT/],
+    [{ RECORDINGS_BUCKET: undefined }, /RECORDINGS_BUCKET is not set/],
+    [{ RECORDINGS_BUCKET: 'Bad_Bucket!' }, /not a valid bucket/],
+    [{ TELEPHONY_BASE_URL: 'http://telephony.example' }, /https/],
+    [{ TELEPHONY_BASE_URL: 'not a url' }, /valid URL/],
+    [{ APP_BASE_URL: 'http://app.example' }, /APP_BASE_URL must use https/],
+    [{ NOTIFIER_BASE_URL: 'http://notifier.example' }, /NOTIFIER_BASE_URL must use https/],
+    [{ ANALYZER_BASE_URL: 'http://analyzer.example' }, /ANALYZER_BASE_URL must use https/],
+    [{ TASKS_INVOKER_SA: ' ' }, /TASKS_INVOKER_SA/],
+    [{ PORT: '0' }, /PORT/],
+    [{ MAX_CONVERSATION_SEC: '60' }, /MAX_CONVERSATION_SEC/],
+    [{ MAX_CONVERSATION_SEC: '1000' }, /MAX_CONVERSATION_SEC/],
+    [{ MAX_CONVERSATION_SEC: '5.5' }, /MAX_CONVERSATION_SEC/],
+  ])('rejects %o', (override, error) => {
+    expect(() => loadConfig({ ...base, ...override })).toThrow(error);
+  });
+});

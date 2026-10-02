@@ -1,0 +1,171 @@
+import { analysisTask, requestDelivery, type TaskQueue } from '@hachi/cloud';
+import type { Detection, Locale, RuleId } from '@hachi/core';
+import { NotFoundError, recordDetections, type CallRecord, type Store } from '@hachi/store';
+import { analyse } from './analysis.js';
+import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
+
+export interface WorkerDeps {
+  store: Store;
+  reviewer: CallReviewer;
+  /** This service's own queue, used by the sweep. */
+  queue: TaskQueue;
+  /** Notification worker queue; without it the notifier's sweep picks the entries up. */
+  notifications?: TaskQueue;
+  now: () => Date;
+  newId: () => string;
+  config: { leaseSec: number; settleSec: number; modelAttempts: number; staffLocale: Locale; appBaseUrl: string };
+}
+
+export interface CallRef {
+  residentId: string;
+  callId: string;
+}
+
+export type AnalyzeOutcome =
+  | { outcome: 'analyzed'; rules: RuleId[]; model: boolean }
+  /** Nothing to do (already analysed, or the resident no longer exists). */
+  | { outcome: 'done' }
+  | { outcome: 'not_found' }
+  /** Another worker holds the call. */
+  | { outcome: 'busy' }
+  /** The stream may still reconnect, or the model failed in a retryable way; Cloud Tasks retries. */
+  | { outcome: 'retry'; reason: string };
+
+const ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function parseAnalyzeInput(body: unknown): CallRef | null {
+  const b = body as { residentId?: unknown; callId?: unknown } | null;
+  if (typeof b?.residentId !== 'string' || typeof b.callId !== 'string') return null;
+  return ID.test(b.residentId) && ID.test(b.callId) ? { residentId: b.residentId, callId: b.callId } : null;
+}
+
+const leaseActive = (c: CallRecord, nowIso: string) => !!c.analysisLease && c.analysisLease > nowIso;
+
+/** A redelivered task, or a second pass after a reconnect, must not add the same evidence twice. */
+async function withoutRepeats(store: Store, call: CallRecord, detections: Detection[]): Promise<Detection[]> {
+  if (!detections.length) return detections;
+  const cases = await store.listCasesByResident(call.residentId);
+  return detections.filter(
+    (d) => !cases.some((c) => c.rule === d.rule && c.status !== 'closed' && c.detections.some((x) => x.evidence.some((e) => e.callId === call.id))),
+  );
+}
+
+/**
+ * QUE-02, FAM-03, DET-01..04, SPK-01..04, CNV-07: analyses one finished call. `attempt` is the
+ * Cloud Tasks retry count; after `modelAttempts` the rule-based checks run without the model so
+ * an outage never blocks R1/R2 detection.
+ */
+export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): Promise<AnalyzeOutcome> {
+  const { store, config } = deps;
+  const now = deps.now();
+  const nowIso = now.toISOString();
+
+  const found = await store.getCall(ref.residentId, ref.callId);
+  if (!found) return { outcome: 'not_found' };
+  if (!found.analysisPending) return { outcome: 'done' };
+  if (found.conversation && now.getTime() - Date.parse(found.conversation.at) < config.settleSec * 1000) {
+    return { outcome: 'retry', reason: 'settling' };
+  }
+
+  let claimed = false;
+  const call = await store.updateCall(ref.residentId, ref.callId, (c) => {
+    if (!c.analysisPending || leaseActive(c, nowIso)) return null;
+    claimed = true;
+    return { ...c, analysisLease: new Date(now.getTime() + config.leaseSec * 1000).toISOString() };
+  });
+  if (!claimed) return call.analysisPending ? { outcome: 'busy' } : { outcome: 'done' };
+
+  const release = (patch: Partial<CallRecord>, analysedTurns?: number) =>
+    store.updateCall(ref.residentId, ref.callId, (c) => {
+      const { analysisLease: _lease, ...rest } = c;
+      const pending = analysedTurns === undefined ? c.analysisPending : (c.transcript?.length ?? 0) > analysedTurns;
+      return { ...rest, ...patch, analysisPending: pending };
+    });
+
+  try {
+    const resident = await store.getResident(ref.residentId);
+    if (!resident) {
+      await release({}, Number.MAX_SAFE_INTEGER);
+      return { outcome: 'done' };
+    }
+    const transcript = call.transcript ?? [];
+
+    let review: ModelReview | null = null;
+    let modelError: string | undefined;
+    if (transcript.some((t) => t.speaker === 'resident')) {
+      try {
+        review = await deps.reviewer.review({ preferredName: resident.preferredName, transcript, staffLocale: config.staffLocale });
+      } catch (err) {
+        const retryable = err instanceof ReviewError ? err.retryable : true;
+        modelError = (err as Error)?.message ?? String(err);
+        if (retryable && attempt + 1 < config.modelAttempts) {
+          await release({});
+          return { outcome: 'retry', reason: modelError };
+        }
+      }
+    }
+
+    const history = (await store.listCalls(ref.residentId, { limit: 120 })).filter((c) => c.id !== call.id);
+    const result = analyse({
+      resident,
+      call,
+      transcript,
+      history,
+      review,
+      model: deps.reviewer.model,
+      ...(modelError ? { modelError } : {}),
+      now,
+    });
+
+    const detections = await withoutRepeats(store, call, result.detections);
+    if (detections.length) {
+      const { outbox } = await recordDetections(store, resident, detections, {
+        now,
+        newId: deps.newId,
+        appBaseUrl: config.appBaseUrl,
+        locale: 'en',
+      });
+      if (deps.notifications && outbox.length) {
+        await requestDelivery(
+          deps.notifications,
+          outbox.map((e) => e.id),
+        );
+      }
+    }
+
+    await release(result.update, transcript.length);
+    return { outcome: 'analyzed', rules: detections.map((d) => d.rule), model: review !== null };
+  } catch (err) {
+    // Hand the call back so the retried task can claim it straight away.
+    await release({}).catch(() => undefined);
+    if (err instanceof NotFoundError) return { outcome: 'not_found' };
+    throw err;
+  }
+}
+
+export interface SweepResult {
+  queued: number;
+  errors: string[];
+}
+
+/** Safety net (Cloud Scheduler): queues finished calls whose analysis task was lost. */
+export async function sweep(deps: WorkerDeps, opts: { minAgeSec?: number; limit?: number } = {}): Promise<SweepResult> {
+  const now = deps.now();
+  const nowIso = now.toISOString();
+  const cutoff = now.getTime() - (opts.minAgeSec ?? deps.config.settleSec + 300) * 1000;
+  const limit = opts.limit ?? 100;
+  const key = `sweep-${nowIso.slice(0, 13).replace(/\D/g, '')}`;
+
+  const due: CallRecord[] = [];
+  for (const r of await deps.store.listActiveResidents()) {
+    if (due.length >= limit) break;
+    for (const c of await deps.store.listCalls(r.id, { limit: 50 })) {
+      const endedAt = c.conversation?.at ?? c.endedAt ?? c.createdAt;
+      if (c.analysisPending && !leaseActive(c, nowIso) && Date.parse(endedAt) <= cutoff) due.push(c);
+    }
+  }
+  const batch = due.slice(0, limit);
+  const results = await Promise.allSettled(batch.map((c) => deps.queue.enqueue(analysisTask(c.residentId, c.id, key))));
+  const errors = results.flatMap((r, i) => (r.status === 'rejected' ? [`${batch[i]!.id}: ${(r.reason as Error)?.message ?? r.reason}`] : []));
+  return { queued: batch.length - errors.length, errors };
+}

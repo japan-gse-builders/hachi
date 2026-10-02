@@ -1,0 +1,23 @@
+{
+  "name": "@hachi/voice-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.1",
+    "@google-cloud/storage": "^8.2.0",
+    "@google-cloud/tasks": "^7.2.1",
+    "@google/genai": "^2.26.0",
+    "@hachi/cloud": "^0.1.0",
+    "@hachi/core": "^0.1.0",
+    "@hachi/store": "^0.1.0",
+    "fastify": "^5.12.5",
+    "firebase-admin": "^14.5.0",
+    "google-auth-library": "^11.1.0"
+  }
+}

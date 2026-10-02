@@ -1,0 +1,295 @@
+import type { Trend } from './types.js';
+import type { Urgency } from './urgency.js';
+
+export interface Turn {
+  speaker: 'resident' | 'agent';
+  text: string;
+  startMs: number;
+  endMs: number;
+}
+
+export const SPEECH_FEATURES = ['lexicalDiversity', 'repairRate', 'responseLatencyMs', 'topicCoherence'] as const;
+export type SpeechFeature = (typeof SPEECH_FEATURES)[number];
+
+/** +1: higher value is worse; -1: lower value is worse. */
+const ADVERSE_DIRECTION: Record<SpeechFeature, 1 | -1> = {
+  lexicalDiversity: -1,
+  repairRate: 1,
+  responseLatencyMs: 1,
+  topicCoherence: -1,
+};
+
+/** Minimum standard deviation per feature so a very stable baseline does not inflate z-scores. */
+const MIN_STD: Record<SpeechFeature, number> = {
+  lexicalDiversity: 0.02,
+  repairRate: 0.5,
+  responseLatencyMs: 150,
+  topicCoherence: 0.05,
+};
+
+export type SpeechFeatures = Record<SpeechFeature, number | null>;
+
+export type ExclusionReason = 'too_little_speech' | 'poor_audio' | 'background_noise' | 'temporary_condition';
+
+export interface CallSpeechSample {
+  callId: string;
+  /** ISO timestamp of the call. */
+  at: string;
+  features: SpeechFeatures;
+  usable: boolean;
+  exclusionReasons: ExclusionReason[];
+}
+
+export interface QualitySignals {
+  /** 0..1 from the telephony/ASR layer. */
+  audioQuality?: number;
+  noisy?: boolean;
+  /** Resident mentioned a cold, dentures, etc. during the call (SPK-04). */
+  temporaryCondition?: boolean;
+}
+
+export const MIN_RESIDENT_WORDS = 60;
+const MATTR_WINDOW = 50;
+
+const REPAIR_MARKERS = /\b(i mean|sorry,? i mean|what i meant|let me start again|no wait|uh|um|er|erm)\b/g;
+
+export function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .split(/[^a-z0-9']+/)
+    .filter((t) => t.length > 0 && t !== "'");
+}
+
+/** Moving-average type-token ratio; robust to differing amounts of speech. */
+export function mattr(tokens: string[], window = MATTR_WINDOW): number | null {
+  if (tokens.length === 0) return null;
+  if (tokens.length <= window) return new Set(tokens).size / tokens.length;
+  const counts = new Map<string, number>();
+  for (let i = 0; i < window; i++) counts.set(tokens[i]!, (counts.get(tokens[i]!) ?? 0) + 1);
+  let sum = counts.size / window;
+  for (let i = window; i < tokens.length; i++) {
+    const out = tokens[i - window]!;
+    const c = counts.get(out)! - 1;
+    if (c === 0) counts.delete(out);
+    else counts.set(out, c);
+    counts.set(tokens[i]!, (counts.get(tokens[i]!) ?? 0) + 1);
+    sum += counts.size / window;
+  }
+  return sum / (tokens.length - window + 1);
+}
+
+/** Self-repairs and fillers per 100 words, including immediate word repetitions ("the the"). */
+export function repairRate(text: string): number | null {
+  const tokens = tokenize(text);
+  if (tokens.length === 0) return null;
+  const markers = text.toLowerCase().match(REPAIR_MARKERS)?.length ?? 0;
+  let repeats = 0;
+  for (let i = 1; i < tokens.length; i++) if (tokens[i] === tokens[i - 1]) repeats++;
+  const cutoffs = text.match(/\b\w+-\s/g)?.length ?? 0;
+  return ((markers + repeats + cutoffs) / tokens.length) * 100;
+}
+
+/** Median gap between the end of an agent turn and the start of the next resident turn. */
+export function medianResponseLatency(turns: Turn[]): number | null {
+  const gaps: number[] = [];
+  for (let i = 1; i < turns.length; i++) {
+    const prev = turns[i - 1]!;
+    const cur = turns[i]!;
+    if (prev.speaker === 'agent' && cur.speaker === 'resident') {
+      const gap = cur.startMs - prev.endMs;
+      if (gap >= 0 && gap < 20_000) gaps.push(gap);
+    }
+  }
+  return median(gaps);
+}
+
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/**
+ * SPK-01 / SPK-04. `topicCoherence` (0..1) comes from the LLM analysis because it needs
+ * semantic understanding.
+ */
+export function extractSpeechSample(
+  callId: string,
+  at: string,
+  turns: Turn[],
+  topicCoherence: number | null,
+  quality: QualitySignals = {},
+): CallSpeechSample {
+  const residentText = turns.filter((t) => t.speaker === 'resident').map((t) => t.text).join(' ');
+  const tokens = tokenize(residentText);
+  const exclusionReasons: ExclusionReason[] = [];
+  if (tokens.length < MIN_RESIDENT_WORDS) exclusionReasons.push('too_little_speech');
+  if (quality.audioQuality !== undefined && quality.audioQuality < 0.6) exclusionReasons.push('poor_audio');
+  if (quality.noisy) exclusionReasons.push('background_noise');
+  if (quality.temporaryCondition) exclusionReasons.push('temporary_condition');
+  return {
+    callId,
+    at,
+    features: {
+      lexicalDiversity: mattr(tokens),
+      repairRate: repairRate(residentText),
+      responseLatencyMs: medianResponseLatency(turns),
+      topicCoherence,
+    },
+    usable: exclusionReasons.length === 0,
+    exclusionReasons,
+  };
+}
+
+export interface FeatureStats {
+  mean: number;
+  std: number;
+  n: number;
+}
+
+export interface SpeechBaseline {
+  from: string;
+  to: string;
+  callCount: number;
+  stats: Partial<Record<SpeechFeature, FeatureStats>>;
+}
+
+export const BASELINE_DAYS = 28;
+export const MIN_BASELINE_CALLS = 8;
+
+/** SPK-02: baseline from usable calls within the first BASELINE_DAYS of service. */
+export function buildBaseline(samples: CallSpeechSample[], serviceStart: string): SpeechBaseline | null {
+  const start = Date.parse(serviceStart);
+  const end = start + BASELINE_DAYS * 86_400_000;
+  const inWindow = samples.filter((s) => {
+    const t = Date.parse(s.at);
+    return s.usable && t >= start && t < end;
+  });
+  if (inWindow.length < MIN_BASELINE_CALLS) return null;
+  const stats: SpeechBaseline['stats'] = {};
+  for (const f of SPEECH_FEATURES) {
+    const values = inWindow.map((s) => s.features[f]).filter((v): v is number => v !== null);
+    if (values.length < MIN_BASELINE_CALLS) continue;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / (values.length - 1);
+    stats[f] = { mean, std: Math.sqrt(variance), n: values.length };
+  }
+  return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), callCount: inWindow.length, stats };
+}
+
+export interface FeatureChange {
+  feature: SpeechFeature;
+  /** Positive = change in the adverse direction, in baseline standard deviations. */
+  adverseZ: number;
+  baselineMean: number;
+  recentMean: number;
+}
+
+export interface SpeechChangeAssessment {
+  status: 'no_baseline' | 'insufficient_recent' | 'assessed';
+  magnitude: number;
+  trend: Trend;
+  urgency: Urgency | null;
+  contributors: FeatureChange[];
+  recentCallIds: string[];
+}
+
+export const RECENT_WINDOW = 5;
+const CLEAR_CHANGE = 2.0;
+const SLIGHT_CHANGE = 1.0;
+const SINGLE_FEATURE_CLEAR = 3.0;
+
+function effectiveStd(f: SpeechFeature, s: FeatureStats): number {
+  return Math.max(s.std, MIN_STD[f], Math.abs(s.mean) * 0.05);
+}
+
+function compositeFor(sample: CallSpeechSample, baseline: SpeechBaseline): number | null {
+  const zs: number[] = [];
+  for (const f of SPEECH_FEATURES) {
+    const st = baseline.stats[f];
+    const v = sample.features[f];
+    if (!st || v === null) continue;
+    zs.push((ADVERSE_DIRECTION[f] * (v - st.mean)) / effectiveStd(f, st));
+  }
+  return zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null;
+}
+
+function slope(ys: number[]): number {
+  const n = ys.length;
+  if (n < 2) return 0;
+  const xm = (n - 1) / 2;
+  const ym = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  ys.forEach((y, x) => {
+    num += (x - xm) * (y - ym);
+    den += (x - xm) ** 2;
+  });
+  return num / den;
+}
+
+/**
+ * SPK-02 / SPK-03: compares the most recent usable calls against the resident's own baseline.
+ * Never compares against other people.
+ */
+export function assessSpeechChange(samples: CallSpeechSample[], baseline: SpeechBaseline | null): SpeechChangeAssessment {
+  const empty = { magnitude: 0, trend: 'stable' as Trend, urgency: null, contributors: [], recentCallIds: [] };
+  if (!baseline) return { status: 'no_baseline', ...empty };
+  const baselineEnd = Date.parse(baseline.to);
+  const recent = samples
+    .filter((s) => s.usable && Date.parse(s.at) >= baselineEnd)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .slice(-RECENT_WINDOW);
+  if (recent.length < 3) return { status: 'insufficient_recent', ...empty };
+
+  const contributors: FeatureChange[] = [];
+  for (const f of SPEECH_FEATURES) {
+    const st = baseline.stats[f];
+    const vals = recent.map((s) => s.features[f]).filter((v): v is number => v !== null);
+    if (!st || vals.length === 0) continue;
+    const recentMean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const adverseZ = (ADVERSE_DIRECTION[f] * (recentMean - st.mean)) / effectiveStd(f, st);
+    contributors.push({ feature: f, adverseZ, baselineMean: st.mean, recentMean });
+  }
+  const magnitude = contributors.length
+    ? contributors.reduce((a, c) => a + Math.max(0, c.adverseZ), 0) / contributors.length
+    : 0;
+  const composites = recent.map((s) => compositeFor(s, baseline)).filter((v): v is number => v !== null);
+  const sl = slope(composites);
+  const trend: Trend = sl > 0.25 ? 'worsening' : sl < -0.25 ? 'improving' : 'stable';
+
+  const maxZ = Math.max(0, ...contributors.map((c) => c.adverseZ));
+  let urgency: Urgency | null = null;
+  if (magnitude >= CLEAR_CHANGE || maxZ >= SINGLE_FEATURE_CLEAR) urgency = 'action';
+  else if (magnitude >= SLIGHT_CHANGE || maxZ >= CLEAR_CHANGE) urgency = 'watch';
+
+  return {
+    status: 'assessed',
+    magnitude,
+    trend,
+    urgency,
+    contributors: contributors.filter((c) => c.adverseZ >= SLIGHT_CHANGE).sort((a, b) => b.adverseZ - a.adverseZ),
+    recentCallIds: recent.map((s) => s.callId),
+  };
+}
+
+const FEATURE_TEXT: Record<'ja' | 'en', Record<SpeechFeature, string>> = {
+  ja: {
+    lexicalDiversity: '使う言葉の種類が平常時より減っている',
+    repairRate: '言い直しや言いよどみが平常時より増えている',
+    responseLatencyMs: '応答までの時間が平常時より延びている',
+    topicCoherence: '話題のつながりが平常時より弱くなっている',
+  },
+  en: {
+    lexicalDiversity: 'Vocabulary variety is lower than usual',
+    repairRate: 'Self-corrections and hesitations are more frequent than usual',
+    responseLatencyMs: 'Response time is longer than usual',
+    topicCoherence: 'Topics connect less clearly than usual',
+  },
+};
+
+export function describeFeatureChange(c: FeatureChange, locale: 'ja' | 'en'): string {
+  return FEATURE_TEXT[locale][c.feature];
+}

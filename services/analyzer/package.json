@@ -1,0 +1,22 @@
+{
+  "name": "@hachi/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@google-cloud/tasks": "^7.2.1",
+    "@google/genai": "^2.26.0",
+    "@hachi/cloud": "^0.1.0",
+    "@hachi/core": "*",
+    "@hachi/store": "*",
+    "fastify": "^5.12.5",
+    "firebase-admin": "^14.5.0",
+    "google-auth-library": "^11.1.0",
+    "zod": "^4.6.5"
+  }
+}
