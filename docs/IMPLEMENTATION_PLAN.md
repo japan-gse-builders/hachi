@@ -55,6 +55,9 @@ apps/web               Firebase Hosting: Web UI（職員用トリアージキュ
 - Voice Gateway ができるまでは、発信すると AI であることを告げる英語の試験メッセージ（`<Say>`）を流して切る
 - 2026-10-02 フェーズ 4 のコード完了（`services/voice-gateway`、発信サービス側の転送処理、`packages/cloud`）。全体でテスト 390 件成功、Gateway の行カバレッジ 100%。デプロイ用に `infra/deploy-voice-gateway.sh` を用意（未デプロイ）
 - 2026-10-02 フェーズ 5 のコード完了（`services/notifier`）。全体でテスト 452 件成功、通知 Worker の行カバレッジ 100%。デプロイ用に `infra/deploy-notifier.sh` を用意（未デプロイ）。SMS は MVP では日本（+81）宛てのみ
+- 2026-10-02 フェーズ 6 をデプロイし、実機の通話で確認。Gemini が職員向け（日本語）・親族向け（英語）の要約、食事の記録（2 日間不十分）、次回用の記憶（孫の訪問・園芸）を保存し、R2「至急」のケースを作成した。至急の通知は職員だけが対象（NTF-02）で、試験用の職員には SMS・メールの宛先がないため送信はなし
+- テスト結果の詳細は [`TEST_RESULTS.md`](TEST_RESULTS.md)。R1 試験で親族向け SMS が携帯に届かなかった（Twilio エラー 30003）。本文の電話番号が原因と考え、SMS から外した（未デプロイ）
+- 注意: Gateway に環境変数だけを足しても、古いイメージのままでは解析は依頼されない。コードを変えたら `infra/deploy-voice-gateway.sh` でビルドし直す（今回はスイープが代わりに拾った）
 
 ### フェーズ 0: 基盤（0.5日）
 - npm workspaces のモノレポ、TypeScript、Vitest、ESLint、Prettier

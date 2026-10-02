@@ -75,15 +75,25 @@ describe('planNotifications', () => {
 
   it('family message asks to contact the resident, links the dashboard, and never quotes the transcript (NTF-03, FAM-03)', () => {
     for (const locale of ['ja', 'en'] as const) {
-      const m = planNotifications(change(), { ...ctx, locale }).find((x) => x.recipient === 'family')!;
-      expect(m.body).toContain('Maggie');
-      expect(m.body).toContain(ctx.dashboardUrl);
-      expect(m.body).toContain(ctx.staffPhone);
-      expect(m.body).not.toContain(QUOTE);
-      expect(m.body).not.toContain(ctx.caseUrl);
+      for (const m of planNotifications(change(), { ...ctx, locale }).filter((x) => x.recipient === 'family')) {
+        expect(m.body).toContain('Maggie');
+        expect(m.body).toContain(ctx.dashboardUrl);
+        expect(m.body).not.toContain(QUOTE);
+        expect(m.body).not.toContain(ctx.caseUrl);
+      }
     }
     const ja = planNotifications(change(), ctx).find((x) => x.recipient === 'family')!;
     expect(ja.body).toContain('すぐにMaggieさんへご連絡ください');
+  });
+
+  it('keeps phone numbers out of family SMS, which Japanese carriers filter, but not other channels', () => {
+    for (const locale of ['ja', 'en'] as const) {
+      const family = planNotifications(change(), { ...ctx, locale }).filter((x) => x.recipient === 'family');
+      const sms = family.find((m) => m.channel === 'sms')!;
+      expect(sms.body).not.toContain(ctx.staffPhone);
+      expect(sms.body).not.toMatch(/\+?\d[\d-]{7,}\d/);
+      for (const m of family.filter((x) => x.channel !== 'sms')) expect(m.body).toContain(ctx.staffPhone);
+    }
   });
 
   it('English staff messages', () => {

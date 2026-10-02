@@ -61,9 +61,14 @@ function staffMessage(change: CaseChange, ctx: NotificationContext): { subject: 
   };
 }
 
-/** FAM-03: family messages carry only the plain summary, never transcript quotes. */
-function familyMessage(change: CaseChange, ctx: NotificationContext): { subject: string; body: string } {
+/**
+ * FAM-03: family messages carry only the plain summary, never transcript quotes.
+ * SMS omits the staff phone number: Japanese carriers filter SMS that contain phone numbers
+ * (Twilio's Japan guidelines), and the dashboard link shows the staff contact (FAM-04).
+ */
+function familyMessage(change: CaseChange, ctx: NotificationContext, channel: ContactChannel): { subject: string; body: string } {
   const summary = change.detection.summary;
+  const withPhone = channel !== 'sms';
   if (ctx.locale === 'ja') {
     return {
       subject: `【Hachi 緊急】${ctx.preferredName}さんの体調について`,
@@ -71,7 +76,7 @@ function familyMessage(change: CaseChange, ctx: NotificationContext): { subject:
         `【Hachi 緊急】${ctx.preferredName}さんとの通話で、体調の急な異変の訴えがありました。\n` +
         `状況：${summary}\n` +
         `すぐに${ctx.preferredName}さんへご連絡ください。\n` +
-        `担当職員：${ctx.staff.name}（${ctx.staffPhone}）\n` +
+        (withPhone ? `担当職員：${ctx.staff.name}（${ctx.staffPhone}）\n` : '') +
         `詳しくはこちら：${ctx.dashboardUrl}`,
     };
   }
@@ -81,7 +86,7 @@ function familyMessage(change: CaseChange, ctx: NotificationContext): { subject:
       `[Hachi Emergency] During today's call, ${ctx.preferredName} reported sudden symptoms.\n` +
       `What we heard: ${summary}\n` +
       `Please contact ${ctx.preferredName} right away.\n` +
-      `Care staff: ${ctx.staff.name} (${ctx.staffPhone})\n` +
+      (withPhone ? `Care staff: ${ctx.staff.name} (${ctx.staffPhone})\n` : '') +
       `Details: ${ctx.dashboardUrl}`,
   };
 }
@@ -95,7 +100,12 @@ export function planNotifications(change: CaseChange, ctx: NotificationContext):
   const policy = NOTIFY_ON[change.to];
   const priority = change.to === 'emergency' ? 'immediate' : 'normal';
   const out: OutboxMessage[] = [];
-  const push = (recipient: 'staff' | 'family', contact: Contact, msg: { subject: string; body: string }, voice: boolean) => {
+  const push = (
+    recipient: 'staff' | 'family',
+    contact: Contact,
+    message: (channel: ContactChannel) => { subject: string; body: string },
+    voice: boolean,
+  ) => {
     for (const { channel, address } of addresses(contact, voice)) {
       out.push({
         idempotencyKey: `${change.caseId}:${change.to}:${recipient}:${channel}:${address}`,
@@ -104,12 +114,12 @@ export function planNotifications(change: CaseChange, ctx: NotificationContext):
         recipient,
         channel,
         address,
-        ...msg,
+        ...message(channel),
         priority,
       });
     }
   };
-  if (policy.staff) push('staff', ctx.staff, staffMessage(change, ctx), change.to === 'emergency');
-  if (policy.family && ctx.family) push('family', ctx.family, familyMessage(change, ctx), true);
+  if (policy.staff) push('staff', ctx.staff, () => staffMessage(change, ctx), change.to === 'emergency');
+  if (policy.family && ctx.family) push('family', ctx.family, (channel) => familyMessage(change, ctx, channel), true);
   return out;
 }
