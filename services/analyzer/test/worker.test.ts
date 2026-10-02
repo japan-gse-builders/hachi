@@ -28,7 +28,7 @@ describe('analyzeCall', () => {
     expect(c.analysis).toMatchObject({ model: 'gemini-test', turns: 4, memory: review().memory });
     expect(c.speech).toBeDefined();
     expect(c.analysisLease).toBeUndefined();
-    expect(reviewer.inputs[0]).toMatchObject({ preferredName: 'Maggie', staffLocale: 'ja' });
+    expect(reviewer.inputs[0]).toMatchObject({ preferredName: 'Maggie', staffLocale: 'en' });
   });
 
   it('opens a case, queues notifications and asks the notifier to send them', async () => {

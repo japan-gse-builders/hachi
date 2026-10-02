@@ -8,7 +8,7 @@ export interface AnalyzerConfig {
   gemini: { location: string; model: string };
   /** Staff/family web app origin for links in notifications. */
   appBaseUrl: string;
-  /** Language of the staff summary and detection texts. Family summaries are always English. */
+  /** Language of the staff summary. Family summaries and detection texts are always English. */
   staffLocale: Locale;
   /** Notification worker origin; without it the worker's sweep sends the notifications. */
   notifierBaseUrl?: string;
@@ -55,7 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AnalyzerConfig {
   const project = required(env, 'GOOGLE_CLOUD_PROJECT');
   const invoker = required(env, 'TASKS_INVOKER_SA');
   const notifier = env.NOTIFIER_BASE_URL?.trim();
-  const staffLocale = env.STAFF_LOCALE?.trim() || 'ja';
+  const staffLocale = env.STAFF_LOCALE?.trim() || 'en';
   if (staffLocale !== 'ja' && staffLocale !== 'en') throw new Error('STAFF_LOCALE must be ja or en');
   return {
     port: int(env, 'PORT', 8080, 1, 65535),

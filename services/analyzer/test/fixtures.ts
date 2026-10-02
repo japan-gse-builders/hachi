@@ -56,7 +56,7 @@ export function review(overrides: Partial<ModelReview> = {}): ModelReview {
   return {
     emergencies: [],
     intake: { status: 'normal', reportedPoorDays: 0, evidenceTurns: [] },
-    staffSummary: { health: '少し疲れている', meals: '朝食は食べていない', topics: ['孫の訪問'] },
+    staffSummary: { health: 'Feeling a little tired', meals: 'Skipped breakfast', topics: ['Grandson visiting'] },
     familySummary: { health: 'A little tired', meals: 'Ate very little', topics: ['Grandson visiting'] },
     memory: { topics: ['grandson Ken'], plans: ['Ken visits on Sunday'], likes: ['grandson Ken'] },
     topicCoherence: 0.9,
@@ -116,7 +116,7 @@ export async function setup(opts: { calls?: CallRecord[]; resident?: Resident | 
     ...(opts.notifications === false ? {} : { notifications }),
     now: () => new Date(clock),
     newId: () => `case-${++n}`,
-    config: { leaseSec: 300, settleSec: 60, modelAttempts: 3, staffLocale: 'ja', appBaseUrl: 'https://app.example' },
+    config: { leaseSec: 300, settleSec: 60, modelAttempts: 3, staffLocale: 'en', appBaseUrl: 'https://app.example' },
   };
   const advance = (sec: number) => {
     clock += sec * 1000;

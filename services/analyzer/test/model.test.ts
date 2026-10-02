@@ -7,7 +7,7 @@ function reviewer(impl: () => Promise<{ text?: string }>) {
   return { generateContent, r: new GeminiReviewer({ models: { generateContent } } as never, 'gemini-3.8-flash') };
 }
 
-const input = { preferredName: 'Maggie', transcript: TRANSCRIPT, staffLocale: 'ja' as const };
+const input = { preferredName: 'Maggie', transcript: TRANSCRIPT, staffLocale: 'en' as const };
 
 describe('prompt', () => {
   it('labels turns with their index and speaker', () => {
