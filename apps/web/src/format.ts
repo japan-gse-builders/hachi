@@ -65,6 +65,17 @@ export function speechLine(features: Record<string, number | null>): string {
   }).join(' · ');
 }
 
+const CHANNEL: Record<string, string> = {
+  sms: 'text message',
+  email: 'email',
+  push: 'app alert',
+  voice: 'phone call',
+};
+
+export function channelList(channels: string[]): string {
+  return channels.map((c) => CHANNEL[c] ?? c).join(', ');
+}
+
 export function minutes(sec: number | null): string {
   return sec === null ? '' : clock(sec * 1000);
 }

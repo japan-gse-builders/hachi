@@ -44,7 +44,7 @@ export function ResidentPage() {
     setError('');
     try {
       await api('/api/residents', await token(), { method: 'POST', body: JSON.stringify(body) });
-      void navigate('/residents');
+      void navigate('/staff/residents');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save this resident');
     } finally {

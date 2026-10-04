@@ -38,7 +38,7 @@ export function QueuePage() {
       {items === null && !error && <p>Loading…</p>}
       {items?.length === 0 && <p className="card">No open cases. New calls appear here after they are reviewed.</p>}
       {items?.map((item) => (
-        <Link key={item.caseId} className={`card card-link ${item.urgency === 'emergency' ? 'card-emergency' : ''}`} to={`/cases/${item.caseId}`}>
+        <Link key={item.caseId} className={`card card-link ${item.urgency === 'emergency' ? 'card-emergency' : ''}`} to={`/staff/cases/${item.caseId}`}>
           <span className={`badge ${urgencyTone(item.urgency)}`}>{item.urgencyLabel}</span>
           <h2>{item.residentName}</h2>
           <p className="meta">Resident {item.residentId}</p>

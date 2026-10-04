@@ -39,7 +39,7 @@ export function ResidentsPage() {
     <div className="stack">
       <div className="row">
         <h2>Residents</h2>
-        <Link className="button" to="/residents/new">Add resident</Link>
+        <Link className="button" to="/staff/residents/new">Add resident</Link>
       </div>
       {error && <p className="error">{error}</p>}
       {residents?.map((r) => (

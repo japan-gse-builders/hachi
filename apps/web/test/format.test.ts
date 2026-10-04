@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { audioAt, callStatusLabel, clock, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../src/format';
+import { needsHomeScreen } from '../src/device';
+import { audioAt, callStatusLabel, channelList, clock, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../src/format';
 
 describe('staff display helpers', () => {
   it('maps urgency to a tone and leaves unknown values calm', () => {
@@ -31,6 +32,18 @@ describe('staff display helpers', () => {
     expect(speechLine({ lexicalDiversity: 0.512, repairRate: 1.25, responseLatencyMs: 1500, topicCoherence: null })).toBe(
       'vocabulary 0.51 · self-corrections 1.3 · reply 1.5 s · coherence —',
     );
+  });
+
+  it('names alert channels in plain words for family', () => {
+    expect(channelList(['sms', 'voice', 'push'])).toBe('text message, phone call, app alert');
+    expect(channelList(['fax'])).toBe('fax');
+  });
+
+  it('asks iPhone users to add Hachi to the home screen before alerts', () => {
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
+    expect(needsHomeScreen(iphone, false)).toBe(true);
+    expect(needsHomeScreen(iphone, true)).toBe(false);
+    expect(needsHomeScreen('Mozilla/5.0 (Linux; Android 15) Chrome/140', false)).toBe(false);
   });
 
   it('starts the recording at the quoted words', () => {

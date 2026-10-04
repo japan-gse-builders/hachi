@@ -60,6 +60,19 @@ export interface CaseDetail {
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
 }
 
+export interface FamilyDashboard {
+  resident: { id: string; preferredName: string };
+  nextCallAt: string | null;
+  calls: {
+    startedAt: string;
+    connected: boolean;
+    durationSec: number | null;
+    summary: { health: string; meals: string; topics: string[] } | null;
+  }[];
+  alerts: { sentAt: string; channels: string[]; caseStatus: string; caseStatusLabel: string }[];
+  staff: { name: string; phone: string; email: string | null };
+}
+
 export interface Resident {
   id: string;
   name: string;

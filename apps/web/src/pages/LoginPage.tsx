@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate, useLocation } from 'react-router';
 import { useAuth } from '../auth';
 
 export function LoginPage() {
   const { user, signIn } = useAuth();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  if (user) return <Navigate to="/" replace />;
+  const from = (location.state as { from?: string } | null)?.from;
+  if (user) return <Navigate to={from?.startsWith('/staff') ? from : '/'} replace />;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -31,6 +33,7 @@ export function LoginPage() {
       <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
       <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      <p className="meta">Family member? <Link to="/family/login">Sign in with an email link</Link>.</p>
     </form>
   );
 }
