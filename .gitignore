@@ -12,6 +12,8 @@ coverage/
 *.mp3
 *.log
 .firebase/
+# Browser automation snapshots and screenshots (may show personal data)
+.playwright-mcp/
 
 # Service account keys and certificates
 *-sa.json
