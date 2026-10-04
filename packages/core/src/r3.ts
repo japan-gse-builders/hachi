@@ -178,15 +178,40 @@ export interface FeatureStats {
   n: number;
 }
 
+export type TimingFeature = 'repairRate' | 'responseLatencyMs';
+export type MeasurementMethod = 'audio' | 'transcript';
+
+/**
+ * Response time and self-repairs measured from the recording and from transcript timings are on
+ * different scales (transcript timings lag by seconds), so each is only compared with itself.
+ */
+function isTiming(f: SpeechFeature): f is TimingFeature {
+  return f === 'repairRate' || f === 'responseLatencyMs';
+}
+
+function methodOf(s: CallSpeechSample): MeasurementMethod {
+  return s.measuredFrom === 'audio' ? 'audio' : 'transcript';
+}
+
 export interface SpeechBaseline {
   from: string;
   to: string;
   callCount: number;
-  stats: Partial<Record<SpeechFeature, FeatureStats>>;
+  /** Vocabulary and topic coherence, however the call was measured. */
+  stats: Partial<Record<Exclude<SpeechFeature, TimingFeature>, FeatureStats>>;
+  timing: Partial<Record<MeasurementMethod, Partial<Record<TimingFeature, FeatureStats>>>>;
 }
 
 export const BASELINE_DAYS = 28;
 export const MIN_BASELINE_CALLS = 8;
+
+function statsOf(values: (number | null)[]): FeatureStats | undefined {
+  const xs = values.filter((v): v is number => v !== null);
+  if (xs.length < MIN_BASELINE_CALLS) return undefined;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const variance = xs.reduce((a, v) => a + (v - mean) ** 2, 0) / (xs.length - 1);
+  return { mean, std: Math.sqrt(variance), n: xs.length };
+}
 
 /** SPK-02: baseline from usable calls within the first BASELINE_DAYS of service. */
 export function buildBaseline(samples: CallSpeechSample[], serviceStart: string): SpeechBaseline | null {
@@ -198,14 +223,24 @@ export function buildBaseline(samples: CallSpeechSample[], serviceStart: string)
   });
   if (inWindow.length < MIN_BASELINE_CALLS) return null;
   const stats: SpeechBaseline['stats'] = {};
-  for (const f of SPEECH_FEATURES) {
-    const values = inWindow.map((s) => s.features[f]).filter((v): v is number => v !== null);
-    if (values.length < MIN_BASELINE_CALLS) continue;
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / (values.length - 1);
-    stats[f] = { mean, std: Math.sqrt(variance), n: values.length };
+  for (const f of ['lexicalDiversity', 'topicCoherence'] as const) {
+    const st = statsOf(inWindow.map((s) => s.features[f]));
+    if (st) stats[f] = st;
   }
-  return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), callCount: inWindow.length, stats };
+  const timing: SpeechBaseline['timing'] = {};
+  for (const m of ['audio', 'transcript'] as const) {
+    const own = inWindow.filter((s) => methodOf(s) === m);
+    for (const f of ['repairRate', 'responseLatencyMs'] as const) {
+      const st = statsOf(own.map((s) => s.features[f]));
+      if (st) timing[m] = { ...timing[m], [f]: st };
+    }
+  }
+  return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), callCount: inWindow.length, stats, timing };
+}
+
+/** The baseline to compare `f` against for a call measured with `method`. */
+export function baselineFor(baseline: SpeechBaseline, f: SpeechFeature, method: MeasurementMethod): FeatureStats | undefined {
+  return isTiming(f) ? baseline.timing[method]?.[f] : baseline.stats[f];
 }
 
 export interface FeatureChange {
@@ -237,7 +272,7 @@ function effectiveStd(f: SpeechFeature, s: FeatureStats): number {
 function compositeFor(sample: CallSpeechSample, baseline: SpeechBaseline): number | null {
   const zs: number[] = [];
   for (const f of SPEECH_FEATURES) {
-    const st = baseline.stats[f];
+    const st = baselineFor(baseline, f, methodOf(sample));
     const v = sample.features[f];
     if (!st || v === null) continue;
     zs.push((ADVERSE_DIRECTION[f] * (v - st.mean)) / effectiveStd(f, st));
@@ -275,9 +310,17 @@ export function assessSpeechChange(samples: CallSpeechSample[], baseline: Speech
 
   const contributors: FeatureChange[] = [];
   for (const f of SPEECH_FEATURES) {
-    const st = baseline.stats[f];
-    const vals = recent.map((s) => s.features[f]).filter((v): v is number => v !== null);
-    if (!st || vals.length === 0) continue;
+    // With both kinds of recent calls, use the method that has more of them (the recording on a tie).
+    const byMethod = (['audio', 'transcript'] as const)
+      .map((m) => ({
+        st: baselineFor(baseline, f, m),
+        vals: recent.filter((s) => !isTiming(f) || methodOf(s) === m).map((s) => s.features[f]).filter((v): v is number => v !== null),
+      }))
+      .filter((x) => x.st && x.vals.length);
+    const best = byMethod.reduce<(typeof byMethod)[number] | undefined>((a, x) => (!a || x.vals.length > a.vals.length ? x : a), undefined);
+    if (!best) continue;
+    const st = best.st!;
+    const vals = best.vals;
     const recentMean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const adverseZ = (ADVERSE_DIRECTION[f] * (recentMean - st.mean)) / effectiveStd(f, st);
     contributors.push({ feature: f, adverseZ, baselineMean: st.mean, recentMean });

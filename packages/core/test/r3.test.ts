@@ -147,14 +147,24 @@ describe('buildBaseline (SPK-02)', () => {
     expect(b.callCount).toBe(20);
     expect(b.stats.lexicalDiversity!.mean).toBeCloseTo(0.7, 5);
     expect(b.stats.lexicalDiversity!.std).toBeGreaterThan(0);
-    expect(b.stats.responseLatencyMs!.n).toBe(20);
+    expect(b.timing.transcript!.responseLatencyMs!.n).toBe(20);
   });
 
   it('skips features that are missing too often', () => {
     const samples = baselineSamples().map((s) => ({ ...s, features: { ...s.features, topicCoherence: null } }));
     const b = buildBaseline(samples, START)!;
     expect(b.stats.topicCoherence).toBeUndefined();
-    expect(b.stats.repairRate).toBeDefined();
+    expect(b.timing.transcript!.repairRate).toBeDefined();
+  });
+
+  it('keeps response time and repairs from recordings apart from transcript timings', () => {
+    const audio = baselineSamples().slice(0, 10).map((s) => ({ ...s, measuredFrom: 'audio' as const, features: { ...s.features, responseLatencyMs: 1700 } }));
+    const b = buildBaseline([...audio, ...baselineSamples().slice(10)], START)!;
+    expect(b.stats.lexicalDiversity!.n).toBe(20);
+    expect(b.timing.audio!.responseLatencyMs).toMatchObject({ mean: 1700, n: 10 });
+    expect(b.timing.transcript!.responseLatencyMs!.n).toBe(10);
+    const few = buildBaseline([...audio.slice(0, MIN_BASELINE_CALLS - 1), ...baselineSamples().slice(10)], START)!;
+    expect(few.timing.audio).toBeUndefined();
   });
 });
 
@@ -200,6 +210,30 @@ describe('assessSpeechChange (SPK-02, SPK-03)', () => {
     expect(r.trend).toBe('improving');
     const better = [30, 31, 32].map((n) => sample(n, { responseLatencyMs: 500, lexicalDiversity: 0.8 }));
     expect(assessSpeechChange([...baselineSamples(), ...better], baseline).urgency).toBeNull();
+  });
+
+  it('does not mistake recorded timings for a change from transcript-timed history', () => {
+    const live = (n: number, f: Partial<SpeechFeatures>) => ({ ...sample(n, f), measuredFrom: 'audio' as const });
+    // Recorded response times are far below transcript timings; without an audio baseline they are left out.
+    const faster = [30, 31, 32].map((n) => live(n, { responseLatencyMs: 300, repairRate: 9 }));
+    const r = assessSpeechChange([...baselineSamples(), ...faster], baseline);
+    expect(r.status).toBe('assessed');
+    expect(r.urgency).toBeNull();
+    // Vocabulary is still compared.
+    const words = [30, 31, 32].map((n) => live(n, { responseLatencyMs: 300, lexicalDiversity: 0.5 }));
+    expect(assessSpeechChange([...baselineSamples(), ...words], baseline).contributors.map((c) => c.feature)).toEqual(['lexicalDiversity']);
+  });
+
+  it('compares recorded timings with recorded history and prefers the method most recent calls used', () => {
+    const live = (n: number, f: Partial<SpeechFeatures>) => ({ ...sample(n, f), measuredFrom: 'audio' as const });
+    const history = [...baselineSamples(), ...[20, 21, 22, 23, 24, 25, 26, 27].map((n) => live(n, { responseLatencyMs: 1700 + (n % 3) * 100 }))];
+    const both = buildBaseline(history, START)!;
+    const slower = [30, 31, 32].map((n) => live(n, { responseLatencyMs: 3200 }));
+    const r = assessSpeechChange([...history, ...slower], both);
+    expect(r.contributors[0]).toMatchObject({ feature: 'responseLatencyMs', recentMean: 3200 });
+    expect(r.contributors[0]!.baselineMean).toBeCloseTo(1800, 5);
+    const mixed = [sample(30, { responseLatencyMs: 900 }), live(31, { responseLatencyMs: 3200 }), live(32, { responseLatencyMs: 3200 })];
+    expect(assessSpeechChange([...history, ...mixed], both).contributors.find((c) => c.feature === 'responseLatencyMs')?.recentMean).toBe(3200);
   });
 
   it('excludes unusable calls from the assessment (SPK-04)', () => {
