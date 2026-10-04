@@ -5,7 +5,7 @@ import { useAuth } from '../auth';
 
 interface FamilyResident {
   id: string;
-  preferredName: string;
+  name: string;
 }
 
 export function FamilyHomePage() {
@@ -35,7 +35,7 @@ export function FamilyHomePage() {
       <h2>Who would you like to check on?</h2>
       {residents.map((r) => (
         <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
-          <h2>{r.preferredName}</h2>
+          <h2>{r.name}</h2>
         </Link>
       ))}
     </div>

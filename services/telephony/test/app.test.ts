@@ -223,7 +223,7 @@ describe('emergency routes', () => {
     expect((await app.inject(twilioPost('/twilio/after-stream', {}))).body).toBe('<Response><Hangup/></Response>');
 
     const join = await app.inject(twilioPost(`/twilio/alert-response?${qs}`, { Digits: '1' }));
-    expect(join.body).toContain('Connecting you to Maggie now.');
+    expect(join.body).toContain('Connecting you to Margaret Smith now.');
     expect((await app.inject(twilioPost('/twilio/alert-response', { Digits: '1' }))).body).toBe('<Response><Hangup/></Response>');
 
     expect((await app.inject(twilioPost('/twilio/hold', {}))).body).toContain('<Pause');

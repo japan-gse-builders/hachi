@@ -5,9 +5,8 @@ import type { Contact, ContactChannel, DeliveryReport, DeliveryStatus, Locale } 
 import { URGENCY_LABELS, type Urgency } from './urgency.js';
 
 export interface NotificationContext {
+  /** Not preferredName: that is how Hachi greets the resident and can be "there". */
   residentName: string;
-  /** How the resident is addressed, used in messages to family. */
-  preferredName: string;
   staff: Contact;
   family?: Contact;
   caseUrl: string;
@@ -122,7 +121,7 @@ function staffMessage(change: CaseChange, ctx: NotificationContext, channel: Con
 /** FAM-03: family messages carry only the plain summary, never transcript quotes. */
 function familyMessage(change: CaseChange, ctx: NotificationContext, channel: ContactChannel): { subject: string; body: string } {
   const summary = change.detection.summary;
-  const name = ctx.preferredName;
+  const name = ctx.residentName;
   if (ctx.locale === 'ja') {
     return {
       subject: `【Hachi 緊急】${name}さんの体調について`,

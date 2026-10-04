@@ -68,7 +68,7 @@ export interface CaseDetail {
 }
 
 export interface FamilyDashboard {
-  resident: { id: string; preferredName: string };
+  resident: { id: string; name: string };
   nextCallAt: string | null;
   calls: {
     startedAt: string;

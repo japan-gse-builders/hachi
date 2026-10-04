@@ -55,9 +55,7 @@ export async function recordDetections(
   const createdAt = opts.now.toISOString();
   const entries: OutboxEntry[] = changes.flatMap((change) =>
     planNotifications(change, {
-      residentName: resident.name,
-      preferredName: resident.preferredName,
-      staff: resident.staff,
+      residentName: resident.name,      staff: resident.staff,
       ...(resident.family ? { family: resident.family } : {}),
       staffPhone: resident.staff.phone,
       caseUrl: `${opts.appBaseUrl}/staff/cases/${change.caseId}`,

@@ -359,7 +359,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const { app, as } = await seeded();
     for (const who of ['familyPhone', 'familyEmail'] as const) {
       const res = await app.inject({ method: 'GET', url: '/api/family/residents', ...as(who) });
-      expect(res.json().residents).toEqual([{ id: 'res-1', preferredName: 'Maggie' }]);
+      expect(res.json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
     }
     expect((await app.inject({ method: 'GET', url: '/api/family/residents', ...as('stranger') })).json().residents).toEqual([]);
   });
@@ -369,6 +369,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') });
     expect(res.statusCode).toBe(200);
     const d = res.json();
+    expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith' });
     expect(d.nextCallAt).toBe('2026-10-02T01:00:00.000Z');
     expect(d.calls).toEqual([
       { startedAt: '2026-10-01T01:00:00.000Z', connected: true, durationSec: 240, summary: { health: 'A little tired', meals: 'Ate very little yesterday', topics: ['grandson'] } },

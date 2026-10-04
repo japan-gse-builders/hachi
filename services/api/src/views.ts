@@ -146,7 +146,7 @@ const STATUS_LABELS: Record<Locale, Record<StoredCase['status'], string>> = {
 export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
   return {
-    resident: { id: r.id, preferredName: r.preferredName },
+    resident: { id: r.id, name: r.name },
     nextCallAt: r.active ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
     calls: calls
       .filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress')

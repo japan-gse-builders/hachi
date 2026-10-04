@@ -91,11 +91,11 @@ function alertTwiml(deps: CallDeps, r: Resident, ids: CallIds): string {
     '<Response>' +
     gather(
       `This is an urgent call from Hachi, the daily check-in service for ${r.name}. ` +
-        `During today's call, ${r.preferredName} said something that suggests they may need help right now. ` +
-        `Press 1 to be connected to ${r.preferredName} now.`,
+        `During today's call, ${r.name} said something that suggests they may need help right now. ` +
+        `Press 1 to be connected to ${r.name} now.`,
     ) +
-    gather(`Press 1 to be connected to ${r.preferredName}.`) +
-    say(deps, `We could not connect you. Please call ${r.preferredName} or emergency services as soon as possible. Goodbye.`) +
+    gather(`Press 1 to be connected to ${r.name}.`) +
+    say(deps, `We could not connect you. Please call ${r.name} or emergency services as soon as possible. Goodbye.`) +
     '</Response>'
   );
 }
@@ -147,7 +147,7 @@ export async function emergencyTransfer(deps: CallDeps, ids: CallIds): Promise<T
 /** Family or staff answered the alert call. */
 export async function alertResponse(deps: CallDeps, ids: CallIds, digits: string | undefined): Promise<string> {
   const [resident, call] = await Promise.all([deps.store.getResident(ids.residentId), deps.store.getCall(ids.residentId, ids.callId)]);
-  const name = resident?.preferredName ?? 'the resident';
+  const name = resident?.name ?? 'the resident';
   if (digits !== '1') return `<Response>${say(deps, `Please call ${name} or emergency services as soon as possible. Goodbye.`)}<Hangup/></Response>`;
   if (!call || call.status !== 'in_progress') {
     return `<Response>${say(deps, `${name}'s call has already ended. Please call ${name} directly or call emergency services. Goodbye.`)}<Hangup/></Response>`;

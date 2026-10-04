@@ -6,7 +6,6 @@ import { detection } from './fixtures.js';
 
 const ctx: NotificationContext = {
   residentName: 'Margaret Smith',
-  preferredName: 'Maggie',
   staff: { name: 'Tanaka', sms: '+810000000001', email: 'staff@example.org', pushTokens: ['staff-token'], voice: '+810000000001' },
   family: { name: 'Alice', sms: '+810000000002', email: 'alice@example.org', pushTokens: ['fam-a', 'fam-b'], voice: '+810000000002' },
   caseUrl: 'https://hachi.example/cases/case-1',
@@ -78,14 +77,14 @@ describe('planNotifications', () => {
   it('family message asks to contact the resident, links the dashboard, and never quotes the transcript (NTF-03, FAM-03)', () => {
     for (const locale of ['ja', 'en'] as const) {
       for (const m of planNotifications(change(), { ...ctx, locale }).filter((x) => x.recipient === 'family')) {
-        expect(m.body).toContain('Maggie');
+        expect(m.body).toContain('Margaret Smith');
         expect(m.body).not.toContain(QUOTE);
         expect(m.body).not.toContain(ctx.caseUrl);
         if (m.channel !== 'sms') expect(m.body).toContain(ctx.dashboardUrl);
       }
     }
     const email = planNotifications(change(), ctx).find((x) => x.recipient === 'family' && x.channel === 'email')!;
-    expect(email.body).toContain('すぐにMaggieさんへご連絡ください');
+    expect(email.body).toContain('すぐにMargaret Smithさんへご連絡ください');
   });
 
   it('keeps SMS to one part with no link, which Japanese carriers drop from overseas senders', () => {
@@ -102,7 +101,7 @@ describe('planNotifications', () => {
       }
     }
     const en = planNotifications(long, { ...ctx, locale: 'en' }).find((x) => x.recipient === 'family' && x.channel === 'sms')!;
-    expect(en.body).toMatch(/^\[Hachi Emergency\] Maggie: Said "I can't breathe" - and more .*\.\.\.\. Please contact Maggie right away\. Details are in your email\.$/);
+    expect(en.body).toMatch(/^\[Hachi Emergency\] Margaret Smith: Said "I can't breathe" - and more .*\.\.\.\. Please contact Margaret Smith right away\. Details are in your email\.$/);
   });
 
   it('keeps phone numbers out of family SMS, which Japanese carriers filter, but not other channels', () => {

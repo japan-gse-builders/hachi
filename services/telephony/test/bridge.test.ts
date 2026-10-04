@@ -111,7 +111,8 @@ describe('emergencyTransfer', () => {
     expect(alert).toMatchObject({ from: '+18664289155', ringTimeoutSec: 45 });
     expect(alert.statusCallbackUrl).toBeUndefined();
     expect(alert.twiml).toContain(`action="${BASE_URL}/twilio/alert-response?residentId=res-1&amp;callId=2026-10-02-0"`);
-    expect(alert.twiml).toContain('Press 1 to be connected to Maggie now.');
+    expect(alert.twiml).toContain('Press 1 to be connected to Margaret Smith now.');
+    expect(alert.twiml).not.toContain('Maggie');
     expect(alert.twiml).not.toContain('chest');
     expect((await store.getCall('res-1', IDS.callId))!.emergency!.legs).toEqual([
       { recipient: 'family', to: '+819000000002', providerCallId: expect.stringMatching(/^CA/) },
@@ -145,19 +146,19 @@ describe('alertResponse', () => {
   it('joins the conference when 1 is pressed during the call', async () => {
     const { deps } = await setup({ emergency: EMERGENCY });
     const xml = await alertResponse(deps, IDS, '1');
-    expect(xml).toContain('Connecting you to Maggie now.');
+    expect(xml).toContain('Connecting you to Margaret Smith now.');
     expect(xml).toContain(`<Conference startConferenceOnEnter="true" endConferenceOnExit="false" beep="false">${conferenceName(IDS)}</Conference>`);
   });
 
   it('explains when the resident already hung up', async () => {
     const { deps } = await setup({ emergency: EMERGENCY, status: 'completed' });
-    expect(await alertResponse(deps, IDS, '1')).toContain('Maggie&apos;s call has already ended');
+    expect(await alertResponse(deps, IDS, '1')).toContain('Margaret Smith&apos;s call has already ended');
     expect(await alertResponse(deps, { residentId: 'x', callId: 'y' }, '1')).toContain('the resident&apos;s call has already ended');
   });
 
   it('says goodbye for other keys', async () => {
     const { deps } = await setup({ emergency: EMERGENCY });
-    expect(await alertResponse(deps, IDS, '5')).toContain('Please call Maggie or emergency services');
+    expect(await alertResponse(deps, IDS, '5')).toContain('Please call Margaret Smith or emergency services');
     expect(await alertResponse(deps, IDS, undefined)).toContain('<Hangup/>');
   });
 });

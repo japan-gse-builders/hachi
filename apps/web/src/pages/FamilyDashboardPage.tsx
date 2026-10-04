@@ -25,7 +25,7 @@ export function FamilyDashboardPage() {
   return (
     <div className="stack">
       <section className="card">
-        <h2>Daily calls with {data.resident.preferredName}</h2>
+        <h2>Daily calls with {data.resident.name}</h2>
         <p>{data.nextCallAt ? `Next call: ${formatWhen(data.nextCallAt)}` : 'Daily calls are paused.'}</p>
         <p className="meta">Times are Japan time. Hachi calls once a day for a short chat.</p>
       </section>

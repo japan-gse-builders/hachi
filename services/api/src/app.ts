@@ -180,7 +180,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/api/family/residents', async (req) => {
     const fam = requireFamily(req);
     const residents = await familyResidents(fam.contacts);
-    return { residents: residents.map((r) => ({ id: r.id, preferredName: r.preferredName })) };
+    return { residents: residents.map((r) => ({ id: r.id, name: r.name })) };
   });
 
   app.get<{ Params: { id: string } }>('/api/family/residents/:id/dashboard', async (req) => {
