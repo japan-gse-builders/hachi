@@ -101,6 +101,8 @@ export interface CallAnalysis {
   memory: CallMemory;
   /** Why the model could not be used, if it was not. */
   error?: string;
+  /** Why speech could not be measured from the recording, if it was not. */
+  voiceError?: string;
 }
 
 export type ConversationEnd = 'agent' | 'resident' | 'time_limit' | 'emergency' | 'gateway_error';

@@ -2,6 +2,7 @@ import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
 import type { Turn } from '@hachi/core';
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
 import { ReviewError, type CallReviewer, type ModelReview, type ReviewInput } from '../src/model.js';
+import type { ListeningReview, RecordingSource, SpeechListener } from '../src/voice.js';
 import type { WorkerDeps } from '../src/worker.js';
 
 export const NOW = new Date('2026-10-02T03:00:00.000Z');
@@ -97,22 +98,99 @@ export class FakeQueue implements TaskQueue {
   }
 }
 
+const RATE = 8000;
+
+function tone(durationMs: number, speech: [number, number][]): Int16Array {
+  const out = new Int16Array((durationMs * RATE) / 1000);
+  for (let i = 0; i < out.length; i++) out[i] = i % 2 ? 20 : -20;
+  for (const [a, b] of speech) for (let i = (a * RATE) / 1000; i < (b * RATE) / 1000; i++) out[i] = Math.round(8000 * Math.sin((2 * Math.PI * 300 * i) / RATE));
+  return out;
+}
+
+/** Stereo call recording matching TRANSCRIPT: Hachi on the right, the resident answering on the left. */
+export function recording(residentSpeech: [number, number][] = [[5000, 9000], [13000, 17000]], durationMs = 18000): Buffer {
+  const left = tone(durationMs, residentSpeech);
+  const right = tone(durationMs, [[0, 4000], [9500, 12000]]);
+  const data = Buffer.alloc(left.length * 4);
+  for (let i = 0; i < left.length; i++) {
+    data.writeInt16LE(left[i]!, i * 4);
+    data.writeInt16LE(right[i]!, i * 4 + 2);
+  }
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0, 'ascii');
+  h.writeUInt32LE(36 + data.length, 4);
+  h.write('WAVEfmt ', 8, 'ascii');
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(2, 22);
+  h.writeUInt32LE(RATE, 24);
+  h.writeUInt32LE(RATE * 4, 28);
+  h.writeUInt16LE(4, 32);
+  h.writeUInt16LE(16, 34);
+  h.write('data', 36, 'ascii');
+  h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
+
+export function listening(overrides: Partial<ListeningReview> = {}): ListeningReview {
+  return {
+    verbatim: 'Oh I am fine, um, a little tired. My grand- grandson Ken is visiting on Sunday. Not really, I only had a a biscuit.',
+    disfluencies: [
+      { quote: 'fine, um, a little', kind: 'filler', atSec: 5.5 },
+      { quote: 'grand- grandson', kind: 'false_start', atSec: 7.2 },
+      { quote: 'a a biscuit', kind: 'repetition', atSec: 15.1 },
+    ],
+    audioQuality: 0.9,
+    ...overrides,
+  };
+}
+
+export class FakeListener implements SpeechListener {
+  readonly model = 'gemini-test';
+  readonly heard: Buffer[] = [];
+  readonly results: (ListeningReview | Error)[] = [];
+  fallback: ListeningReview = listening();
+
+  async listen(wav: Buffer): Promise<ListeningReview> {
+    this.heard.push(wav);
+    const r = this.results.shift() ?? this.fallback;
+    if (r instanceof Error) throw r;
+    return r;
+  }
+}
+
+export class FakeRecordings implements RecordingSource {
+  readonly reads: string[] = [];
+  readonly results: (Buffer | Error)[] = [];
+  fallback: Buffer = recording();
+
+  async read(uri: string): Promise<Buffer> {
+    this.reads.push(uri);
+    const r = this.results.shift() ?? this.fallback;
+    if (r instanceof Error) throw r;
+    return r;
+  }
+}
+
 export const unavailable = () => new ReviewError('Gemini request failed: 503', true);
 export const rejected = () => new ReviewError('Gemini request failed: 400', false);
 
-export async function setup(opts: { calls?: CallRecord[]; resident?: Resident | null; notifications?: boolean } = {}) {
+export async function setup(opts: { calls?: CallRecord[]; resident?: Resident | null; notifications?: boolean; voice?: boolean } = {}) {
   const store = new MemoryStore();
   if (opts.resident !== null) await store.createResident(opts.resident ?? resident());
   await store.addCalls(opts.calls ?? [call()]);
   const reviewer = new FakeReviewer();
   const queue = new FakeQueue();
   const notifications = new FakeQueue();
+  const listener = new FakeListener();
+  const recordings = new FakeRecordings();
   let clock = NOW.getTime();
   let n = 0;
   const deps: WorkerDeps = {
     store,
     reviewer,
     queue,
+    ...(opts.voice ? { listener, recordings } : {}),
     ...(opts.notifications === false ? {} : { notifications }),
     now: () => new Date(clock),
     newId: () => `case-${++n}`,
@@ -121,5 +199,5 @@ export async function setup(opts: { calls?: CallRecord[]; resident?: Resident | 
   const advance = (sec: number) => {
     clock += sec * 1000;
   };
-  return { store, reviewer, queue, notifications, deps, advance };
+  return { store, reviewer, queue, notifications, listener, recordings, deps, advance };
 }

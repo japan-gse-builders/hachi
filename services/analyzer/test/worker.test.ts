@@ -154,6 +154,78 @@ describe('analyzeCall', () => {
     expect(c.analysisLease).toBeUndefined();
   });
 
+  describe('speech from the recording', () => {
+    const recorded = () => call({ audioUri: 'gs://rec/res-1/2026-10-02-1.wav' });
+
+    it('measures response time and repairs from the audio', async () => {
+      const { deps, store, recordings, listener } = await setup({ calls: [recorded()], voice: true });
+      expect((await analyzeCall(deps, ref)).outcome).toBe('analyzed');
+      expect(recordings.reads).toEqual(['gs://rec/res-1/2026-10-02-1.wav']);
+      expect(listener.heard).toHaveLength(1);
+      const c = (await store.getCall('res-1', ref.callId))!;
+      expect(c.speech).toMatchObject({ measuredFrom: 'audio', features: { responseLatencyMs: 1000 } });
+      expect(c.speech!.examples!.map((e) => e.kind)).toEqual(['slow_response', 'slow_response', 'false_start', 'repetition']);
+      expect(c.analysis!.voiceError).toBeUndefined();
+    });
+
+    it('excludes the call from R3 when the model hears a poor line', async () => {
+      const { deps, store, listener } = await setup({ calls: [recorded()], voice: true });
+      listener.fallback = { ...listener.fallback, audioQuality: 0.2 };
+      await analyzeCall(deps, ref);
+      expect((await store.getCall('res-1', ref.callId))!.speech!.exclusionReasons).toContain('poor_audio');
+    });
+
+    it('retries when the recording cannot be fetched, then measures only the words', async () => {
+      const { deps, store, recordings } = await setup({ calls: [recorded()], voice: true });
+      recordings.results.push(new Error('storage 503'), new Error('storage 503'), new Error('storage 503'));
+      expect(await analyzeCall(deps, ref, 0)).toEqual({ outcome: 'retry', reason: 'storage 503' });
+      expect((await store.getCall('res-1', ref.callId))!.analysisLease).toBeUndefined();
+      expect((await analyzeCall(deps, ref, 1)).outcome).toBe('retry');
+      expect((await analyzeCall(deps, ref, 2)).outcome).toBe('analyzed');
+      const c = (await store.getCall('res-1', ref.callId))!;
+      expect(c.speech).toMatchObject({ measuredFrom: 'text_only', features: { responseLatencyMs: null, repairRate: null } });
+      expect(c.analysis!.voiceError).toBe('storage 503');
+    });
+
+    it('retries a listening outage but not an unreadable file or a rejected request', async () => {
+      const outage = await setup({ calls: [recorded()], voice: true });
+      outage.listener.results.push(unavailable());
+      expect(await analyzeCall(outage.deps, ref, 0)).toMatchObject({ outcome: 'retry' });
+      expect((await analyzeCall(outage.deps, ref, 1)).outcome).toBe('analyzed');
+      expect((await outage.store.getCall('res-1', ref.callId))!.speech!.measuredFrom).toBe('audio');
+
+      const broken = await setup({ calls: [recorded()], voice: true });
+      broken.recordings.fallback = Buffer.from('not audio');
+      expect((await analyzeCall(broken.deps, ref, 0)).outcome).toBe('analyzed');
+      expect((await broken.store.getCall('res-1', ref.callId))!.analysis!.voiceError).toContain('Not a WAV');
+
+      const both = await setup({ calls: [recorded()], voice: true });
+      both.reviewer.next(rejected());
+      both.recordings.results.push(new Error('storage 503'));
+      expect(await analyzeCall(both.deps, ref, 0)).toEqual({ outcome: 'retry', reason: 'storage 503' });
+
+      const refused = await setup({ calls: [recorded()], voice: true });
+      refused.listener.results.push(rejected());
+      expect((await analyzeCall(refused.deps, ref, 0)).outcome).toBe('analyzed');
+      expect((await refused.store.getCall('res-1', ref.callId))!.speech!.measuredFrom).toBe('text_only');
+    });
+
+    it('uses the transcript for imported history and skips calls without audio or answers', async () => {
+      const imported = await setup({ calls: [call({ source: 'imported', audioUri: 'gs://rec/x.wav' })], voice: true });
+      await analyzeCall(imported.deps, ref);
+      expect(imported.recordings.reads).toHaveLength(0);
+      expect((await imported.store.getCall('res-1', ref.callId))!.speech!.measuredFrom).toBe('transcript');
+
+      const noAudio = await setup({ voice: true });
+      await analyzeCall(noAudio.deps, ref);
+      expect((await noAudio.store.getCall('res-1', ref.callId))!.speech!.measuredFrom).toBe('text_only');
+
+      const silent = await setup({ calls: [call({ audioUri: 'gs://rec/x.wav', transcript: [TRANSCRIPT[0]!] })], voice: true });
+      await analyzeCall(silent.deps, ref);
+      expect(silent.recordings.reads).toHaveLength(0);
+    });
+  });
+
   it('reports not_found when the call disappears during analysis', async () => {
     const { deps, store } = await setup();
     vi.spyOn(store, 'listCalls').mockRejectedValueOnce(new NotFoundError('call'));

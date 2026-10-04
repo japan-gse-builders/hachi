@@ -11,6 +11,8 @@ import {
   type Detection,
   type Evidence,
   type IntakeObservation,
+  type SpeechExample,
+  type TimingSource,
   type Turn,
 } from '@hachi/core';
 import type { CallAnalysis, CallMemory, CallRecord, Resident } from '@hachi/store';
@@ -24,8 +26,13 @@ export interface AnalysisInput {
   history: CallRecord[];
   /** Null when the model could not be used; the rule-based checks still run. */
   review: ModelReview | null;
+  /** Response time and self-repairs from the recording (SPK-01); defaults to the transcript. */
+  timing?: TimingSource;
+  /** 0..1 line quality heard in the recording (SPK-04). */
+  audioQuality?: number;
   model?: string;
   modelError?: string;
+  voiceError?: string;
   now: Date;
 }
 
@@ -139,11 +146,19 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
   const baseline = buildBaseline(samples, input.resident.serviceStartedAt);
   const a = assessSpeechChange(samples, baseline);
   if (a.status !== 'assessed' || !a.urgency || !a.recentCallIds.includes(sample.callId)) return null;
-  const examples = input.transcript
+  const changed = new Set(a.contributors.map((c) => c.feature));
+  const fromRecording = (sample.examples ?? []).filter((e: SpeechExample) =>
+    e.kind === 'slow_response' ? changed.has('responseLatencyMs') : changed.has('repairRate'),
+  );
+  const longest = input.transcript
     .filter((t) => t.speaker === 'resident')
     .sort((x, y) => y.text.length - x.text.length)
     .slice(0, 2)
     .map((t) => evidence(input.call.id, t));
+  const examples = [
+    ...fromRecording.slice(0, 3).map((e) => ({ callId: input.call.id, quote: e.quote, ...(e.startMs !== undefined ? { startMs: e.startMs } : {}) })),
+    ...(fromRecording.length ? [] : longest),
+  ];
   const changes = a.contributors.map((c) => describeFeatureChange(c, 'en')).join('; ') || 'Speech differs from usual';
   return {
     residentId: input.resident.id,
@@ -161,9 +176,17 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
 export function analyse(input: AnalysisInput): AnalysisResult {
   const { review, call, transcript } = input;
   const intake = intakeFor(input);
-  const speech = extractSpeechSample(call.id, call.startedAt, transcript, review?.topicCoherence ?? null, {
-    ...(review ? { noisy: review.noisy, temporaryCondition: review.temporaryCondition } : {}),
-  });
+  const speech = extractSpeechSample(
+    call.id,
+    call.startedAt,
+    transcript,
+    review?.topicCoherence ?? null,
+    {
+      ...(review ? { noisy: review.noisy, temporaryCondition: review.temporaryCondition } : {}),
+      ...(input.audioQuality !== undefined ? { audioQuality: input.audioQuality } : {}),
+    },
+    input.timing ?? 'transcript',
+  );
   // Imported history only builds the baseline and memory; it must not raise alerts about the past.
   const detections =
     call.source === 'imported'
@@ -182,6 +205,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
         intake,
         memory: review?.memory ?? EMPTY_MEMORY,
         ...(input.modelError ? { error: input.modelError } : {}),
+        ...(input.voiceError ? { voiceError: input.voiceError } : {}),
       },
     },
   };

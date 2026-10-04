@@ -3,6 +3,7 @@ export * from './types.js';
 export * from './r1.js';
 export * from './r2.js';
 export * from './r3.js';
+export * from './voice.js';
 export * from './cases.js';
 export * from './priority.js';
 export * from './notifications.js';

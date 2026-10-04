@@ -31,6 +31,29 @@ export type SpeechFeatures = Record<SpeechFeature, number | null>;
 
 export type ExclusionReason = 'too_little_speech' | 'poor_audio' | 'background_noise' | 'temporary_condition';
 
+export type SpeechExampleKind = 'filler' | 'repetition' | 'false_start' | 'correction' | 'slow_response';
+
+/** SPK-03: a concrete moment behind a feature, with its place in the recording. */
+export interface SpeechExample {
+  kind: SpeechExampleKind;
+  quote: string;
+  startMs?: number;
+}
+
+/** Response time and self-repairs measured from the recording rather than the live transcript. */
+export interface VoiceMeasures {
+  responseLatencyMs: number | null;
+  repairRate: number | null;
+  examples: SpeechExample[];
+}
+
+/**
+ * Where response time and self-repairs come from. `transcript`: the turn timings and words are
+ * exact (imported history). `unavailable`: a live call whose recording could not be measured; the
+ * live transcript drops hesitations and its timings lag, so those two features are left out.
+ */
+export type TimingSource = VoiceMeasures | 'transcript' | 'unavailable';
+
 export interface CallSpeechSample {
   callId: string;
   /** ISO timestamp of the call. */
@@ -38,6 +61,8 @@ export interface CallSpeechSample {
   features: SpeechFeatures;
   usable: boolean;
   exclusionReasons: ExclusionReason[];
+  measuredFrom?: 'audio' | 'transcript' | 'text_only';
+  examples?: SpeechExample[];
 }
 
 export interface QualitySignals {
@@ -121,9 +146,11 @@ export function extractSpeechSample(
   turns: Turn[],
   topicCoherence: number | null,
   quality: QualitySignals = {},
+  timing: TimingSource = 'transcript',
 ): CallSpeechSample {
   const residentText = turns.filter((t) => t.speaker === 'resident').map((t) => t.text).join(' ');
   const tokens = tokenize(residentText);
+  const voice = typeof timing === 'object' ? timing : null;
   const exclusionReasons: ExclusionReason[] = [];
   if (tokens.length < MIN_RESIDENT_WORDS) exclusionReasons.push('too_little_speech');
   if (quality.audioQuality !== undefined && quality.audioQuality < 0.6) exclusionReasons.push('poor_audio');
@@ -134,12 +161,14 @@ export function extractSpeechSample(
     at,
     features: {
       lexicalDiversity: mattr(tokens),
-      repairRate: repairRate(residentText),
-      responseLatencyMs: medianResponseLatency(turns),
+      repairRate: voice ? voice.repairRate : timing === 'transcript' ? repairRate(residentText) : null,
+      responseLatencyMs: voice ? voice.responseLatencyMs : timing === 'transcript' ? medianResponseLatency(turns) : null,
       topicCoherence,
     },
     usable: exclusionReasons.length === 0,
     exclusionReasons,
+    measuredFrom: voice ? 'audio' : timing === 'transcript' ? 'transcript' : 'text_only',
+    ...(voice && voice.examples.length ? { examples: voice.examples } : {}),
   };
 }
 

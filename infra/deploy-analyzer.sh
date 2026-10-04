@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Deploys the analysis worker (post-call review with Gemini) and points the voice gateway at it.
 # Run deploy-voice-gateway.sh first. Safe to re-run.
-# Usage: PROJECT_ID=my-project ./infra/deploy-analyzer.sh
+# Usage: PROJECT_ID=my-project RECORDINGS_BUCKET=my-bucket ./infra/deploy-analyzer.sh
 set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID to your Google Cloud project ID}"
+: "${RECORDINGS_BUCKET:?Set RECORDINGS_BUCKET to the bucket the voice gateway records calls to}"
 REGION="${REGION:-asia-northeast1}"
 GATEWAY_REGION="${GATEWAY_REGION:-us-central1}"
 SERVICE=hachi-analyzer
@@ -31,6 +32,9 @@ gcloud iam service-accounts describe "$RUNTIME_SA" >/dev/null 2>&1 \
 for role in roles/datastore.user roles/cloudtasks.enqueuer roles/aiplatform.user; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME_SA" --role "$role" --condition=None >/dev/null
 done
+# Speech timing and hesitations are measured from the call recording.
+gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
+  --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectViewer >/dev/null
 gcloud iam service-accounts add-iam-policy-binding "$INVOKER_SA" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountUser >/dev/null
 
@@ -56,7 +60,7 @@ if gcloud run services describe hachi-notifier --region "$REGION" >/dev/null 2>&
   NOTIFY_ENV=",NOTIFIER_BASE_URL=https://hachi-notifier-${PROJECT_NUMBER}.${REGION}.run.app,NOTIFY_QUEUE=notifications"
 fi
 # Only Cloud Tasks and Cloud Scheduler call this service, so it is private (IAM invoker only);
-# the app checks the OIDC token as well. Gemini text models are called with the runtime service account.
+# the app checks the OIDC token as well. Gemini is called with the runtime service account.
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --no-allow-unauthenticated --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi \
   --concurrency 8 --timeout 180 --cpu-boost \

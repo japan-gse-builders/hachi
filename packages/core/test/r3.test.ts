@@ -111,6 +111,23 @@ describe('extractSpeechSample (SPK-04)', () => {
     const bad = extractSpeechSample('c3', day(0), turns, 0.9, { audioQuality: 0.3, noisy: true, temporaryCondition: true });
     expect(bad.exclusionReasons).toEqual(['poor_audio', 'background_noise', 'temporary_condition']);
   });
+
+  it('takes response time and repairs from the recording when it was measured', () => {
+    const examples = [{ kind: 'false_start' as const, quote: 'vi- visiting', startMs: 67200 }];
+    const s = extractSpeechSample('c1', day(0), turns, 0.9, {}, { responseLatencyMs: 1740, repairRate: 2.5, examples });
+    expect(s.features).toMatchObject({ responseLatencyMs: 1740, repairRate: 2.5 });
+    expect(s.measuredFrom).toBe('audio');
+    expect(s.examples).toEqual(examples);
+    expect(extractSpeechSample('c1', day(0), turns, 0.9, {}, { responseLatencyMs: null, repairRate: null, examples: [] })).not.toHaveProperty('examples');
+  });
+
+  it('measures only the words when the recording could not be used', () => {
+    const s = extractSpeechSample('c1', day(0), turns, 0.9, {}, 'unavailable');
+    expect(s.features).toMatchObject({ responseLatencyMs: null, repairRate: null, topicCoherence: 0.9 });
+    expect(s.features.lexicalDiversity).not.toBeNull();
+    expect(s.measuredFrom).toBe('text_only');
+    expect(extractSpeechSample('c1', day(0), turns, 0.9).measuredFrom).toBe('transcript');
+  });
 });
 
 describe('buildBaseline (SPK-02)', () => {

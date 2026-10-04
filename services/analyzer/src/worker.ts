@@ -1,12 +1,16 @@
 import { analysisTask, requestDelivery, type TaskQueue } from '@hachi/cloud';
-import type { Detection, Locale, RuleId } from '@hachi/core';
+import type { Detection, Locale, RuleId, TimingSource } from '@hachi/core';
 import { NotFoundError, recordDetections, type CallRecord, type Store } from '@hachi/store';
 import { analyse } from './analysis.js';
 import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
+import { measureRecording, type RecordingSource, type SpeechListener } from './voice.js';
 
 export interface WorkerDeps {
   store: Store;
   reviewer: CallReviewer;
+  /** Both are needed to measure speech from the recording; without them R3 uses text features only. */
+  recordings?: RecordingSource;
+  listener?: SpeechListener;
   /** This service's own queue, used by the sweep. */
   queue: TaskQueue;
   /** Notification worker queue; without it the notifier's sweep picks the entries up. */
@@ -90,20 +94,33 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     }
     const transcript = call.transcript ?? [];
 
-    let review: ModelReview | null = null;
-    let modelError: string | undefined;
-    if (transcript.some((t) => t.speaker === 'resident')) {
-      try {
-        review = await deps.reviewer.review({ preferredName: resident.preferredName, transcript, staffLocale: config.staffLocale });
-      } catch (err) {
-        const retryable = err instanceof ReviewError ? err.retryable : true;
-        modelError = (err as Error)?.message ?? String(err);
-        if (retryable && attempt + 1 < config.modelAttempts) {
-          await release({});
-          return { outcome: 'retry', reason: modelError };
-        }
-      }
+    const spoke = transcript.some((t) => t.speaker === 'resident');
+    const { recordings, listener } = deps;
+    const audioUri = call.source !== 'imported' && spoke && recordings && listener ? call.audioUri : undefined;
+    let stored = false;
+    const [reviewed, measured] = await Promise.allSettled([
+      spoke ? deps.reviewer.review({ preferredName: resident.preferredName, transcript, staffLocale: config.staffLocale }) : Promise.resolve(null),
+      audioUri
+        ? recordings!.read(audioUri).then((wav) => {
+            stored = true;
+            return measureRecording(wav, transcript, listener!);
+          })
+        : Promise.resolve(null),
+    ]);
+    const message = (err: unknown) => (err as Error)?.message ?? String(err);
+    const modelError = reviewed.status === 'rejected' ? message(reviewed.reason) : undefined;
+    const voiceError = measured.status === 'rejected' ? message(measured.reason) : undefined;
+    const retryReview = reviewed.status === 'rejected' && (reviewed.reason instanceof ReviewError ? reviewed.reason.retryable : true);
+    // Storage hiccups and model outages are worth retrying; an unreadable file is not.
+    const retryVoice = measured.status === 'rejected' && (!stored || (measured.reason instanceof ReviewError && measured.reason.retryable));
+    if ((retryReview || retryVoice) && attempt + 1 < config.modelAttempts) {
+      await release({});
+      return { outcome: 'retry', reason: (retryReview ? modelError : voiceError)! };
     }
+    const review: ModelReview | null = reviewed.status === 'fulfilled' ? reviewed.value : null;
+    const voice = measured.status === 'fulfilled' ? measured.value : null;
+    const timing: TimingSource = call.source === 'imported' ? 'transcript' : (voice ?? 'unavailable');
+    const audioQuality = voice?.audioQuality ?? undefined;
 
     const history = (await store.listCalls(ref.residentId, { limit: 120 })).filter((c) => c.id !== call.id);
     const result = analyse({
@@ -112,8 +129,11 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
       transcript,
       history,
       review,
+      timing,
+      ...(audioQuality !== undefined ? { audioQuality } : {}),
       model: deps.reviewer.model,
       ...(modelError ? { modelError } : {}),
+      ...(voiceError ? { voiceError } : {}),
       now,
     });
 

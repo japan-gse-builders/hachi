@@ -187,6 +187,45 @@ describe('analyse', () => {
       expect(d.evidence.map((e) => e.startMs)).toEqual([8000, 0]);
     });
 
+    it('quotes the moments in the recording that show the change', () => {
+      const r = analyse(input({
+        transcript: long,
+        review: slowReview,
+        history: [...baseline, ...recent],
+        timing: {
+          responseLatencyMs: 6000,
+          repairRate: 12,
+          examples: [
+            { kind: 'slow_response', quote: 'um I went to the market', startMs: 8000 },
+            { kind: 'repetition', quote: 'the the market' },
+            { kind: 'false_start', quote: 'vi- visiting', startMs: 21000 },
+            { kind: 'correction', quote: 'Tuesday, no, Wednesday', startMs: 25000 },
+          ],
+        },
+        audioQuality: 0.9,
+      }));
+      const d = r.detections.find((x) => x.rule === 'R3')!;
+      expect(d.evidence).toEqual([
+        { callId: '2026-10-02-1', quote: 'um I went to the market', startMs: 8000 },
+        { callId: '2026-10-02-1', quote: 'the the market' },
+        { callId: '2026-10-02-1', quote: 'vi- visiting', startMs: 21000 },
+      ]);
+      expect(r.update.speech!.measuredFrom).toBe('audio');
+    });
+
+    it('falls back to long answers when the recording shows nothing that changed', () => {
+      const flat = recent.map((c) => ({ ...c, speech: { ...c.speech!, features: features({ lexicalDiversity: 0.4, topicCoherence: 0.2 }) } }));
+      const r = analyse(input({
+        transcript: long,
+        review: slowReview,
+        history: [...baseline, ...flat],
+        timing: { responseLatencyMs: 800, repairRate: 1, examples: [{ kind: 'slow_response', quote: 'fine', startMs: 2500 }] },
+      }));
+      const d = r.detections.find((x) => x.rule === 'R3')!;
+      expect(d.summary).not.toContain('Response time');
+      expect(d.evidence.map((e) => e.startMs)).toEqual([8000]);
+    });
+
     it('needs a baseline, enough speech and good conditions', () => {
       expect(rules(input({ transcript: long, review: slowReview, history: recent }))).toEqual([]);
       expect(rules(input({ review: slowReview, history: [...baseline, ...recent] }))).toEqual([]);
