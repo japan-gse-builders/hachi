@@ -4,11 +4,32 @@ import { MemoryStore } from '@hachi/store';
 import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, setup, storedCase } from './helpers.js';
 
 describe('health and authentication', () => {
-  it('serves /healthz without a token', async () => {
+  it('serves /healthz and /health without a token', async () => {
     const { app } = setup();
-    const res = await app.inject({ method: 'GET', url: '/healthz' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    for (const url of ['/healthz', '/health']) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true });
+    }
+  });
+
+  it('allows the configured browser origin and answers its preflight', async () => {
+    const store = new MemoryStore();
+    const app = buildApp({
+      store,
+      verifier: new FakeVerifier(),
+      signer: fakeSigner,
+      corsOrigins: ['http://localhost:5173'],
+    });
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/queue',
+      headers: { origin: 'http://localhost:5173', 'access-control-request-method': 'GET' },
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    const other = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'https://evil.example' } });
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
   });
 
   it('rejects missing and invalid tokens with 401', async () => {
@@ -213,7 +234,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') });
     expect(res.statusCode).toBe(200);
     const d = res.json();
-    expect(d.case).toMatchObject({ id: 'emergency', ruleName: '急な体調の異変', urgency: 'emergency', staffUrgency: null });
+    expect(d.case).toMatchObject({ id: 'emergency', ruleName: '急な体調の異変', urgency: 'emergency', staffUrgency: null, staffScoreOffset: 0 });
     expect(d.detections[0].evidence[0].audioUrl).toBe('https://signed.example/gs%3A%2F%2Fhachi-audio%2Fres-1%2Fcall-1.wav');
     expect(d.calls.find((c: { id: string }) => c.id === 'call-1').transcript).toHaveLength(2);
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').transcript).toBeUndefined();

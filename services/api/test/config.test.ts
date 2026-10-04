@@ -3,7 +3,16 @@ import { loadConfig } from '../src/config.js';
 
 describe('loadConfig', () => {
   it('reads the recordings bucket and defaults the port', () => {
-    expect(loadConfig({ RECORDINGS_BUCKET: 'oct1-hachi-recordings' })).toEqual({ port: 8080, recordingsBucket: 'oct1-hachi-recordings' });
+    expect(loadConfig({ RECORDINGS_BUCKET: 'oct1-hachi-recordings' })).toEqual({
+      port: 8080,
+      recordingsBucket: 'oct1-hachi-recordings',
+      corsOrigins: [],
+    });
+    expect(loadConfig({ RECORDINGS_BUCKET: 'ok-bucket', WEB_ORIGINS: 'https://hachi.web.app, http://localhost:5173' }).corsOrigins).toEqual([
+      'https://hachi.web.app',
+      'http://localhost:5173',
+    ]);
+    expect(() => loadConfig({ RECORDINGS_BUCKET: 'ok-bucket', WEB_ORIGINS: 'https://hachi.web.app/staff' })).toThrow(/without a path/);
     expect(loadConfig({ RECORDINGS_BUCKET: ' oct1-hachi-recordings ', PORT: '9000' }).port).toBe(9000);
   });
 

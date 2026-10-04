@@ -95,6 +95,7 @@ export async function buildCaseDetail(
       urgencyLabel: URGENCY_LABELS[locale][effectiveUrgency(c)],
       autoUrgency: c.autoUrgency,
       staffUrgency: c.staffUrgency ?? null,
+      staffScoreOffset: c.staffScoreOffset ?? 0,
       status: c.status,
       reason: p.reason,
       score: p.score,

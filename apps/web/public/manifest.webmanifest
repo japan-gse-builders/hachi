@@ -1,0 +1,9 @@
+{
+  "name": "Hachi Staff",
+  "short_name": "Hachi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#1f4d3a",
+  "lang": "en"
+}

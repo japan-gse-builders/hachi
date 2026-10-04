@@ -19,6 +19,7 @@ const app = buildApp({
   store: new FirestoreStore(db),
   verifier: new FirebaseTokenVerifier(getAuth(firebase)),
   signer: new GcsMediaSigner(getStorage(firebase), config.recordingsBucket),
+  corsOrigins: config.corsOrigins,
   logger: true,
 });
 

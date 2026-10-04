@@ -15,6 +15,8 @@ export interface AppDeps {
   now?: () => Date;
   newId?: () => string;
   logger?: boolean;
+  /** Browser origins allowed to call this API. Empty means same-origin only. */
+  corsOrigins?: string[];
 }
 
 export class HttpError extends Error {
@@ -58,7 +60,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.decorateRequest('principal', null);
 
-  app.addHook('onRequest', async (req) => {
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && deps.corsOrigins?.includes(origin)) {
+      reply.header('access-control-allow-origin', origin);
+      reply.header('vary', 'Origin');
+      reply.header('access-control-allow-headers', 'Authorization, Content-Type');
+      reply.header('access-control-allow-methods', 'GET, POST, PATCH, OPTIONS');
+    }
+    if (req.method === 'OPTIONS') return reply.status(204).send();
     if (!req.url.startsWith('/api/')) return;
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw new HttpError(401, 'Missing bearer token');
@@ -90,6 +100,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   app.get('/healthz', async () => ({ ok: true }));
+  app.get('/health', async () => ({ ok: true }));
 
   // ---- Staff: residents (USR-01..04) ----
 
