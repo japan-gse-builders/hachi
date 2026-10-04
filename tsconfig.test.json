@@ -11,5 +11,5 @@
       "@hachi/cloud": ["./packages/cloud/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "packages/*/test", "services/*/src", "services/*/test"]
+  "include": ["packages/*/src", "packages/*/test", "services/*/src", "services/*/test", "services/*/eval"]
 }
