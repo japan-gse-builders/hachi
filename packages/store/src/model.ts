@@ -38,6 +38,8 @@ export interface Resident {
   familyLookup: string[];
   serviceStartedAt: string;
   active: boolean;
+  /** Generated demo/evaluation data, not a real person (USR-04). */
+  synthetic?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +56,8 @@ export interface CallRecord {
   id: string;
   residentId: string;
   source: 'live' | 'imported';
+  /** Generated demo/evaluation data, not a real call (USR-04). */
+  synthetic?: boolean;
   status: CallStatus;
   channel: CallChannel;
   startedAt: string;

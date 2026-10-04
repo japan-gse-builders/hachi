@@ -7,3 +7,8 @@ coverage
 .env.*
 docs
 *.png
+*.wav
+.cursor
+.playwright-mcp
+# Offline evaluation tooling and its ~1 GB audio cache; not part of any service
+services/analyzer/eval

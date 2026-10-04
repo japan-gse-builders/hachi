@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/server.js",
-    "eval:r3": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/run.ts"
+    "eval:r3": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/run.ts",
+    "seed:demo": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/seed-demo.ts"
   },
   "dependencies": {
     "@google-cloud/tasks": "^7.2.1",
