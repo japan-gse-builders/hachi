@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploys the notification worker (SMS / email / push / voice alerts from the outbox).
-# Run deploy-telephony.sh first. Safe to re-run.
+# Run deploy-telephony.sh first (it serves the Twilio delivery-status webhook). Safe to re-run.
 # Usage: PROJECT_ID=my-project ./infra/deploy-notifier.sh
 # Email is optional: create the secret `sendgrid-api-key` and set EMAIL_FROM to a verified sender.
 set -euo pipefail
@@ -72,12 +72,15 @@ gcloud builds submit --config cloudbuild.yaml --service-account "projects/${PROJ
 echo "==> Deploying Cloud Run"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
 URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+# Twilio delivery reports (SMS delivered/undelivered, alert call answered/no-answer) go to the public
+# telephony service, which verifies X-Twilio-Signature with the auth token it already holds.
+STATUS_CALLBACK_BASE_URL="${STATUS_CALLBACK_BASE_URL:-https://hachi-telephony-${PROJECT_NUMBER}.${REGION}.run.app}"
 # Only Cloud Tasks and Cloud Scheduler call this service, so it is private (IAM invoker only);
 # the app checks the OIDC token as well.
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --no-allow-unauthenticated --min-instances 1 --max-instances 5 --cpu 1 --memory 512Mi \
   --concurrency 40 --timeout 60 --cpu-boost \
-  --set-env-vars "PUBLIC_BASE_URL=${URL},TWILIO_SMS_FROM=${SMS_FROM},TWILIO_VOICE_FROM=${VOICE_FROM},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},TASKS_LOCATION=${REGION},NOTIFY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA},SMS_ALLOWED_PREFIXES=+81${EMAIL_ENV}" \
+  --set-env-vars "PUBLIC_BASE_URL=${URL},TWILIO_SMS_FROM=${SMS_FROM},TWILIO_VOICE_FROM=${VOICE_FROM},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},TASKS_LOCATION=${REGION},NOTIFY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA},SMS_ALLOWED_PREFIXES=+81,STATUS_CALLBACK_BASE_URL=${STATUS_CALLBACK_BASE_URL}${EMAIL_ENV}" \
   --set-secrets "TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_API_KEY_SID=twilio-api-key-sid:latest,TWILIO_API_KEY_SECRET=twilio-api-key-secret:latest${EMAIL_SECRET}"
 gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
   --member "serviceAccount:$INVOKER_SA" --role roles/run.invoker >/dev/null

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { formatWhen, urgencyTone } from '../format';
+import { deliveryLabel, formatWhen, urgencyTone } from '../format';
 import type { QueueItem } from '../types';
 
 export function QueuePage() {
@@ -47,7 +47,8 @@ export function QueuePage() {
           <p className="meta">{item.rule} · {item.status.replace('_', ' ')} · {formatWhen(item.detectedAt)}</p>
           {item.notifications.length > 0 && (
             <p className="meta">
-              Notified {item.notifications.map((n) => `${n.recipient} by ${n.channel}`).join(', ')} · {formatWhen(item.notifications[0]!.sentAt)}
+              Notified {item.notifications.map((n) => `${n.recipient} by ${n.channel} (${deliveryLabel(n.delivery)})`).join(', ')} ·{' '}
+              {formatWhen(item.notifications[0]!.sentAt)}
             </p>
           )}
         </Link>

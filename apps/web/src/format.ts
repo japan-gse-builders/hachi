@@ -76,6 +76,55 @@ export function channelList(channels: string[]): string {
   return channels.map((c) => CHANNEL[c] ?? c).join(', ');
 }
 
+export interface Delivery {
+  status: string | null;
+  errorCode?: string | null;
+}
+
+const DELIVERY: Record<string, string> = {
+  queued: 'Sending',
+  sending: 'Sending',
+  sent: 'Sent',
+  ringing: 'Ringing',
+  delivered: 'Delivered',
+  answered: 'Answered',
+  undelivered: 'Not delivered',
+  failed: 'Not delivered',
+  no_answer: 'No answer',
+  busy: 'Line busy',
+  canceled: 'Cancelled',
+};
+
+/** Twilio error codes staff are likely to see for texts to Japanese phones. */
+const DELIVERY_ERROR: Record<string, string> = {
+  '30003': 'phone unreachable',
+  '30004': 'blocked',
+  '30005': 'unknown number',
+  '30006': 'landline or unreachable carrier',
+  '30007': 'carrier blocked',
+  '30008': 'carrier error',
+};
+
+/** Without a provider report (email, app alerts, or before the carrier answers) the honest label is "Sent". */
+export function deliveryLabel(d: Delivery | null | undefined): string {
+  const label = (d?.status && DELIVERY[d.status]) || 'Sent';
+  if (!d?.errorCode) return label;
+  const reason = DELIVERY_ERROR[d.errorCode];
+  return `${label} (${reason ? `${reason}, ` : ''}code ${d.errorCode})`;
+}
+
+/** Family view: plain words, no error codes, and only reports that tell them something. */
+export function familyDeliveryList(deliveries: ({ channel: string } & Delivery)[]): string {
+  return deliveries
+    .map((d) => {
+      const name = CHANNEL[d.channel] ?? d.channel;
+      const label = d.status ? DELIVERY[d.status] : undefined;
+      return label && label !== 'Sent' && label !== 'Sending' ? `${name} (${label.toLowerCase()})` : name;
+    })
+    .filter((v, i, all) => all.indexOf(v) === i)
+    .join(', ');
+}
+
 export function minutes(sec: number | null): string {
   return sec === null ? '' : clock(sec * 1000);
 }

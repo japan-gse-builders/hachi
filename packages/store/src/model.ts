@@ -1,4 +1,14 @@
-import type { Case, CallSpeechSample, Contact, IntakeObservation, OutboxMessage, Turn, Urgency, VulnerabilityProfile } from '@hachi/core';
+import type {
+  Case,
+  CallSpeechSample,
+  Contact,
+  DeliveryReport,
+  IntakeObservation,
+  OutboxMessage,
+  Turn,
+  Urgency,
+  VulnerabilityProfile,
+} from '@hachi/core';
 
 export type CallChannel = 'pstn' | 'whatsapp';
 
@@ -145,6 +155,8 @@ export interface OutboxEntry extends OutboxMessage {
   sentAt?: string;
   providerId?: string;
   lastError?: DeliveryFailure;
+  /** Twilio's status callback after `sent`; only set for SMS and voice alerts. */
+  delivery?: DeliveryReport;
 }
 
 export interface CaseOutcome {

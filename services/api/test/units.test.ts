@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeEmail, normalizePhone, toPrincipal } from '../src/auth.js';
 import { applyStaffUpdate } from '../src/caseUpdate.js';
 import { addPushToken, patchResident } from '../src/residents.js';
+import { staffContactSchema } from '../src/schemas.js';
 import { idGen, makeResident, NOW, storedCase } from './helpers.js';
 
 describe('auth helpers', () => {
@@ -9,6 +10,16 @@ describe('auth helpers', () => {
     expect(normalizePhone(' +81 90-0000-0002 ')).toBe('+819000000002');
     expect(normalizePhone('090 0000 0002')).toBe('09000000002');
     expect(normalizeEmail(' Alice@Example.ORG ')).toBe('alice@example.org');
+  });
+
+  it('accepts phone numbers as typed on Japanese keyboards and rejects ones without a country', () => {
+    const sms = (v: string) => staffContactSchema.safeParse({ name: 'Tanaka', phone: v, sms: v });
+    const fullWidth = (s: string) => s.replace(/[+0-9]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+    for (const typed of ['+81 90-0000-0002', fullWidth('+819000000002'), '090-0000-0002', fullWidth('090 0000 0002')]) {
+      expect(sms(typed).data?.sms).toBe('+819000000002');
+    }
+    expect(sms('03-0000-0000').data?.phone).toBe('+81300000000');
+    for (const bad of ['9000000002', '0000000002', '+81', 'abc']) expect(sms(bad).success).toBe(false);
   });
 
   it('maps tokens to principals', () => {

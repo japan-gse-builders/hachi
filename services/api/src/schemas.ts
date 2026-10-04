@@ -3,7 +3,8 @@ import { z } from 'zod';
 
 const e164 = z
   .string()
-  .transform((s) => s.replace(/[\s\-().]/g, ''))
+  // Accepts full-width input and Japanese domestic numbers (090...), as typed on Japanese keyboards.
+  .transform((s) => s.normalize('NFKC').replace(/[\s\-().]/g, '').replace(/^0(?=[1-9]\d{8,9}$)/, '+81'))
   .pipe(z.string().regex(/^\+[1-9]\d{7,14}$/, 'Phone number must include the country code, e.g. +81 90 1234 5678'));
 const email = z.string().trim().toLowerCase().pipe(z.email());
 const shortText = (max: number) => z.string().trim().min(1).max(max);

@@ -1,3 +1,4 @@
+import { deliveryStatusUrl } from '@hachi/cloud';
 import type { ContactChannel } from '@hachi/core';
 import type { OutboxEntry } from '@hachi/store';
 
@@ -38,6 +39,8 @@ export interface TwilioRestConfig {
   apiKeySid: string;
   apiKeySecret: string;
   apiBaseUrl: string;
+  /** Origin that receives Twilio delivery reports; without it nothing beyond "sent" is known. */
+  statusCallbackBaseUrl?: string;
 }
 
 async function twilioPost(cfg: TwilioRestConfig, fetchFn: FetchFn, resource: string, body: URLSearchParams): Promise<string> {
@@ -63,8 +66,9 @@ export class TwilioSms implements ChannelSender {
     if (!this.cfg.allowedPrefixes.some((p) => e.address.startsWith(p))) {
       throw new DeliveryError(`SMS to ${e.address.slice(0, 3)}… is not enabled`, false, 'destination_not_allowed');
     }
-    const providerId = await twilioPost(this.cfg, this.fetchFn, 'Messages', new URLSearchParams({ To: e.address, From: this.cfg.from, Body: e.body }));
-    return { providerId };
+    const body = new URLSearchParams({ To: e.address, From: this.cfg.from, Body: e.body });
+    if (this.cfg.statusCallbackBaseUrl) body.set('StatusCallback', deliveryStatusUrl(this.cfg.statusCallbackBaseUrl, e.id));
+    return { providerId: await twilioPost(this.cfg, this.fetchFn, 'Messages', body) };
   }
 }
 
@@ -102,6 +106,11 @@ export class TwilioVoiceAlert implements ChannelSender {
       Timeout: '45',
       TimeLimit: '120',
     });
+    if (this.cfg.statusCallbackBaseUrl) {
+      // Twilio's default event is "completed" only, which carries the final outcome (answered, busy, no-answer…).
+      body.set('StatusCallback', deliveryStatusUrl(this.cfg.statusCallbackBaseUrl, e.id));
+      body.set('StatusCallbackMethod', 'POST');
+    }
     return { providerId: await twilioPost(this.cfg, this.fetchFn, 'Calls', body) };
   }
 }

@@ -1,8 +1,9 @@
-import type { TaskCallerVerifier } from '@hachi/cloud';
-import { NotFoundError } from '@hachi/store';
+import { DELIVERY_STATUS_PATH, type TaskCallerVerifier } from '@hachi/cloud';
+import { NotFoundError, recordDelivery } from '@hachi/store';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { afterStream, alertResponse, EMERGENCY_TRANSFER_PATH, emergencyTransfer, holdTwiml, type CallIds } from './bridge.js';
 import { applyCallStatus, dispatchDueCalls, parsePlaceCallInput, placeCall, PLACE_CALL_PATH, type CallDeps } from './calls.js';
+import { parseDeliveryCallback, parseOutboxId } from './delivery.js';
 import { isValidTwilioSignature } from './twilio.js';
 
 export interface TelephonyAppDeps extends CallDeps {
@@ -102,6 +103,25 @@ export function buildApp(deps: TelephonyAppDeps): FastifyInstance {
     if (!ids) return reply.status(400).send({ error: 'residentId and callId are required' });
     const result = await applyCallStatus(deps, ids, params);
     req.log.info({ ...ids, twilioStatus: params.CallStatus, ...result }, 'call status');
+    return reply.status(204).send();
+  });
+
+  /** Delivery reports for notifier SMS and voice alerts (the notifier itself is private). */
+  app.post(DELIVERY_STATUS_PATH, async (req, reply) => {
+    const params = twilioParams(req, reply);
+    if (!params) return reply;
+    const outboxId = parseOutboxId(req.query);
+    const report = parseDeliveryCallback(params);
+    if (!outboxId || !report) return reply.status(400).send({ error: 'Unrecognised delivery report' });
+    const result = await recordDelivery(deps.store, outboxId, report.providerId, {
+      status: report.status,
+      ...(report.errorCode ? { errorCode: report.errorCode } : {}),
+      at: deps.now().toISOString(),
+    });
+    // Phone numbers and message bodies are in the callback too; only these fields are logged.
+    const log = { outboxId, deliveryStatus: report.status, errorCode: report.errorCode, result };
+    if (report.errorCode || report.status === 'undelivered' || report.status === 'failed') req.log.warn(log, 'notification not delivered');
+    else req.log.info(log, 'delivery status');
     return reply.status(204).send();
   });
 

@@ -1,4 +1,5 @@
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
+import { notificationKey } from '@hachi/core';
 import { MemoryStore, outboxId, type OutboxEntry, type StoredCase } from '@hachi/store';
 import { DeliveryError, type ChannelSender, type Senders } from '../src/channels.js';
 import type { WorkerDeps } from '../src/worker.js';
@@ -6,7 +7,7 @@ import type { WorkerDeps } from '../src/worker.js';
 export const NOW = new Date('2026-10-02T03:00:00.000Z');
 
 export function entry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
-  const key = overrides.idempotencyKey ?? `case-1:emergency:family:${overrides.channel ?? 'sms'}:${overrides.address ?? '+819000000002'}`;
+  const key = overrides.idempotencyKey ?? notificationKey('case-1', 'emergency', 'family', overrides.channel ?? 'sms', overrides.address ?? '+819000000002');
   return {
     id: outboxId(key),
     idempotencyKey: key,

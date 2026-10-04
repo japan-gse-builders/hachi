@@ -38,11 +38,37 @@ export interface VulnerabilityProfile {
 
 export type CaseStatus = 'open' | 'in_progress' | 'closed';
 
+/**
+ * What the provider reported after accepting a text or call. "sent" only means it left Twilio;
+ * "delivered" (SMS) and "answered" (voice) are the confirmations from the carrier or the phone.
+ */
+export type DeliveryStatus =
+  | 'queued'
+  | 'sending'
+  | 'sent'
+  | 'ringing'
+  | 'delivered'
+  | 'answered'
+  | 'undelivered'
+  | 'failed'
+  | 'no_answer'
+  | 'busy'
+  | 'canceled';
+
+export interface DeliveryReport {
+  status: DeliveryStatus;
+  /** Provider error code, e.g. Twilio 30007 (filtered by the carrier). */
+  errorCode?: string;
+  at: string;
+}
+
 export interface NotificationRecord {
   recipient: 'staff' | 'family';
   channel: ContactChannel;
   address: string;
   sentAt: string;
+  /** Absent for channels without delivery reports (email, push) and until the first report. */
+  delivery?: DeliveryReport;
 }
 
 export interface Case {

@@ -30,6 +30,16 @@ describe('TwilioSms', () => {
     expect(body.get('To')).toBe('+819000000002');
     expect(body.get('From')).toBe('+19787559139');
     expect(body.get('Body')).toContain('Please contact Maggie');
+    expect(body.has('StatusCallback')).toBe(false);
+  });
+
+  it('asks Twilio for delivery reports on a URL that names the outbox entry, not the recipient', async () => {
+    const f = fetchReturning(201, { sid: 'SM1' });
+    const e = entry();
+    await new TwilioSms({ ...twilio, statusCallbackBaseUrl: 'https://telephony.test', from: '+19787559139', allowedPrefixes: ['+81'] }, f).send(e);
+    const body = f.mock.calls[0]![1]!.body as URLSearchParams;
+    expect(body.get('StatusCallback')).toBe(`https://telephony.test/twilio/delivery-status?outboxId=${e.id}`);
+    expect(body.get('StatusCallback')).not.toContain(e.address.slice(1));
   });
 
   it('refuses destinations outside the allowed countries without calling Twilio', async () => {
@@ -88,6 +98,17 @@ describe('TwilioVoiceAlert', () => {
     expect(body.get('From')).toBe('+18664289155');
     expect(body.get('Twiml')).toContain('<Say');
     expect(body.get('TimeLimit')).toBe('120');
+    expect(body.has('StatusCallback')).toBe(false);
+  });
+
+  it('reports the call outcome when a status callback origin is configured', async () => {
+    const f = fetchReturning(201, { sid: 'CA1' });
+    const e = entry({ channel: 'voice' });
+    const cfg = { ...twilio, statusCallbackBaseUrl: 'https://telephony.test', from: '+18664289155', sayVoice: 'Google.en-US-Neural2-F' };
+    await new TwilioVoiceAlert(cfg, f).send(e);
+    const body = f.mock.calls[0]![1]!.body as URLSearchParams;
+    expect(body.get('StatusCallback')).toBe(`https://telephony.test/twilio/delivery-status?outboxId=${e.id}`);
+    expect(body.get('StatusCallbackMethod')).toBe('POST');
   });
 });
 

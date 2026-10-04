@@ -3,7 +3,7 @@ import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { AlertsCard } from '../components/AlertsCard';
-import { channelList, formatWhen, minutes } from '../format';
+import { channelList, familyDeliveryList, formatWhen, minutes } from '../format';
 import type { FamilyDashboard } from '../types';
 
 export function FamilyDashboardPage() {
@@ -35,7 +35,8 @@ export function FamilyDashboardPage() {
           <h2>Alerts sent to you</h2>
           {data.alerts.map((a) => (
             <p key={a.sentAt}>
-              {formatWhen(a.sentAt)} · by {channelList(a.channels)} · <strong>{a.caseStatusLabel}</strong>
+              {formatWhen(a.sentAt)} · by {a.deliveries ? familyDeliveryList(a.deliveries) : channelList(a.channels)} ·{' '}
+              <strong>{a.caseStatusLabel}</strong>
             </p>
           ))}
         </section>

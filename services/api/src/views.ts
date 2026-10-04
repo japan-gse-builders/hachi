@@ -162,6 +162,8 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
       .map(({ c, sent }) => ({
         sentAt: sent.map((n) => n.sentAt).sort()[0]!,
         channels: [...new Set(sent.map((n) => n.channel))],
+        // Per message, without addresses; null until the provider reports (and always for email and push).
+        deliveries: sent.map((n) => ({ channel: n.channel, status: n.delivery?.status ?? null, errorCode: n.delivery?.errorCode ?? null })),
         caseStatus: c.status,
         caseStatusLabel: STATUS_LABELS[locale][c.status],
       }))

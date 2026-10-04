@@ -10,7 +10,14 @@ export interface QueueItem {
   score: number;
   detectedAt: string;
   status: string;
-  notifications: { recipient: string; channel: string; sentAt: string }[];
+  notifications: NotificationItem[];
+}
+
+export interface NotificationItem {
+  recipient: string;
+  channel: string;
+  sentAt: string;
+  delivery?: { status: string; errorCode?: string; at: string };
 }
 
 export interface Evidence {
@@ -36,7 +43,7 @@ export interface CaseDetail {
     score: number;
     firstDetectedAt: string;
     updatedAt: string;
-    notifications: { recipient: string; channel: string; address: string; sentAt: string }[];
+    notifications: (NotificationItem & { address: string })[];
     outcome: { anomalyConfirmed: boolean; note?: string } | null;
   };
   resident: {
@@ -69,7 +76,14 @@ export interface FamilyDashboard {
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
   }[];
-  alerts: { sentAt: string; channels: string[]; caseStatus: string; caseStatusLabel: string }[];
+  alerts: {
+    sentAt: string;
+    channels: string[];
+    /** Missing from servers older than delivery tracking. */
+    deliveries?: { channel: string; status: string | null; errorCode: string | null }[];
+    caseStatus: string;
+    caseStatusLabel: string;
+  }[];
   staff: { name: string; phone: string; email: string | null };
 }
 

@@ -9,6 +9,11 @@ export interface NotifierConfig {
     apiBaseUrl: string;
     smsFrom: string;
     voiceFrom: string;
+    /**
+     * Public origin of the telephony service, which verifies Twilio signatures and records delivery
+     * reports. This service is private, so Twilio cannot call it directly.
+     */
+    statusCallbackBaseUrl?: string;
   };
   /** SMS is only sent to numbers with these prefixes (Japan only during the MVP). */
   smsAllowedPrefixes: string[];
@@ -71,6 +76,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): NotifierConfig {
   const prefixes = (env.SMS_ALLOWED_PREFIXES ?? '+81').split(',').map((p) => p.trim()).filter(Boolean);
   if (!prefixes.length || prefixes.some((p) => !/^\+\d{1,4}$/.test(p))) throw new Error('SMS_ALLOWED_PREFIXES must be country codes such as +81');
   const invoker = required(env, 'TASKS_INVOKER_SA');
+  const statusCallback = env.STATUS_CALLBACK_BASE_URL?.trim();
   return {
     port: int(env, 'PORT', 8080, 1, 65535),
     publicBaseUrl: httpsOrigin('PUBLIC_BASE_URL', required(env, 'PUBLIC_BASE_URL')),
@@ -81,6 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): NotifierConfig {
       apiBaseUrl: httpsOrigin('TWILIO_API_BASE_URL', env.TWILIO_API_BASE_URL?.trim() || 'https://api.twilio.com'),
       smsFrom: phone(env, 'TWILIO_SMS_FROM'),
       voiceFrom: phone(env, 'TWILIO_VOICE_FROM'),
+      ...(statusCallback ? { statusCallbackBaseUrl: httpsOrigin('STATUS_CALLBACK_BASE_URL', statusCallback) } : {}),
     },
     smsAllowedPrefixes: prefixes,
     sayVoice: env.SAY_VOICE?.trim() || 'Google.en-US-Neural2-F',

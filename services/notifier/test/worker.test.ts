@@ -1,3 +1,4 @@
+import { recordDelivery } from '@hachi/store';
 import { describe, expect, it, vi } from 'vitest';
 import { DeliveryError } from '../src/channels.js';
 import { deliver, parseSendInput, sweep } from '../src/worker.js';
@@ -44,6 +45,20 @@ describe('deliver', () => {
     mutate.mockRestore();
     expect(await deliver(deps, e.id)).toEqual({ outcome: 'done', status: 'sent' });
     expect((await store.getCase('case-1'))!.notifications).toHaveLength(1);
+  });
+
+  it('keeps a delivery report that arrives before the sent status is written', async () => {
+    const { store, sms, deps } = await setup();
+    const report = { status: 'delivered' as const, at: NOW.toISOString() };
+    vi.spyOn(sms, 'send').mockImplementation(async () => {
+      expect(await recordDelivery(store, e.id, 'P1', report)).toBe('updated');
+      return { providerId: 'P1' };
+    });
+    expect((await deliver(deps, e.id)).outcome).toBe('sent');
+    expect((await store.getOutbox(e.id))!).toMatchObject({ status: 'sent', providerId: 'P1', delivery: report });
+    expect((await store.getCase('case-1'))!.notifications).toEqual([
+      { recipient: 'family', channel: 'sms', address: '+819000000002', sentAt: NOW.toISOString(), delivery: report },
+    ]);
   });
 
   it('still marks the entry sent when its case is gone', async () => {

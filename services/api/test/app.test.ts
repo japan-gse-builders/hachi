@@ -99,7 +99,7 @@ describe('residents (USR-01..03)', () => {
   });
 
   it.each([
-    ['phone not E.164', { phone: '090-1234-5678' }, 'phone'],
+    ['phone without a country code', { phone: '90-1234-5678' }, 'phone'],
     ['bad call time', { callTime: '25:00' }, 'callTime'],
     ['unknown time zone', { timeZone: 'Mars/Base' }, 'timeZone'],
     ['staff without sms or email', { staff: { name: 'T', phone: '+81300000000' } }, 'staff.sms'],
@@ -195,7 +195,15 @@ describe('triage queue and cases (QUE-01..03)', () => {
         rule: 'R1',
         autoUrgency: 'emergency',
         detections: [detection({ rule: 'R1', urgency: 'emergency', summary: 'Chest pain since morning' })],
-        notifications: [{ recipient: 'family', channel: 'sms', address: '+819000000002', sentAt: '2026-10-01T01:06:00.000Z' }],
+        notifications: [
+          {
+            recipient: 'family',
+            channel: 'sms',
+            address: '+819000000002',
+            sentAt: '2026-10-01T01:06:00.000Z',
+            delivery: { status: 'delivered', at: '2026-10-01T01:06:05.000Z' },
+          },
+        ],
       }),
     );
     await ctx.store.putCase(storedCase({ id: 'closed', status: 'closed' }));
@@ -210,6 +218,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(items[0]).toMatchObject({ residentName: 'Margaret Smith', urgencyLabel: '緊急', summary: 'Chest pain since morning', status: 'open' });
     expect(items[0].reason).toContain('体調の急な異変を訴えている');
     expect(items[0].notifications).toHaveLength(1);
+    expect(items[0].notifications[0].delivery).toEqual({ status: 'delivered', at: '2026-10-01T01:06:05.000Z' });
     const en = await app.inject({ method: 'GET', url: '/api/queue?locale=en', ...as('staff') });
     expect(en.json().items[0].urgencyLabel).toBe('Emergency');
   });
@@ -324,8 +333,21 @@ describe('family dashboard (FAM-01..04)', () => {
         status: 'in_progress',
         notifications: [
           { recipient: 'staff', channel: 'sms', address: '+81300000000', sentAt: '2026-10-01T01:06:00.000Z' },
-          { recipient: 'family', channel: 'voice', address: '+819000000002', sentAt: '2026-10-01T01:06:02.000Z' },
-          { recipient: 'family', channel: 'sms', address: '+819000000002', sentAt: '2026-10-01T01:06:01.000Z' },
+          {
+            recipient: 'family',
+            channel: 'voice',
+            address: '+819000000002',
+            sentAt: '2026-10-01T01:06:02.000Z',
+            delivery: { status: 'answered', at: '2026-10-01T01:07:00.000Z' },
+          },
+          {
+            recipient: 'family',
+            channel: 'sms',
+            address: '+819000000002',
+            sentAt: '2026-10-01T01:06:01.000Z',
+            delivery: { status: 'undelivered', errorCode: '30007', at: '2026-10-01T01:06:30.000Z' },
+          },
+          { recipient: 'family', channel: 'email', address: 'alice@example.org', sentAt: '2026-10-01T01:06:01.000Z' },
         ],
       }),
     );
@@ -353,8 +375,20 @@ describe('family dashboard (FAM-01..04)', () => {
       { startedAt: '2026-09-30T01:00:00.000Z', connected: false, durationSec: null, summary: null },
     ]);
     expect(d.alerts).toEqual([
-      { sentAt: '2026-10-01T01:06:01.000Z', channels: ['voice', 'sms'], caseStatus: 'in_progress', caseStatusLabel: '対応中' },
+      {
+        sentAt: '2026-10-01T01:06:01.000Z',
+        channels: ['voice', 'sms', 'email'],
+        deliveries: [
+          { channel: 'voice', status: 'answered', errorCode: null },
+          { channel: 'sms', status: 'undelivered', errorCode: '30007' },
+          { channel: 'email', status: null, errorCode: null },
+        ],
+        caseStatus: 'in_progress',
+        caseStatusLabel: '対応中',
+      },
     ]);
+    expect(res.body).not.toContain('+819000000002');
+    expect(res.body).not.toContain('alice@example.org');
     expect(d.staff).toEqual({ name: 'Tanaka', phone: '+81300000000', email: 'staff@example.org' });
     const body = res.body;
     for (const forbidden of ['transcript', 'audio', 'speech', 'I only had a biscuit', 'Only a biscuit yesterday', 'reason', 'score']) {

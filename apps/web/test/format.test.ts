@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { needsHomeScreen } from '../src/device';
-import { audioAt, callStatusLabel, channelList, clock, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../src/format';
+import { audioAt, callStatusLabel, channelList, clock, deliveryLabel, eventLabel, familyDeliveryList, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../src/format';
 
 describe('staff display helpers', () => {
   it('maps urgency to a tone and leaves unknown values calm', () => {
@@ -37,6 +37,29 @@ describe('staff display helpers', () => {
   it('names alert channels in plain words for family', () => {
     expect(channelList(['sms', 'voice', 'push'])).toBe('text message, phone call, app alert');
     expect(channelList(['fax'])).toBe('fax');
+  });
+
+  it('shows whether a notification reached the phone, with the carrier reason for staff', () => {
+    expect(deliveryLabel(undefined)).toBe('Sent');
+    expect(deliveryLabel({ status: 'sent' })).toBe('Sent');
+    expect(deliveryLabel({ status: 'delivered' })).toBe('Delivered');
+    expect(deliveryLabel({ status: 'undelivered', errorCode: '30007' })).toBe('Not delivered (carrier blocked, code 30007)');
+    expect(deliveryLabel({ status: 'failed', errorCode: '21610' })).toBe('Not delivered (code 21610)');
+    expect(deliveryLabel({ status: 'no_answer' })).toBe('No answer');
+    expect(deliveryLabel({ status: 'mystery' })).toBe('Sent');
+  });
+
+  it('tells family which alerts reached them, in plain words', () => {
+    expect(
+      familyDeliveryList([
+        { channel: 'sms', status: 'undelivered', errorCode: '30007' },
+        { channel: 'voice', status: 'answered', errorCode: null },
+        { channel: 'email', status: null, errorCode: null },
+        { channel: 'push', status: null, errorCode: null },
+        { channel: 'push', status: null, errorCode: null },
+        { channel: 'fax', status: 'sent', errorCode: null },
+      ]),
+    ).toBe('text message (not delivered), phone call (answered), email, app alert, fax');
   });
 
   it('asks iPhone users to add Hachi to the home screen before alerts', () => {

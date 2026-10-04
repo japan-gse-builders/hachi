@@ -1,7 +1,9 @@
+import { notificationKey } from '@hachi/core';
+import { outboxId, type OutboxEntry } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { computeTwilioSignature } from '../src/twilio.js';
-import { AUTH_TOKEN, BASE_URL, FakeVerifier, makeDeps, resident, retryable } from './fixtures.js';
+import { AUTH_TOKEN, BASE_URL, FakeVerifier, makeDeps, NOW, resident, retryable } from './fixtures.js';
 
 function setup() {
   const ctx = makeDeps();
@@ -115,6 +117,64 @@ describe('telephony routes', () => {
     const { app } = setup();
     const res = await app.inject({ method: 'POST', url: '/tasks/place-call', headers: { ...auth, 'content-type': 'application/json' }, payload: '{bad json' });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('notification delivery reports', () => {
+  const SID = 'SM0123456789abcdef0123456789abcdef';
+
+  async function withSentSms() {
+    const ctx = setup();
+    const key = notificationKey('case-1', 'emergency', 'family', 'sms', '+819000000002');
+    const e: OutboxEntry = {
+      id: outboxId(key),
+      idempotencyKey: key,
+      caseId: 'case-1',
+      residentId: 'res-1',
+      urgency: 'emergency',
+      recipient: 'family',
+      channel: 'sms',
+      address: '+819000000002',
+      subject: 's',
+      body: 'b',
+      priority: 'immediate',
+      status: 'sent',
+      attempts: 1,
+      createdAt: NOW.toISOString(),
+      sentAt: NOW.toISOString(),
+      providerId: SID,
+    };
+    await ctx.store.enqueueOutbox([e]);
+    return { ...ctx, e, path: `/twilio/delivery-status?outboxId=${e.id}` };
+  }
+
+  it('records a signed report and ignores a late "sent" after "undelivered"', async () => {
+    const { app, store, e, path } = await withSentSms();
+    const undelivered = { MessageSid: SID, MessageStatus: 'undelivered', ErrorCode: '30007', To: '+819000000002' };
+    expect((await app.inject(twilioPost(path, undelivered))).statusCode).toBe(204);
+    expect((await app.inject(twilioPost(path, { MessageSid: SID, MessageStatus: 'sent' }))).statusCode).toBe(204);
+    expect((await store.getOutbox(e.id))!.delivery).toEqual({ status: 'undelivered', errorCode: '30007', at: NOW.toISOString() });
+  });
+
+  it('records the outcome of a voice alert call', async () => {
+    const { app, store, e } = await withSentSms();
+    const CA = 'CA0123456789abcdef0123456789abcdef';
+    await store.updateOutbox(e.id, (x) => ({ ...x, channel: 'voice', providerId: CA }));
+    const res = await app.inject(twilioPost(`/twilio/delivery-status?outboxId=${e.id}`, { CallSid: CA, CallStatus: 'no-answer' }));
+    expect(res.statusCode).toBe(204);
+    expect((await store.getOutbox(e.id))!.delivery?.status).toBe('no_answer');
+  });
+
+  it('rejects unsigned, re-targeted and malformed reports', async () => {
+    const { app, store, e, path } = await withSentSms();
+    const params = { MessageSid: SID, MessageStatus: 'delivered' };
+    expect((await app.inject(twilioPost(path, params, 'wrong-token'))).statusCode).toBe(403);
+    // A signature for one entry cannot be replayed against another.
+    const other = `/twilio/delivery-status?outboxId=${'b'.repeat(64)}`;
+    expect((await app.inject({ ...twilioPost(path, params), url: other })).statusCode).toBe(403);
+    expect((await app.inject(twilioPost('/twilio/delivery-status?outboxId=nope', params))).statusCode).toBe(400);
+    expect((await app.inject(twilioPost(path, { MessageSid: SID, MessageStatus: 'mystery' }))).statusCode).toBe(400);
+    expect((await store.getOutbox(e.id))!.delivery).toBeUndefined();
   });
 });
 

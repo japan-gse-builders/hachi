@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { audioAt, callStatusLabel, clock, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../format';
+import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../format';
 import type { CaseDetail } from '../types';
 
 const STATUSES = [
@@ -107,7 +107,7 @@ export function CasePage() {
         <h2>Notifications</h2>
         {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}
         {detail.case.notifications.map((n, i) => (
-          <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address}</p>
+          <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address} · {deliveryLabel(n.delivery)}</p>
         ))}
       </section>
 

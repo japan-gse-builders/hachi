@@ -27,6 +27,7 @@ describe('recordDetections', () => {
     ]);
     expect(outbox.every((e) => e.priority === 'immediate' && e.status === 'pending' && e.residentId === 'res-1')).toBe(true);
     expect(outbox[0]!.id).toBe(outboxId(outbox[0]!.idempotencyKey));
+    expect(outbox.every((e) => !e.idempotencyKey.includes(e.address))).toBe(true);
     expect(outbox.find((e) => e.recipient === 'staff')!.body).toContain('https://app.example/staff/cases/case-1');
     expect(outbox.find((e) => e.recipient === 'family')!.body).not.toContain('My chest hurts');
   });

@@ -2,6 +2,13 @@ import type { EnqueueRequest, TaskQueue } from './tasks.js';
 
 export const SEND_NOTIFICATION_PATH = '/tasks/send';
 
+/** Twilio status callbacks for notifier SMS and voice alerts, served by the public telephony service. */
+export const DELIVERY_STATUS_PATH = '/twilio/delivery-status';
+
+export function deliveryStatusUrl(baseUrl: string, outboxId: string): string {
+  return `${baseUrl}${DELIVERY_STATUS_PATH}?outboxId=${encodeURIComponent(outboxId)}`;
+}
+
 /** One task per outbox entry and attempt; a duplicate request for the same attempt is a no-op. */
 export function notificationTask(outboxId: string, attempt = 0): EnqueueRequest {
   return { name: `outbox-${outboxId}-a${attempt}`, path: SEND_NOTIFICATION_PATH, body: { outboxId } };

@@ -1,6 +1,5 @@
 import { notificationTask, type TaskQueue } from '@hachi/cloud';
-import type { NotificationRecord } from '@hachi/core';
-import { NotFoundError, type DeliveryFailure, type OutboxEntry, type Store } from '@hachi/store';
+import { NotFoundError, recordNotificationOnCase, type DeliveryFailure, type OutboxEntry, type Store } from '@hachi/store';
 import { DeliveryError, type Senders } from './channels.js';
 
 export interface WorkerDeps {
@@ -34,20 +33,6 @@ function failure(err: unknown): DeliveryFailure {
   return { message: (err as Error)?.message ?? String(err), retryable: true };
 }
 
-/** NTF-04: the case shows when and to whom each notification went. Safe to call repeatedly. */
-async function recordOnCase(store: Store, e: OutboxEntry): Promise<void> {
-  if (!e.sentAt) return;
-  const record: NotificationRecord = { recipient: e.recipient, channel: e.channel, address: e.address, sentAt: e.sentAt };
-  try {
-    await store.mutateCase(e.caseId, (c) => {
-      const exists = c.notifications.some((n) => n.channel === record.channel && n.address === record.address && n.sentAt === record.sentAt);
-      return { case: exists ? c : { ...c, notifications: [...c.notifications, record] }, events: [] };
-    });
-  } catch (err) {
-    if (!(err instanceof NotFoundError)) throw err;
-  }
-}
-
 /**
  * Sends one outbox entry at most once at a time: a lease guards against concurrent duplicate
  * tasks, and finished entries are never sent again. A crash between the provider accepting the
@@ -72,7 +57,7 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
   }
   if (!claimed) {
     if (entry.status === 'pending') return { outcome: 'busy' };
-    if (entry.status === 'sent') await recordOnCase(store, entry);
+    if (entry.status === 'sent') await recordNotificationOnCase(store, entry);
     return { outcome: 'done', status: entry.status };
   }
 
@@ -107,7 +92,7 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
   }
 
   const sent = await finish({ status: 'sent', sentAt: deps.now().toISOString(), ...(providerId ? { providerId } : {}) });
-  await recordOnCase(store, sent);
+  await recordNotificationOnCase(store, sent);
   return { outcome: 'sent', ...(providerId ? { providerId } : {}) };
 }
 

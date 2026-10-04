@@ -27,6 +27,13 @@ describe('loadConfig', () => {
       sweepAgeSec: 120,
     });
     expect(c.email).toBeUndefined();
+    expect(c.twilio.statusCallbackBaseUrl).toBeUndefined();
+  });
+
+  it('sends delivery reports to the telephony service when configured', () => {
+    const c = loadConfig({ ...base, STATUS_CALLBACK_BASE_URL: 'https://hachi-telephony.example.run.app/' });
+    expect(c.twilio.statusCallbackBaseUrl).toBe('https://hachi-telephony.example.run.app');
+    expect(() => loadConfig({ ...base, STATUS_CALLBACK_BASE_URL: 'http://plain.example' })).toThrow(/STATUS_CALLBACK_BASE_URL must use https/);
   });
 
   it('enables email when both the key and the sender are set', () => {
