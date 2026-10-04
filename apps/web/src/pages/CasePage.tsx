@@ -85,7 +85,7 @@ export function CasePage() {
             <p>“{e.quote}”</p>
             <p className="meta">{clock(e.startMs)}</p>
             {e.audioUrl && (
-              <audio controls preload="none" src={audioAt(e.audioUrl, e.startMs)}>
+              <audio controls preload="metadata" src={audioAt(e.audioUrl, e.startMs)}>
                 <track kind="captions" />
               </audio>
             )}
