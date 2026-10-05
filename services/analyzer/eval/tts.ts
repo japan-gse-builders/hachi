@@ -1,5 +1,5 @@
 /** Cloud Text-to-Speech with an on-disk cache, for the SYNTHETIC R3 evaluation only. */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseWav } from '@hachi/core';
@@ -34,8 +34,10 @@ export class CloudTts implements Synthesizer {
     } catch {
       wav = await this.request(voice, text, speakingRate);
       await mkdir(this.cacheDir, { recursive: true });
-      await writeFile(`${file}.tmp`, wav);
-      await rename(`${file}.tmp`, file);
+      // Demo residents are seeded in parallel and share Hachi's lines, so two writers can race.
+      const tmp = `${file}.${randomUUID()}.tmp`;
+      await writeFile(tmp, wav);
+      await rename(tmp, file);
     }
     const audio = parseWav(wav);
     if (audio.sampleRate !== TTS_SAMPLE_RATE) throw new Error(`TTS returned ${audio.sampleRate} Hz`);

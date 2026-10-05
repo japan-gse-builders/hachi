@@ -147,7 +147,7 @@ if (args['family-login-of']) {
   console.log(`demo family dashboards open to ${familyLogins.length} family email(s) of ${owner.id}`);
 }
 
-for (const { profile: p, calls } of people) {
+async function seedPerson({ profile: p, calls }: (typeof people)[number]): Promise<void> {
   const residentId = `demo-${p.id}`;
   const existing = await store.getResident(residentId);
   if (existing && args.reset) {
@@ -165,7 +165,7 @@ for (const { profile: p, calls } of people) {
     }
   } else if (existing) {
     console.log(`${residentId} already exists; skipped (delete it first to re-seed)`);
-    continue;
+    return;
   }
   const resident: Resident = {
     id: residentId,
@@ -186,7 +186,7 @@ for (const { profile: p, calls } of people) {
     updatedAt: new Date().toISOString(),
   };
   console.log(`${residentId}: ${p.name}, ${p.change}, ${calls.length} calls from ${calls[0]!.startedAt.slice(0, 10)} (+${shift / DAY} days)`);
-  if (args['dry-run']) continue;
+  if (args['dry-run']) return;
   await store.createResident(resident);
 
   for (const sc of calls) {
@@ -223,9 +223,12 @@ for (const { profile: p, calls } of people) {
     const saved = await store.getCall(residentId, sc.id);
     const f = saved?.speech?.features;
     console.log(
-      `  day ${String(sc.day).padStart(2)} ${result.outcome}${'rules' in result && result.rules.length ? ` ${result.rules.join(',')}` : ''}` +
+      `  ${p.name} day ${String(sc.day).padStart(2)} ${result.outcome}${'rules' in result && result.rules.length ? ` ${result.rules.join(',')}` : ''}` +
         (f ? ` latency ${f.responseLatencyMs ?? '-'} ms, repairs ${f.repairRate?.toFixed(1) ?? '-'}/100` : ''),
     );
   }
 }
+
+// People are independent; each person's calls stay in date order because their baseline builds on them.
+await Promise.all(people.map(seedPerson));
 console.log('done');

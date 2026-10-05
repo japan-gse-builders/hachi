@@ -4,7 +4,7 @@
  * writes a report. Nothing is written to Firestore or Cloud Storage and no calls or texts are
  * placed; Gemini results are cached under eval/.cache/.
  *
- *   npm run eval:r12 -w @hachi/analyzer -- [--seed 2026 --seed 7] [--repeats 2] [--case r1p-stroke] [--fresh] [--concurrency 6]
+ *   npm run eval:r12 -w @hachi/analyzer -- [--seed 2026 --seed 7] [--repeats 2] [--case r1p-stroke] [--fresh] [--concurrency 16]
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -26,7 +26,7 @@ const { values: args } = parseArgs({
     repeats: { type: 'string', default: '2' },
     case: { type: 'string', multiple: true },
     fresh: { type: 'boolean', default: false },
-    concurrency: { type: 'string', default: '6' },
+    concurrency: { type: 'string', default: '16' },
     out: { type: 'string' },
   },
 });
