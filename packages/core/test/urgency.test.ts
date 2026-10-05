@@ -25,7 +25,8 @@ describe('urgency', () => {
   it('has labels for every urgency in both locales', () => {
     expect(URGENCY_LABELS.ja.emergency).toBe('緊急');
     expect(URGENCY_LABELS.ja.watch).toBe('経過観察');
-    for (const u of URGENCIES) expect(URGENCY_LABELS.en[u]).toBeTruthy();
+    expect(URGENCY_LABELS.en).toEqual({ emergency: 'Immediate action', urgent: 'Review today', action: 'Review soon', watch: 'Monitor' });
+    for (const u of URGENCIES) expect(URGENCY_LABELS.en[u]).toMatch(/^[ -~]+$/);
   });
 
   it('exports the public API from the package entry', () => {

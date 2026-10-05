@@ -220,7 +220,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(items[0].notifications).toHaveLength(1);
     expect(items[0].notifications[0].delivery).toEqual({ status: 'delivered', at: '2026-10-01T01:06:05.000Z' });
     const en = await app.inject({ method: 'GET', url: '/api/queue?locale=en', ...as('staff') });
-    expect(en.json().items[0].urgencyLabel).toBe('Emergency');
+    expect(en.json().items[0].urgencyLabel).toBe('Immediate action');
   });
 
   it('skips cases whose resident no longer exists', async () => {

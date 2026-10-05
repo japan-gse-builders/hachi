@@ -122,13 +122,14 @@ function staffMessage(change: CaseChange, ctx: NotificationContext, channel: Con
 function familyMessage(change: CaseChange, ctx: NotificationContext, channel: ContactChannel): { subject: string; body: string } {
   const summary = change.detection.summary;
   const name = ctx.residentName;
+  const label = URGENCY_LABELS[ctx.locale].emergency;
   if (ctx.locale === 'ja') {
     return {
-      subject: `【Hachi 緊急】${name}さんの体調について`,
+      subject: `【Hachi ${label}】${name}さんの体調について`,
       body:
         channel === 'sms'
-          ? fitSms(`【Hachi 緊急】${name}さんが通話で体調の急な異変を訴えました。すぐにご連絡ください。`, '', '詳細はメールで。', true)
-          : `【Hachi 緊急】${name}さんとの通話で、体調の急な異変の訴えがありました。\n` +
+          ? fitSms(`【Hachi ${label}】${name}さんが通話で体調の急な異変を訴えました。すぐにご連絡ください。`, '', '詳細はメールで。', true)
+          : `【Hachi ${label}】${name}さんとの通話で、体調の急な異変の訴えがありました。\n` +
             `状況：${summary}\n` +
             `すぐに${name}さんへご連絡ください。\n` +
             `担当職員：${ctx.staff.name}（${ctx.staffPhone}）\n` +
@@ -136,11 +137,11 @@ function familyMessage(change: CaseChange, ctx: NotificationContext, channel: Co
     };
   }
   return {
-    subject: `[Hachi Emergency] About ${name}`,
+    subject: `[Hachi ${label}] About ${name}`,
     body:
       channel === 'sms'
-        ? fitSms(`[Hachi Emergency] ${name}: `, summary, `. Please contact ${name} right away. Details are in your email.`, false)
-        : `[Hachi Emergency] During today's call, ${name} reported sudden symptoms.\n` +
+        ? fitSms(`[Hachi ${label}] ${name}: `, summary, `. Please contact ${name} right away. Details are in your email.`, false)
+        : `[Hachi ${label}] During today's call, ${name} reported sudden symptoms.\n` +
           `What we heard: ${summary}\n` +
           `Please contact ${name} right away.\n` +
           `Care staff: ${ctx.staff.name} (${ctx.staffPhone})\n` +

@@ -101,7 +101,7 @@ describe('planNotifications', () => {
       }
     }
     const en = planNotifications(long, { ...ctx, locale: 'en' }).find((x) => x.recipient === 'family' && x.channel === 'sms')!;
-    expect(en.body).toMatch(/^\[Hachi Emergency\] Margaret Smith: Said "I can't breathe" - and more .*\.\.\.\. Please contact Margaret Smith right away\. Details are in your email\.$/);
+    expect(en.body).toMatch(/^\[Hachi Immediate action\] Margaret Smith: Said "I can't breathe" - and more .*\.\.\.\. Please contact Margaret Smith right away\. Details are in your email\.$/);
   });
 
   it('keeps phone numbers out of family SMS, which Japanese carriers filter, but not other channels', () => {
@@ -117,9 +117,17 @@ describe('planNotifications', () => {
   it('English staff messages', () => {
     const staff = planNotifications(change(), { ...ctx, locale: 'en' }).filter((x) => x.recipient === 'staff');
     const email = staff.find((x) => x.channel === 'email')!;
-    expect(email.subject).toBe('[Hachi Emergency] Margaret Smith: Acute symptoms');
+    expect(email.subject).toBe('[Hachi Immediate action] Margaret Smith: Acute symptoms');
     expect(email.body).toContain('Case: https://hachi.example/cases/case-1');
-    expect(staff.find((x) => x.channel === 'sms')!.body).toBe('[Hachi Emergency] Margaret Smith: Chest pain since this morning. Open the Hachi staff queue for details.');
+    expect(staff.find((x) => x.channel === 'sms')!.body).toBe('[Hachi Immediate action] Margaret Smith: Chest pain since this morning. Open the Hachi staff queue for details.');
+    const urgent = planNotifications(change({ to: 'urgent', detection: detection({ rule: 'R2', urgency: 'urgent', summary: 'Barely eaten for two days' }) }), { ...ctx, locale: 'en' });
+    expect(urgent.find((x) => x.channel === 'email')!.subject).toBe('[Hachi Review today] Margaret Smith: Not eating');
+  });
+
+  it('English family messages carry the same label as staff messages', () => {
+    const family = planNotifications(change(), { ...ctx, locale: 'en' }).filter((x) => x.recipient === 'family');
+    expect(family.find((x) => x.channel === 'email')!.subject).toBe('[Hachi Immediate action] About Margaret Smith');
+    for (const m of family.filter((x) => x.channel !== 'push')) expect(m.body.startsWith('[Hachi Immediate action] ')).toBe(true);
   });
 
   it('family gets independent voice, email and push alerts alongside the SMS, so a filtered text is not the only channel', () => {

@@ -73,10 +73,10 @@ describe('TwilioSms', () => {
 
 describe('alertTwiml', () => {
   it('reads the message twice without links', () => {
-    const xml = alertTwiml('[Hachi Emergency] Maggie & Bob\nPlease call.\nDetails: https://app.example/family', 'Google.en-US-Neural2-F');
+    const xml = alertTwiml('[Hachi Immediate action] Maggie & Bob\nPlease call.\nDetails: https://app.example/family', 'Google.en-US-Neural2-F');
     expect(xml).not.toContain('https://');
     expect(xml.match(/<Say /g)).toHaveLength(2);
-    expect(xml).toContain('Hachi Emergency Maggie &amp; Bob Please call.');
+    expect(xml).toContain('Hachi Immediate action Maggie &amp; Bob Please call.');
     expect(xml).toContain('language="en-US"');
   });
 
@@ -158,7 +158,7 @@ describe('FcmPush', () => {
     expect(await new FcmPush(send).send(push)).toEqual({ providerId: 'projects/p/messages/1' });
     expect(send).toHaveBeenCalledWith({
       token: 'fcm-token',
-      notification: { title: push.subject, body: '[Hachi Emergency] Maggie reported sudden symptoms.\nPlease contact Maggie right away.' },
+      notification: { title: push.subject, body: '[Hachi Immediate action] Maggie reported sudden symptoms.\nPlease contact Maggie right away.' },
       data: { caseId: 'case-1', urgency: 'emergency' },
       webpush: { fcmOptions: { link: 'https://app.example/family' } },
     });

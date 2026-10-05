@@ -12,10 +12,10 @@ const STATUSES = [
 ] as const;
 
 const URGENCIES = [
-  ['emergency', 'Emergency'],
-  ['urgent', 'Urgent'],
-  ['action', 'Follow-up'],
-  ['watch', 'Watch'],
+  ['emergency', 'Immediate action'],
+  ['urgent', 'Review today'],
+  ['action', 'Review soon'],
+  ['watch', 'Monitor'],
 ] as const;
 
 export function CasePage() {

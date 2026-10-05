@@ -5,7 +5,7 @@ const RANK: Record<Urgency, number> = { emergency: 4, urgent: 3, action: 2, watc
 
 export const URGENCY_LABELS: Record<'ja' | 'en', Record<Urgency, string>> = {
   ja: { emergency: '緊急', urgent: '至急', action: '要対応', watch: '経過観察' },
-  en: { emergency: 'Emergency', urgent: 'Urgent', action: 'Follow-up', watch: 'Watch' },
+  en: { emergency: 'Immediate action', urgent: 'Review today', action: 'Review soon', watch: 'Monitor' },
 };
 
 export function urgencyRank(u: Urgency): number {
