@@ -1,3 +1,4 @@
+import type { CallTag } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import type { ModelTag } from '../src/model.js';
 import {
@@ -65,16 +66,36 @@ describe('groundTags', () => {
 });
 
 describe('familyHeadline', () => {
+  const cheerful: CallTag[] = [{ id: 'mood.cheerful', turn: 1, basis: 'said', confidence: 0.9 }];
+  const walked: CallTag[] = [{ id: 'activity.went_out', turn: 1, basis: 'said', confidence: 0.9 }];
+
   it('keeps one plain sentence, tidied', () => {
-    expect(familyHeadline('  Maggie was cheerful and\n enjoyed her walk.  ')).toBe('Maggie was cheerful and enjoyed her walk.');
-    expect(familyHeadline("Maggie's garden is doing well and she ate a good lunch.")).toBe("Maggie's garden is doing well and she ate a good lunch.");
-    expect(familyHeadline('Maggie spoke happily about her grandson.')).toBe('Maggie spoke happily about her grandson.');
+    expect(familyHeadline('  Maggie went for a walk and\n ate a good lunch.  ', walked)).toBe('Maggie went for a walk and ate a good lunch.');
+    expect(familyHeadline("Maggie's garden is doing well and she slept well.", [])).toBe("Maggie's garden is doing well and she slept well.");
+    expect(familyHeadline('Maggie is feeling well and looking forward to her grandson visiting.', [])).toBe(
+      'Maggie is feeling well and looking forward to her grandson visiting.',
+    );
+  });
+
+  it('describes mood only when a kept mood tag backs it, so it matches the mood tile', () => {
+    expect(familyHeadline('Maggie was cheerful and enjoyed her walk.', cheerful)).toBe('Maggie was cheerful and enjoyed her walk.');
+    for (const s of [
+      'Edith seemed cheerful and in good spirits, just a little tired.',
+      'Margaret seemed well rested and content.',
+      'Maggie spoke happily about her grandson.',
+      'Walter seemed a bit down today.',
+      'Maggie was calm and relaxed.',
+      'She sounded low.',
+      'Maggie felt lonely this week.',
+    ]) {
+      expect(familyHeadline(s, walked)).toBeUndefined();
+    }
   });
 
   it('drops empty, long or quoting sentences', () => {
-    expect(familyHeadline('   ')).toBeUndefined();
-    expect(familyHeadline('a'.repeat(HEADLINE_MAX_CHARS + 1))).toBeUndefined();
-    for (const q of ['She said "I am fine".', 'She said “I am fine”.', 'She said ‘I am fine’.', '「元気」と言った。']) expect(familyHeadline(q)).toBeUndefined();
+    expect(familyHeadline('   ', [])).toBeUndefined();
+    expect(familyHeadline('a'.repeat(HEADLINE_MAX_CHARS + 1), [])).toBeUndefined();
+    for (const q of ['She said "I am fine".', 'She said “I am fine”.', 'She said ‘I am fine’.', '「元気」と言った。']) expect(familyHeadline(q, [])).toBeUndefined();
   });
 
   it('drops diagnosis words and anything about how she speaks (FAM-03)', () => {
@@ -87,7 +108,7 @@ describe('familyHeadline', () => {
       'She asked about her medication.',
       'She has a chest infection.',
     ]) {
-      expect(familyHeadline(s)).toBeUndefined();
+      expect(familyHeadline(s, cheerful)).toBeUndefined();
     }
   });
 });
@@ -99,5 +120,13 @@ describe('wellbeingFrom', () => {
       tags: [{ id: 'sleep.slept_well', turn: 1, basis: 'said', confidence: 0.9 }],
       domains: { body: 'unmentioned', food: 'unmentioned', sleep: 'good', mood: 'unmentioned', social: 'unmentioned', activity: 'unmentioned', practical: 'unmentioned', speech: 'unmentioned' },
     });
+  });
+
+  it('drops a cheerful headline when the inferred cheerful tag did not pass', () => {
+    const headline = 'Maggie seemed cheerful and slept well.';
+    const weak = review({ tags: [tag('sleep.slept_well', 1, 'said', 0.9), tag('mood.cheerful', 1, 'inferred', 0.85)], headline });
+    expect(wellbeingFrom(weak, TRANSCRIPT).headline).toBeUndefined();
+    const strong = review({ tags: [tag('sleep.slept_well', 1, 'said', 0.9), tag('mood.cheerful', 1, 'inferred', 0.95)], headline });
+    expect(wellbeingFrom(strong, TRANSCRIPT).headline).toBe(headline);
   });
 });

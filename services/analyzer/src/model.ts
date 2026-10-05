@@ -163,7 +163,7 @@ export function reviewInstruction(staffLocale: Locale): string {
     'noisy: true if the transcript suggests heavy background noise or a bad line (many garbled or misheard turns).',
     'tags: wellbeing tags for this call, chosen ONLY from the list below (give the id). Tag only what the resident says about themselves for today or the last few days: not other people, not things long past, not denials ("I\'m not lonely" is not mood.lonely). Do not tag anything by default: leave a topic out when it was not talked about. turn = the resident turn the tag comes from. basis = "said" if the resident says it in so many words, "inferred" if it clearly follows from what they say. confidence = 0 to 1. Leave out anything that does not fit a tag.',
     ...TAG_LIST,
-    'headline: one short sentence for family in plain, warm English about how the resident seemed in this call, using their name. Mention a concern gently if there is one. Describe their mood only if what they say shows it; do not guess. No medical or diagnosis words, no quotes, nothing about how they speak, no details about money or medicines.',
+    'headline: one short sentence for family in plain, warm English about what the resident said or did, using their name: what they ate, how they slept, where they went, who they saw, what they are planning. Mention a concern gently if there is one. Do not describe their mood or spirits (cheerful, in good spirits, content, calm, low, worried) unless they said it about themselves in so many words and you gave a mood tag with basis "said". No medical or diagnosis words, no quotes, nothing about how they speak, no details about money or medicines.',
   ].join('\n');
 }
 
