@@ -1,12 +1,15 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
+  GoogleAuthProvider,
   isSignInWithEmailLink,
   onAuthStateChanged,
   sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
+  signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -36,11 +39,12 @@ interface Session {
   ready: boolean;
   token: () => Promise<string>;
   signIn: (email: string, password: string) => Promise<void>;
-  sendStaffPasswordReset: (email: string) => Promise<void>;
-  sendFamilyLink: (email: string) => Promise<void>;
-  isFamilyLink: (href: string) => boolean;
+  signInWithGoogle: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  sendSignInLink: (email: string) => Promise<void>;
+  isSignInLink: (href: string) => boolean;
   storedLinkEmail: () => string | null;
-  finishFamilyLink: (email: string, href: string) => Promise<void>;
+  finishSignInLink: (email: string, href: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -85,16 +89,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn: async (email, password) => {
       await signInWithEmailAndPassword(requireAuth(), email, password);
     },
-    sendStaffPasswordReset: async (email) => {
+    signInWithGoogle: async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(requireAuth(), provider);
+      } catch (err) {
+        // An installed PWA and some in-app browsers block popups; the redirect lands back here.
+        const code = (err as { code?: string }).code;
+        if (code !== 'auth/popup-blocked' && code !== 'auth/operation-not-supported-in-this-environment') throw err;
+        await signInWithRedirect(requireAuth(), provider);
+      }
+    },
+    sendPasswordReset: async (email) => {
       await sendPasswordResetEmail(requireAuth(), email);
     },
-    sendFamilyLink: async (email) => {
+    sendSignInLink: async (email) => {
       await sendSignInLinkToEmail(requireAuth(), email, { url: `${window.location.origin}/family/finish`, handleCodeInApp: true });
       window.localStorage.setItem(LINK_EMAIL_KEY, email);
     },
-    isFamilyLink: (href) => Boolean(auth && isSignInWithEmailLink(auth, href)),
+    isSignInLink: (href) => Boolean(auth && isSignInWithEmailLink(auth, href)),
     storedLinkEmail: () => window.localStorage.getItem(LINK_EMAIL_KEY),
-    finishFamilyLink: async (email, href) => {
+    finishSignInLink: async (email, href) => {
       await signInWithEmailLink(requireAuth(), email, href);
       window.localStorage.removeItem(LINK_EMAIL_KEY);
     },

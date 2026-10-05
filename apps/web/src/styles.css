@@ -51,6 +51,7 @@ legend { font-weight: 700; margin-bottom: 4px; }
 label { display: grid; gap: 6px; font-weight: 600; }
 input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; border: 2px solid #d9d1c3; background: white; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.or-divider { margin: 0; text-align: center; text-transform: lowercase; }
 .badge { display: inline-block; border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 15px; }
 .emergency { background: #f8d4d0; color: #8a1c13; }
 .urgent { background: #f8e3c4; color: #8a4b08; }

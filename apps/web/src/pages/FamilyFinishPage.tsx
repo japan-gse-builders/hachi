@@ -3,9 +3,9 @@ import { Link, Navigate } from 'react-router';
 import { useAuth } from '../auth';
 
 export function FamilyFinishPage() {
-  const { user, isFamilyLink, storedLinkEmail, finishFamilyLink } = useAuth();
+  const { user, isSignInLink, storedLinkEmail, finishSignInLink } = useAuth();
   const href = window.location.href;
-  const valid = isFamilyLink(href);
+  const valid = isSignInLink(href);
   const [email, setEmail] = useState(storedLinkEmail() ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -15,7 +15,7 @@ export function FamilyFinishPage() {
     setBusy(true);
     setError('');
     try {
-      await finishFamilyLink(address.trim(), href);
+      await finishSignInLink(address.trim(), href);
     } catch {
       setError('This link has expired or was already used. Ask for a new one.');
     } finally {
@@ -33,7 +33,7 @@ export function FamilyFinishPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (user) return <Navigate to="/family" replace />;
+  if (user) return <Navigate to="/" replace />;
   if (!valid) {
     return (
       <section className="card stack">
