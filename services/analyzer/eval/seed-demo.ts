@@ -7,9 +7,13 @@
  * Gemini results cached by `eval:r3` are reused.
  *
  *   npm run seed:demo -w @hachi/analyzer -- [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
+ *     [--family-login-of <residentId>]
  *
  * --reset first deletes those demo residents (only if marked synthetic) with their calls, cases
  * and recordings, so the demo can be rebuilt with today's dates and current code.
+ *
+ * --family-login-of lets the family emails of that resident open the demo family dashboards. Only
+ * `familyLookup` is set, never `family`, because notifications go to `family`.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -34,6 +38,7 @@ const { values: args } = parseArgs({
     people: { type: 'string', default: 'syn-c1,syn-c2,syn-s1' },
     'dry-run': { type: 'boolean', default: false },
     reset: { type: 'boolean', default: false },
+    'family-login-of': { type: 'string' },
   },
 });
 
@@ -133,6 +138,15 @@ const shift = Math.floor((today.getTime() - lastCall) / DAY) * DAY;
 const shifted = (iso: string) => new Date(Date.parse(iso) + shift).toISOString();
 const serviceStartedAt = shifted(scenario.serviceStartedAt);
 
+let familyLogins: string[] = [];
+if (args['family-login-of']) {
+  const owner = await store.getResident(args['family-login-of']);
+  if (!owner) throw new Error(`No resident ${args['family-login-of']}`);
+  familyLogins = owner.familyLookup.filter((c) => c.includes('@'));
+  if (familyLogins.length === 0) throw new Error(`${owner.id} has no family email to reuse`);
+  console.log(`demo family dashboards open to ${familyLogins.length} family email(s) of ${owner.id}`);
+}
+
 for (const { profile: p, calls } of people) {
   const residentId = `demo-${p.id}`;
   const existing = await store.getResident(residentId);
@@ -164,7 +178,7 @@ for (const { profile: p, calls } of people) {
     vulnerability: { livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: [] },
     householdNotes: `Synthetic demo resident (${p.note}). Not a real person; no calls are placed.`,
     staff: { name: 'Demo staff', phone: '' },
-    familyLookup: [],
+    familyLookup: familyLogins,
     serviceStartedAt,
     active: false,
     synthetic: true,

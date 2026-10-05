@@ -139,9 +139,12 @@ export interface TagTrend {
   /** Calls in each window; fewer than the window size early on. */
   lastCalls: number;
   previousCalls: number;
-  /** Compared by share of calls; null when there is no earlier window to compare with. */
+  /** Compared by share of calls; null when the earlier window is too short to compare with. */
   direction: 'more' | 'less' | 'same' | null;
 }
+
+/** "Less often (was 1 of 1)" reads as news to family but is noise. */
+export const MIN_TREND_CALLS = 3;
 
 /**
  * Counts each tag in the latest `window` calls against the `window` calls before them. `calls`
@@ -164,7 +167,7 @@ export function tagTrends(calls: readonly (readonly string[])[], window = 7): Ta
       previous,
       lastCalls: recent.length,
       previousCalls: before.length,
-      direction: before.length === 0 ? null : now > then ? 'more' : now < then ? 'less' : 'same',
+      direction: before.length < Math.min(MIN_TREND_CALLS, window) ? null : now > then ? 'more' : now < then ? 'less' : 'same',
     };
   });
   const order = (id: WellbeingTagId) => WELLBEING_TAG_IDS.indexOf(id);

@@ -1,4 +1,4 @@
-import { channelList, familyDeliveryList, formatWhen, minutes } from '../format';
+import { channelList, familyDeliveryList, formatWhen, minutes, phoneDisplay, topicList } from '../format';
 import type { FamilyDashboard } from '../types';
 import { LatestCall, TagList, TagTrends, TwoWeekGrid } from './FamilyGlance';
 
@@ -33,7 +33,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
         <h2>Care team</h2>
         <p>{staff.name}</p>
         <div className="row">
-          <a className="button" href={`tel:${staff.phone}`}>Call {staff.phone}</a>
+          <a className="button" href={`tel:${staff.phone}`}>Call {phoneDisplay(staff.phone)}</a>
           {staff.email && <a className="button ghost" href={`mailto:${staff.email}`}>Email</a>}
         </div>
       </section>
@@ -56,7 +56,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
                     <>
                       <p><strong>Health.</strong> {c.summary.health}</p>
                       <p><strong>Meals.</strong> {c.summary.meals}</p>
-                      {c.summary.topics.length > 0 && <p><strong>Talked about.</strong> {c.summary.topics.join(', ')}</p>}
+                      {c.summary.topics.length > 0 && <p><strong>Talked about.</strong> {topicList(c.summary.topics)}</p>}
                     </>
                   )}
                 </article>

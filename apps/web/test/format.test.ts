@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { needsHomeScreen } from '../src/device';
-import { audioAt, callStatusLabel, channelList, clock, deliveryLabel, eventLabel, familyDeliveryList, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../src/format';
+import { audioAt, callStatusLabel, channelList, clock, deliveryLabel, eventLabel, familyDeliveryList, formatWhen, minutes, phoneDisplay, speakerLabel, speechLine, topicList, urgencyTone } from '../src/format';
 
 describe('staff display helpers', () => {
   it('maps urgency to a tone and leaves unknown values calm', () => {
@@ -60,6 +60,20 @@ describe('staff display helpers', () => {
         { channel: 'fax', status: 'sent', errorCode: null },
       ]),
     ).toBe('text message (not delivered), phone call (answered), email, app alert, fax');
+  });
+
+  it('lists call topics without capitals in the middle of a sentence', () => {
+    expect(topicList(['A visit from their grandson this Sunday', 'Their garden'])).toBe('A visit from their grandson this Sunday · Their garden');
+    expect(topicList(['Lunch'])).toBe('Lunch');
+  });
+
+  it('shows Japanese care-team numbers the way family dial them at home', () => {
+    expect(phoneDisplay('+819000000000')).toBe('090-0000-0000');
+    expect(phoneDisplay('+815000000000')).toBe('050-0000-0000');
+    expect(phoneDisplay('+81120000000')).toBe('0120-000-000');
+    expect(phoneDisplay('+81300000000')).toBe('0300000000');
+    expect(phoneDisplay('+15005550006')).toBe('+15005550006');
+    expect(phoneDisplay('')).toBe('');
   });
 
   it('asks iPhone users to add Hachi to the home screen before alerts', () => {

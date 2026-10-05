@@ -125,6 +125,21 @@ export function familyDeliveryList(deliveries: ({ channel: string } & Delivery)[
     .join(', ');
 }
 
+/** Each topic arrives as its own capitalised phrase, so commas would leave capitals mid-sentence. */
+export function topicList(topics: string[]): string {
+  return topics.join(' · ');
+}
+
+/** Japanese numbers as people dial them at home; area-code lengths vary, so only mobile and free-dial get hyphens. */
+export function phoneDisplay(e164: string): string {
+  const m = /^\+81(\d{9,10})$/.exec(e164);
+  if (!m) return e164;
+  const n = `0${m[1]}`;
+  if (/^0[5789]0\d{8}$/.test(n)) return `${n.slice(0, 3)}-${n.slice(3, 7)}-${n.slice(7)}`;
+  if (/^0120\d{6}$/.test(n)) return `${n.slice(0, 4)}-${n.slice(4, 7)}-${n.slice(7)}`;
+  return n;
+}
+
 export function minutes(sec: number | null): string {
   return sec === null ? '' : clock(sec * 1000);
 }

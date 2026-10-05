@@ -119,8 +119,15 @@ describe('tag trends', () => {
   it('compares by share of calls when the earlier window is shorter', () => {
     const t = tagTrends([['sleep.slept_badly'], [], [], ['sleep.slept_badly']], 2);
     expect(t).toEqual([{ id: 'sleep.slept_badly', last: 1, previous: 1, lastCalls: 2, previousCalls: 2, direction: 'same' }]);
-    const shorter = tagTrends([['sleep.slept_badly'], ['sleep.slept_badly'], [], ['sleep.slept_badly']], 3);
-    expect(shorter[0]).toMatchObject({ last: 2, previous: 1, lastCalls: 3, previousCalls: 1, direction: 'less' });
+    const shorter = tagTrends([...calls(3, ['sleep.slept_badly']), [], ...calls(3, ['sleep.slept_badly'])], 4);
+    expect(shorter[0]).toMatchObject({ last: 3, previous: 3, lastCalls: 4, previousCalls: 3, direction: 'less' });
+  });
+
+  it('reports no direction against only one or two earlier calls', () => {
+    const t = tagTrends([...calls(5, ['food.ate_well']), [], [], ['food.ate_well']]);
+    expect(t[0]).toMatchObject({ last: 5, previous: 1, lastCalls: 7, previousCalls: 1, direction: null });
+    const two = tagTrends([...calls(7, ['body.tired']), [], []]);
+    expect(two[0]).toMatchObject({ last: 7, previous: 0, previousCalls: 2, direction: null });
   });
 
   it('ignores unknown ids and handles no calls', () => {

@@ -3,7 +3,7 @@ import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
-import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, urgencyTone } from '../format';
+import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, topicList, urgencyTone } from '../format';
 import { staffTagLine } from '../glance';
 import type { CaseDetail } from '../types';
 
@@ -132,7 +132,7 @@ export function CasePage() {
                 <>
                   <p><strong>Health.</strong> {c.summary.health}</p>
                   <p><strong>Meals.</strong> {c.summary.meals}</p>
-                  {c.summary.topics.length > 0 && <p><strong>Topics.</strong> {c.summary.topics.join(', ')}</p>}
+                  {c.summary.topics.length > 0 && <p><strong>Topics.</strong> {topicList(c.summary.topics)}</p>}
                 </>
               )}
             </article>
