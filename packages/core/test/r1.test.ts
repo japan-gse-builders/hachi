@@ -163,6 +163,153 @@ describe('detectR1: hypotheticals and idioms', () => {
   });
 });
 
+describe('detectR1: further wordings of current danger', () => {
+  it.each<[string, R1Category]>([
+    ["I can't seem to catch my breath", 'breathing'],
+    ['I can hardly breathe', 'breathing'],
+    ['I can barely get enough air', 'breathing'],
+    ['It hurts to breathe', 'breathing'],
+    ["I'm struggling for breath", 'breathing'],
+    ['I keep having to stop for breath', 'breathing'],
+    ["I'm gasping for air", 'breathing'],
+    ["I'm choking", 'breathing'],
+    ['A fishbone is stuck in my throat', 'breathing'],
+    ["I had a fall and I can't get myself up", 'unable_to_move'],
+    ["I can't get back up", 'unable_to_move'],
+    ["I can't get up off the floor", 'unable_to_move'],
+    ["I can't get up from the floor", 'unable_to_move'],
+    ["I'm still on the kitchen floor", 'unable_to_move'],
+    ["I've been on the floor since last night", 'unable_to_move'],
+    ["I'm stuck in the bath", 'unable_to_move'],
+    ["My legs won't hold me", 'unable_to_move'],
+    ['My back hurts too much to move', 'unable_to_move'],
+    ['My words keep coming out jumbled', 'stroke_signs'],
+    ['My mouth is drooping on one side', 'stroke_signs'],
+    ["I can't raise my right arm", 'stroke_signs'],
+    ['My left hand has gone all weak', 'stroke_signs'],
+    ['My arm is floppy', 'stroke_signs'],
+    ["I've been feeling ever so faint", 'loss_of_consciousness'],
+    ['I feel faint', 'loss_of_consciousness'],
+    ['Could you get someone to come round, please?', 'calling_for_help'],
+    ['Can you send someone?', 'calling_for_help'],
+    ['Send help now', 'calling_for_help'],
+    ['I think I need a doctor, dear', 'calling_for_help'],
+  ])('%s -> %s', (text, category) => {
+    expect(categories(text)).toContain(category);
+  });
+
+  it('does not read errands or bookings as calls for help', () => {
+    for (const text of ['Can you send someone to fix the boiler?', 'I need help with my shopping', 'I need a doctor to look at my knee', "I need a doctor's note for the gym"]) {
+      expect(detectR1(text)).toEqual([]);
+    }
+  });
+});
+
+describe('detectR1: figures of speech', () => {
+  it.each(['Oh, you gave me a heart attack, the phone rang just as I sat down!', "You'll give me a heart attack one of these days", 'The bill nearly gave us a heart attack'])('%s', (text) => {
+    expect(detectR1(text)).toEqual([]);
+  });
+
+  it('a real heart attack is still caught', () => {
+    expect(categories("I'm having a heart attack")).toEqual(['chest_pain']);
+    expect(categories('I think I gave myself a fright, I might be having a heart attack')).toEqual(['chest_pain']);
+  });
+
+  it('breathlessness from laughing, told as past, is not an emergency', () => {
+    expect(detectR1('I was gasping for air, I laughed so much')).toEqual([]);
+    expect(detectR1('We were giggling so hard I was out of breath')).toEqual([]);
+  });
+
+  it('breathlessness told in the present, or still going, is caught even with laughter', () => {
+    expect(categories("I'm gasping for air")).toEqual(['breathing']);
+    expect(categories("I was laughing and now I can't breathe")).toEqual(['breathing']);
+    expect(categories('I was gasping for air after laughing and I still am')).toEqual(['breathing']);
+  });
+
+  it('a racing heart while watching something exciting, now over, is not an emergency', () => {
+    expect(detectR1('My heart was racing when I watched the sumo final')).toEqual([]);
+    expect(detectR1('My heart was pounding with excitement at the match')).toEqual([]);
+  });
+
+  it('a racing heart now, or one that has not settled, is caught', () => {
+    expect(categories('My heart is racing')).toEqual(['chest_pain']);
+    expect(categories('My heart was racing when I watched the news and it still is')).toEqual(['chest_pain']);
+    expect(categories('My heart was pounding this morning and it won\'t slow down')).toEqual(['chest_pain']);
+  });
+});
+
+describe('detectR1: brief symptoms that have passed', () => {
+  it.each([
+    'I was out of breath at the top of the hill, but I sat down for a minute and I was fine',
+    'I was a bit breathless after the stairs, but it passed once I sat down',
+    'I felt a bit faint earlier, but the nurse checked me. I am fine now',
+    'A bit of rice got stuck in my throat but I coughed it up',
+  ])('%s', (text) => {
+    expect(detectR1(text)).toEqual([]);
+  });
+
+  it('breathlessness that has not passed is caught', () => {
+    expect(categories('I was out of breath this morning and I still am')).toEqual(['breathing']);
+    expect(categories('I was out of breath after the stairs and it has not passed')).toEqual(['breathing']);
+    expect(categories('I was short of breath, it went away but now it is back again')).toEqual(['breathing']);
+    expect(categories('I got out of breath on the stairs')).toEqual(['breathing']);
+  });
+
+  it('a present symptom is never dropped for a reassurance', () => {
+    expect(categories("I'm out of breath, but I'm fine")).toEqual(['breathing']);
+    expect(categories("I can't breathe, I'm fine really, don't fuss")).toEqual(['breathing']);
+    expect(categories("It's probably nothing but my chest is tight")).toEqual(['chest_pain']);
+  });
+
+  it('chest pain that has eased is still caught', () => {
+    expect(categories('My chest was tight earlier but it eased off')).toEqual(['chest_pain']);
+  });
+});
+
+describe('detectR1: long-standing limits are not falls', () => {
+  it.each([
+    "I can't get up the hill with my trolley anymore",
+    "I can't get up the stairs, so I sleep downstairs",
+    "I can't get up from the floor cushions easily, so I use a chair",
+    "I can't stand for long these days",
+    "I can't stand the heat",
+    "I can't move the wardrobe on my own",
+  ])('%s', (text) => {
+    expect(detectR1(text)).toEqual([]);
+  });
+
+  it('falls and being stuck are caught even with a word like "anymore"', () => {
+    expect(categories("I fell and I can't get up")).toEqual(['unable_to_move']);
+    expect(categories("I can't get up anymore, I've been on the floor since lunch")).toEqual(['unable_to_move']);
+    expect(categories("I can't get up easily, I've fallen in the kitchen")).toEqual(['unable_to_move']);
+    expect(categories("I can't get up, please help")).toEqual(['calling_for_help', 'unable_to_move']);
+  });
+
+  it('does not match inside other words', () => {
+    expect(detectR1("I can't get upset about it")).toEqual([]);
+  });
+});
+
+describe('detectR1: who the symptom belongs to', () => {
+  it.each([
+    'I watched a drama where a man had a heart attack in the street',
+    "I'm reading a mystery where the old lady collapses and can't breathe",
+    'In the film the main character is gasping for breath',
+    'Mrs Sato had a heart attack on the bus',
+    "She fell and can't get up",
+    'Someone on the news was choking',
+  ])('%s', (text) => {
+    expect(detectR1(text)).toEqual([]);
+  });
+
+  it('the resident is still the subject after naming others', () => {
+    expect(categories("My husband says I can't breathe at night")).toEqual(['breathing']);
+    expect(categories("I rang my son and can't get up")).toEqual(['unable_to_move']);
+    expect(categories("I watched a drama and now I can't breathe")).toEqual(['breathing']);
+    expect(categories('The doctor said it was nothing, but my chest hurts')).toEqual(['chest_pain']);
+  });
+});
+
 describe('normalizeUtterance', () => {
   it('normalizes case, curly apostrophes, and negated ability', () => {
     expect(normalizeUtterance('I CAN’T  breathe')).toBe("i can't breathe");
