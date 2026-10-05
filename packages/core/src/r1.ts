@@ -93,15 +93,12 @@ function isExcluded(text: string, start: number, end: number): boolean {
   const sentenceStart = lastBoundary(text, SENTENCE_BREAK, start);
   const sentenceEnd = nextBoundary(text, SENTENCE_BREAK, end);
   const clauseStart = Math.max(lastBoundary(text, CLAUSE_BREAK, start), sentenceStart);
-  const clauseEnd = Math.min(nextBoundary(text, CLAUSE_BREAK, end), sentenceEnd);
   const clauseBefore = text.slice(clauseStart, start);
-  const clause = text.slice(clauseStart, clauseEnd);
   const sentence = text.slice(sentenceStart, sentenceEnd);
 
   const negationScope = `${lastWords(clauseBefore, 6)} ${matchText.replace(INTRINSIC_NEGATION, ' ')}`.replace(EPISTEMIC, ' ');
   if (NEGATORS.test(negationScope)) return true;
 
-  if (DISTANT_PAST.test(clause) && !STILL_CURRENT.test(clause)) return true;
   if (DISTANT_PAST.test(sentence) && !STILL_CURRENT.test(sentence)) return true;
 
   if (THIRD_PERSON.test(clauseBefore) && !FIRST_PERSON.test(text.slice(clauseStart, end))) return true;

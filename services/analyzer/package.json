@@ -2,12 +2,14 @@
   "name": "@hachi/analyzer",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/server.js",
     "eval:r3": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/run.ts",
+    "eval:r12": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/r12-run.ts",
     "seed:demo": "node --experimental-transform-types --disable-warning=ExperimentalWarning --import ./eval/register.mjs eval/seed-demo.ts"
   },
   "dependencies": {

@@ -115,6 +115,12 @@ describe('detectR1: past events are not treated as current symptoms (DET-02)', (
     expect(categories('I had a heart attack years ago and my chest hurts again')).toEqual(['chest_pain']);
     expect(categories('Years ago, I had chest pain, and I still do today')).toEqual(['chest_pain']);
   });
+
+  it('does not depend on whether the past time is in the same clause as the symptom', () => {
+    expect(categories('I had chest pain years ago and I still do today')).toEqual(['chest_pain']);
+    expect(categories("I had chest pains last year and they've come back this morning")).toEqual(['chest_pain']);
+    expect(categories('I had chest pain years ago and it never came back')).toEqual([]);
+  });
 });
 
 describe("detectR1: other people's events are not the resident's (DET-02)", () => {
