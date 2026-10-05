@@ -3,6 +3,7 @@ import {
   getAuth,
   isSignInWithEmailLink,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
@@ -35,6 +36,7 @@ interface Session {
   ready: boolean;
   token: () => Promise<string>;
   signIn: (email: string, password: string) => Promise<void>;
+  sendStaffPasswordReset: (email: string) => Promise<void>;
   sendFamilyLink: (email: string) => Promise<void>;
   isFamilyLink: (href: string) => boolean;
   storedLinkEmail: () => string | null;
@@ -82,6 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     signIn: async (email, password) => {
       await signInWithEmailAndPassword(requireAuth(), email, password);
+    },
+    sendStaffPasswordReset: async (email) => {
+      await sendPasswordResetEmail(requireAuth(), email);
     },
     sendFamilyLink: async (email) => {
       await sendSignInLinkToEmail(requireAuth(), email, { url: `${window.location.origin}/family/finish`, handleCodeInApp: true });
