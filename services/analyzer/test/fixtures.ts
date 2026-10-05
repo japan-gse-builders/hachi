@@ -63,6 +63,12 @@ export function review(overrides: Partial<ModelReview> = {}): ModelReview {
     topicCoherence: 0.9,
     temporaryCondition: false,
     noisy: false,
+    tags: [
+      { id: 'body.tired', turn: 1, basis: 'said', confidence: 0.9 },
+      { id: 'mood.looking_forward', turn: 1, basis: 'inferred', confidence: 0.92 },
+      { id: 'food.ate_little', turn: 3, basis: 'said', confidence: 0.95 },
+    ],
+    headline: 'Maggie was a little tired and had not eaten much, but is looking forward to her grandson visiting.',
     ...overrides,
   };
 }

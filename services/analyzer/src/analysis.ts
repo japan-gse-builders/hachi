@@ -18,6 +18,7 @@ import {
 } from '@hachi/core';
 import type { CallAnalysis, CallMemory, CallRecord, Resident } from '@hachi/store';
 import type { ModelReview } from './model.js';
+import { wellbeingFrom } from './wellbeing.js';
 
 export interface AnalysisInput {
   resident: Resident;
@@ -39,7 +40,7 @@ export interface AnalysisInput {
 
 export interface AnalysisResult {
   detections: Detection[];
-  update: Pick<CallRecord, 'summary' | 'familySummary' | 'speech'> & { analysis: CallAnalysis };
+  update: Pick<CallRecord, 'summary' | 'familySummary' | 'wellbeing' | 'speech'> & { analysis: CallAnalysis };
 }
 
 const R2_HISTORY_DAYS = 7;
@@ -198,7 +199,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
   return {
     detections,
     update: {
-      ...(review ? { summary: review.staffSummary, familySummary: review.familySummary } : {}),
+      ...(review ? { summary: review.staffSummary, familySummary: review.familySummary, wellbeing: wellbeingFrom(review, transcript) } : {}),
       speech,
       analysis: {
         at: input.now.toISOString(),

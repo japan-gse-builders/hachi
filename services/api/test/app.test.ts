@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { CASE_CALLS } from '../src/views.js';
 import { MemoryStore } from '@hachi/store';
-import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, setup, storedCase } from './helpers.js';
+import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, setup, storedCase, wellbeing } from './helpers.js';
 
 describe('health and authentication', () => {
   it('serves /healthz and /health without a token', async () => {
@@ -251,6 +251,32 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(d.resident.householdNotes).toBeNull();
   });
 
+  it('shows staff every tag with the turn, basis and confidence behind it', async () => {
+    const { app, as, store } = await seeded();
+    await store.updateCall('res-1', 'call-1', (c) => ({
+      ...c,
+      wellbeing: wellbeing(
+        [
+          { id: 'food.ate_little', turn: 1, basis: 'said', confidence: 0.9 },
+          { id: 'speech.repeating', turn: 1, basis: 'inferred', confidence: 0.8 },
+          { id: 'mood.lonely', turn: 7, basis: 'inferred', confidence: 0.8 },
+        ],
+        'Maggie had not eaten much.',
+      ),
+    }));
+    await store.addCalls([call({ id: 'call-0', startedAt: '2026-09-30T01:00:00.000Z' })]);
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency?locale=en', ...as('staff') })).json();
+    const w = d.calls.find((c: { id: string }) => c.id === 'call-1').wellbeing;
+    expect(w.headline).toBe('Maggie had not eaten much.');
+    expect(w.domains).toMatchObject({ food: 'concern', speech: 'concern', mood: 'concern', sleep: 'unmentioned' });
+    expect(w.tags).toEqual([
+      { id: 'food.ate_little', label: 'Ate little', domain: 'food', polarity: 'concern', audience: 'family', turn: 1, basis: 'said', confidence: 0.9, quote: 'I only had a biscuit' },
+      { id: 'speech.repeating', label: 'Repeating themselves', domain: 'speech', polarity: 'concern', audience: 'staff', turn: 1, basis: 'inferred', confidence: 0.8, quote: 'I only had a biscuit' },
+      { id: 'mood.lonely', label: 'Lonely', domain: 'mood', polarity: 'concern', audience: 'family_with_consent', turn: 7, basis: 'inferred', confidence: 0.8, quote: null },
+    ]);
+    expect(d.calls.find((c: { id: string }) => c.id === 'call-0').wellbeing).toBeNull();
+  });
+
   it('shows details for closed cases and returns 404 for unknown ones', async () => {
     const { app, as } = await seeded();
     expect((await app.inject({ method: 'GET', url: '/api/cases/closed', ...as('staff') })).statusCode).toBe(200);
@@ -411,8 +437,16 @@ describe('family dashboard (FAM-01..04)', () => {
     expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith' });
     expect(d.nextCallAt).toBe('2026-10-02T01:00:00.000Z');
     expect(d.calls).toEqual([
-      { startedAt: '2026-10-01T01:00:00.000Z', connected: true, durationSec: 240, summary: { health: 'A little tired', meals: 'Ate very little yesterday', topics: ['grandson'] } },
-      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, durationSec: null, summary: null },
+      {
+        startedAt: '2026-10-01T01:00:00.000Z',
+        connected: true,
+        durationSec: 240,
+        summary: { health: 'A little tired', meals: 'Ate very little yesterday', topics: ['grandson'] },
+        headline: 'Margaret Smithさんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：対応中。',
+        domains: null,
+        tags: [],
+      },
+      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, durationSec: null, summary: null, headline: null, domains: null, tags: [] },
     ]);
     expect(d.alerts).toEqual([
       {
@@ -461,5 +495,122 @@ describe('family dashboard (FAM-01..04)', () => {
     expect((await store.getResident('res-other'))?.family?.pushTokens).toEqual([]);
     const bad = await app.inject({ method: 'POST', url: '/api/family/push-tokens', ...as('familyPhone'), payload: { token: 'x' } });
     expect(bad.statusCode).toBe(400);
+  });
+});
+
+describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
+  const at = (date: string, time = '01:00') => `${date}T${time}:00.000Z`;
+  const tagged = (id: string, date: string, ids: Parameters<typeof said>, extra: Parameters<typeof call>[0] = {}) =>
+    call({ id, startedAt: at(date), localDate: date, wellbeing: wellbeing(said(...ids)), ...extra });
+
+  async function seeded() {
+    const ctx = setup();
+    await ctx.store.createResident(makeResident('res-1'));
+    const today = wellbeing(
+      [
+        ...said('food.ate_little', 'activity.stayed_in', 'body.feeling_well', 'practical.money_worry'),
+        { id: 'mood.lonely', turn: 1, basis: 'inferred', confidence: 0.8 },
+        { id: 'speech.slower', turn: 1, basis: 'inferred', confidence: 0.9 },
+      ],
+      'Maggie was in good spirits but has not eaten much today.',
+    );
+    await ctx.store.addCalls([
+      call({ id: 'today', startedAt: at('2026-10-01'), localDate: '2026-10-01', wellbeing: today }),
+      tagged('afternoon', '2026-09-30', ['food.ate_well'], { startedAt: at('2026-09-30', '05:00') }),
+      tagged('morning', '2026-09-30', ['food.ate_little', 'activity.gardening']),
+      call({ id: 'missed', startedAt: at('2026-09-29'), localDate: '2026-09-29', status: 'no_answer', wellbeing: wellbeing(said('food.cooked')) }),
+      call({ id: 'before-tags', startedAt: at('2026-09-28'), localDate: '2026-09-28' }),
+      ...['27', '26', '25', '24', '23', '22', '21', '20'].map((d) => tagged(`sep-${d}`, `2026-09-${d}`, ['activity.gardening', 'food.ate_well'])),
+    ]);
+    return ctx;
+  }
+
+  const dashboard = async (locale = 'en') => {
+    const { app, as } = await seeded();
+    const res = await app.inject({ method: 'GET', url: `/api/family/residents/res-1/dashboard?locale=${locale}`, ...as('familyPhone') });
+    expect(res.statusCode).toBe(200);
+    return { body: res.body, d: res.json() };
+  };
+
+  it("shows the latest call's headline and six life domains, mood as a state only", async () => {
+    const { d } = await dashboard();
+    expect(d.glance.latest).toEqual({
+      startedAt: at('2026-10-01'),
+      headline: 'Maggie was in good spirits but has not eaten much today.',
+      domains: { body: 'good', food: 'concern', sleep: 'unmentioned', mood: 'concern', social: 'unmentioned', activity: 'concern' },
+    });
+    expect(d.calls[0]).toMatchObject({
+      headline: 'Maggie was in good spirits but has not eaten much today.',
+      domains: d.glance.latest.domains,
+      tags: [
+        { id: 'food.ate_little', label: 'Ate little', domain: 'food', polarity: 'concern' },
+        { id: 'activity.stayed_in', label: 'Stayed in all day', domain: 'activity', polarity: 'concern' },
+        { id: 'body.feeling_well', label: 'Feeling well', domain: 'body', polarity: 'positive' },
+      ],
+    });
+  });
+
+  it('builds 14 resident-local days, merging calls on one day and marking days without a connected call', async () => {
+    const { d } = await dashboard();
+    const days = d.glance.days as { date: string; tagged: boolean; domains: Record<string, string> | null }[];
+    expect(days).toHaveLength(14);
+    expect(days[0]!.date).toBe('2026-09-18');
+    expect(days.at(-1)!.date).toBe('2026-10-01');
+    const day = (date: string) => days.find((x) => x.date === date)!;
+    expect(day('2026-09-30')).toEqual({
+      date: '2026-09-30',
+      tagged: true,
+      domains: { body: 'unmentioned', food: 'mixed', sleep: 'unmentioned', mood: 'unmentioned', social: 'unmentioned', activity: 'good' },
+    });
+    expect(day('2026-09-29')).toEqual({ date: '2026-09-29', tagged: false, domains: null });
+    expect(day('2026-09-19').domains).toBeNull();
+    // Analysed before tags existed: not talked about, never fine.
+    expect(day('2026-09-28')).toEqual({
+      date: '2026-09-28',
+      tagged: false,
+      domains: { body: 'unmentioned', food: 'unmentioned', sleep: 'unmentioned', mood: 'unmentioned', social: 'unmentioned', activity: 'unmentioned' },
+    });
+    expect(d.calls.find((c: { startedAt: string }) => c.startedAt === at('2026-09-28'))).toMatchObject({ domains: null, tags: [], headline: null });
+  });
+
+  it('counts family tags in the last 7 tagged calls against the 7 before', async () => {
+    const { d } = await dashboard();
+    expect(d.glance.trends.map((t: { id: string }) => t.id)).toEqual(['food.ate_well', 'activity.gardening', 'food.ate_little', 'activity.stayed_in', 'body.feeling_well']);
+    expect(d.glance.trends[0]).toEqual({ id: 'food.ate_well', label: 'Ate well', domain: 'food', polarity: 'positive', last: 5, previous: 4, lastCalls: 7, previousCalls: 4, direction: 'less' });
+    expect(d.glance.trends[2]).toMatchObject({ id: 'food.ate_little', last: 2, previous: 0, direction: 'more' });
+  });
+
+  it('never shows family the turns, basis, confidence, quotes, speech or consent-only tags', async () => {
+    const { body } = await dashboard();
+    for (const forbidden of ['turn', 'basis', 'confidence', 'inferred', 'quote', 'I only had a biscuit', 'speech', 'Slower', 'mood.', 'Lonely', 'practical', 'Scam', 'audience']) {
+      expect(body).not.toContain(forbidden);
+    }
+    const ja = await dashboard('ja');
+    expect(ja.d.calls[0].tags[0].label).toBe('食事が少ない');
+    expect(ja.body).not.toContain('寂しい');
+  });
+
+  it("replaces the model's sentence on an emergency call with what the care team did", async () => {
+    const ctx = await seeded();
+    const r1 = detection({ rule: 'R1', urgency: 'emergency', evidence: [{ callId: 'today', quote: 'My chest hurts', startMs: 0, endMs: 1 }] });
+    await ctx.store.putCase(storedCase({ id: 'r1', rule: 'R1', autoUrgency: 'emergency', status: 'in_progress', detections: [r1] }));
+    const get = async (locale: string) =>
+      (await ctx.app.inject({ method: 'GET', url: `/api/family/residents/res-1/dashboard?locale=${locale}`, ...ctx.as('familyPhone') })).json();
+    const en = await get('en');
+    const sentence = 'Hachi let the care team know about something Margaret Smith said in this call. Care team follow-up: In progress.';
+    expect(en.glance.latest.headline).toBe(sentence);
+    expect(en.calls[0].headline).toBe(sentence);
+    expect(en.calls.slice(1).every((c: { headline: string | null }) => !c.headline?.includes('care team'))).toBe(true);
+    expect((await get('ja')).glance.latest.headline).toBe('Margaret Smithさんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：対応中。');
+  });
+
+  it('has no latest call or trends before the first connected call', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    await store.addCalls([call({ id: 'missed', status: 'no_answer' })]);
+    const d = (await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') })).json();
+    expect(d.glance.latest).toBeNull();
+    expect(d.glance.trends).toEqual([]);
+    expect(d.glance.days.every((x: { domains: unknown }) => x.domains === null)).toBe(true);
   });
 });

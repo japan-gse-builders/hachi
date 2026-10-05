@@ -61,12 +61,29 @@ export interface CaseDetail {
     status: string;
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
+    /** Missing from older servers; null for calls analysed before tags existed. */
+    wellbeing?: StaffWellbeing | null;
     transcript?: { speaker: 'resident' | 'agent'; text: string; startMs: number; endMs: number }[];
   }[];
   speechTrend: SpeechPoint[];
   /** Missing from servers older than the speech chart; null until the resident has a baseline. */
   speechBaseline?: SpeechBaseline | null;
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
+}
+
+export interface StaffTag extends TagLabel {
+  audience: 'family' | 'family_with_consent' | 'staff';
+  turn: number;
+  basis: 'said' | 'inferred';
+  confidence: number;
+  /** The resident's words in the cited turn. */
+  quote: string | null;
+}
+
+export interface StaffWellbeing {
+  headline: string | null;
+  domains: Record<string, DomainState>;
+  tags: StaffTag[];
 }
 
 export interface SpeechPoint {
@@ -93,14 +110,45 @@ export interface SpeechBaseline {
   ranges: Record<string, { audio?: UsualRange; transcript?: UsualRange } | undefined>;
 }
 
+export type DomainState = 'good' | 'mixed' | 'concern' | 'unmentioned';
+export type LifeDomain = 'body' | 'food' | 'sleep' | 'mood' | 'social' | 'activity';
+export type DomainStates = Record<LifeDomain, DomainState>;
+
+export interface TagLabel {
+  id: string;
+  label: string;
+  domain: string;
+  polarity: 'positive' | 'concern';
+}
+
+export interface TagTrend extends TagLabel {
+  last: number;
+  previous: number;
+  lastCalls: number;
+  previousCalls: number;
+  direction: 'more' | 'less' | 'same' | null;
+}
+
+export interface FamilyGlance {
+  latest: { startedAt: string; headline: string | null; domains: DomainStates | null } | null;
+  /** Oldest first, one per resident-local day; `domains` is null when no call connected that day. */
+  days: { date: string; tagged: boolean; domains: DomainStates | null }[];
+  trends: TagTrend[];
+}
+
 export interface FamilyDashboard {
   resident: { id: string; name: string };
   nextCallAt: string | null;
+  /** Missing from servers older than wellbeing tags. */
+  glance?: FamilyGlance;
   calls: {
     startedAt: string;
     connected: boolean;
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
+    headline?: string | null;
+    domains?: DomainStates | null;
+    tags?: TagLabel[];
   }[];
   alerts: {
     sentAt: string;

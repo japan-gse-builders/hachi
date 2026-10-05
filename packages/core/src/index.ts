@@ -8,3 +8,4 @@ export * from './cases.js';
 export * from './priority.js';
 export * from './notifications.js';
 export * from './schedule.js';
+export * from './wellbeing.js';

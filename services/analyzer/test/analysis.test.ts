@@ -55,10 +55,39 @@ describe('analyse', () => {
     expect(update.speech!.features.topicCoherence).toBe(0.9);
   });
 
+  it('stores wellbeing tags checked against the transcript, with domain states and the headline', () => {
+    const r = review({
+      tags: [
+        { id: 'food.ate_little', turn: 3, basis: 'said', confidence: 0.95 },
+        { id: 'food.pizza_night', turn: 3, basis: 'said', confidence: 0.99 },
+        { id: 'social.family_contact', turn: 2, basis: 'said', confidence: 0.9 },
+        { id: 'mood.lonely', turn: 1, basis: 'inferred', confidence: 0.6 },
+        { id: 'mood.looking_forward', turn: 1, basis: 'inferred', confidence: 0.92 },
+      ],
+    });
+    const { update } = analyse(input({ review: r }));
+    expect(update.wellbeing!.tags).toEqual([
+      { id: 'food.ate_little', turn: 3, basis: 'said', confidence: 0.95 },
+      { id: 'mood.looking_forward', turn: 1, basis: 'inferred', confidence: 0.92 },
+    ]);
+    expect(update.wellbeing!.domains).toMatchObject({ food: 'concern', mood: 'good', social: 'unmentioned', body: 'unmentioned' });
+    expect(update.wellbeing!.headline).toBe(review().headline);
+    expect(analyse(input({ review: review({ headline: 'She said "I am fine".' }) })).update.wellbeing).not.toHaveProperty('headline');
+  });
+
+  it('keeps R1 and R2 results when the tags change', () => {
+    const poor = { intake: { status: 'poor' as const, reportedPoorDays: 3, evidenceTurns: [3] } };
+    const tagged = analyse(input({ review: review(poor) })).detections;
+    const untagged = analyse(input({ review: review({ ...poor, tags: [], headline: '' }) })).detections;
+    expect(untagged).toEqual(tagged);
+    expect(tagged.map((d) => d.rule)).toEqual(['R2']);
+  });
+
   it('runs the rule-based checks only when the model is unavailable', () => {
     const t: Turn[] = [...TRANSCRIPT, { speaker: 'resident', text: "I can't breathe properly.", startMs: 18000, endMs: 20000 }];
     const r = analyse(input({ transcript: t, review: null, modelError: 'Gemini request failed: 503' }));
     expect(r.update.summary).toBeUndefined();
+    expect(r.update.wellbeing).toBeUndefined();
     expect(r.update.analysis).toMatchObject({ intake: { status: 'unknown' }, memory: { topics: [], plans: [], likes: [] }, error: 'Gemini request failed: 503' });
     expect(r.update.analysis.model).toBeUndefined();
     expect(r.detections.map((d) => d.rule)).toEqual(['R1']);

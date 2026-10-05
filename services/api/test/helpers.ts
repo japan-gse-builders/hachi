@@ -1,7 +1,7 @@
-import type { Case, Detection } from '@hachi/core';
+import { domainStates, type CallTag, type Case, type Detection } from '@hachi/core';
 import { buildApp } from '../src/app.js';
 import type { TokenVerifier, VerifiedToken } from '../src/auth.js';
-import { MemoryStore, type CallRecord, type Resident, type StoredCase } from '@hachi/store';
+import { MemoryStore, type CallRecord, type CallWellbeing, type Resident, type StoredCase } from '@hachi/store';
 import { buildResident } from '../src/residents.js';
 import type { ResidentInput } from '../src/schemas.js';
 import { residentInputSchema } from '../src/schemas.js';
@@ -96,6 +96,15 @@ export function call(overrides: Partial<CallRecord> = {}): CallRecord {
     createdAt: '2026-10-01T01:05:00.000Z',
     ...overrides,
   };
+}
+
+export function wellbeing(tags: CallTag[], headline?: string): CallWellbeing {
+  return { tags, domains: domainStates(tags.map((t) => t.id)), ...(headline ? { headline } : {}) };
+}
+
+/** Tags said in the resident turn of `call()`. */
+export function said(...ids: CallTag['id'][]): CallTag[] {
+  return ids.map((id) => ({ id, turn: 1, basis: 'said', confidence: 0.9 }));
 }
 
 export function idGen(prefix = 'id'): () => string {

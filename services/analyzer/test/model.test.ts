@@ -1,3 +1,4 @@
+import { WELLBEING_TAG_IDS } from '@hachi/core';
 import { describe, expect, it, vi } from 'vitest';
 import { formatTranscript, GeminiReviewer, RESPONSE_JSON_SCHEMA, reviewInstruction, ReviewError, reviewSchema } from '../src/model.js';
 import { review, TRANSCRIPT } from './fixtures.js';
@@ -27,6 +28,45 @@ describe('prompt', () => {
 
   it('requires every field of the review in the JSON schema', () => {
     expect([...RESPONSE_JSON_SCHEMA.required].sort()).toEqual(Object.keys(reviewSchema.shape).sort());
+  });
+
+  it('lets the model choose tags only from the vocabulary, each citing a turn', () => {
+    const item = RESPONSE_JSON_SCHEMA.properties.tags.items;
+    expect(item.properties.id.enum).toEqual(WELLBEING_TAG_IDS);
+    expect(item.properties.basis.enum).toEqual(['said', 'inferred']);
+    expect([...item.required].sort()).toEqual(['basis', 'confidence', 'id', 'turn']);
+    const prompt = reviewInstruction('en');
+    for (const id of WELLBEING_TAG_IDS) expect(prompt).toContain(`- ${id}: `);
+    expect(prompt).toContain('- food.ate_little: Ate little (ate much less than usual or no appetite)');
+    expect(prompt).toMatch(/chosen ONLY from the list/);
+    expect(prompt).toMatch(/headline: one short sentence for family/);
+    expect(prompt).toMatch(/no quotes/);
+  });
+});
+
+describe('review schema', () => {
+  it('drops malformed tags without failing the review', () => {
+    const r = reviewSchema.parse({
+      ...review(),
+      tags: [
+        { id: 'body.tired', turn: 1, basis: 'said', confidence: 0.9 },
+        { id: 'body.tired', turn: -1, basis: 'said', confidence: 0.9 },
+        { id: 'body.tired', turn: 1, basis: 'guessed', confidence: 0.9 },
+        { id: 'body.tired', turn: 1, basis: 'said', confidence: 3 },
+        'body.tired',
+      ],
+      headline: '  Maggie sounded well.  ',
+    });
+    expect(r.tags).toEqual([{ id: 'body.tired', turn: 1, basis: 'said', confidence: 0.9 }]);
+    expect(r.headline).toBe('Maggie sounded well.');
+  });
+
+  it('reads a review without tags or headline as having none, and caps the number of tags', () => {
+    const { tags: _t, headline: _h, ...old } = review();
+    expect(reviewSchema.parse(old)).toMatchObject({ tags: [], headline: '' });
+    expect(reviewSchema.parse({ ...old, tags: 'none', headline: 42 })).toMatchObject({ tags: [], headline: '' });
+    const many = Array.from({ length: 50 }, () => ({ id: 'body.tired', turn: 1, basis: 'said', confidence: 0.9 }));
+    expect(reviewSchema.parse({ ...old, tags: many, headline: '' }).tags).toHaveLength(30);
   });
 });
 

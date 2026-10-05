@@ -1,6 +1,14 @@
 import type { GoogleGenAI } from '@google/genai';
-import type { Locale, Turn } from '@hachi/core';
+import { WELLBEING_TAG_IDS, WELLBEING_TAGS, type Locale, type TagBasis, type Turn } from '@hachi/core';
 import { z } from 'zod';
+
+/** A wellbeing tag as the model returned it; `id` is checked against the vocabulary later. */
+export interface ModelTag {
+  id: string;
+  turn: number;
+  basis: TagBasis;
+  confidence: number;
+}
 
 /** What the model returns for one call. Turn numbers refer to the `[n]` labels of the transcript. */
 export interface ModelReview {
@@ -12,6 +20,8 @@ export interface ModelReview {
   topicCoherence: number;
   temporaryCondition: boolean;
   noisy: boolean;
+  tags: ModelTag[];
+  headline: string;
 }
 
 export interface ReviewInput {
@@ -40,6 +50,15 @@ const list = (max: number, len = 200) => z.array(text(len)).max(max);
 const turn = z.number().int().min(0);
 const summary = z.object({ health: text(600), meals: text(600), topics: list(8) });
 
+const MAX_TAGS = 30;
+const tag = z.object({ id: z.string(), turn, basis: z.enum(['said', 'inferred']), confidence: z.number().min(0).max(1) });
+/** A malformed tag or headline is dropped rather than failing the review, so R1/R2 never wait on them. */
+const tags = z
+  .array(z.unknown())
+  .catch([])
+  .transform((xs) => xs.flatMap((x) => tag.safeParse(x).data ?? []).slice(0, MAX_TAGS));
+const headline = z.string().catch('').transform((s) => s.trim());
+
 export const reviewSchema = z.object({
   emergencies: z
     .array(z.object({ turn, quote: text(400), symptom: text(120), confidence: z.number().min(0).max(1) }))
@@ -55,6 +74,8 @@ export const reviewSchema = z.object({
   topicCoherence: z.number().min(0).max(1),
   temporaryCondition: z.boolean(),
   noisy: z.boolean(),
+  tags,
+  headline,
 });
 
 const strings = { type: 'array', items: { type: 'string' } } as const;
@@ -101,9 +122,25 @@ export const RESPONSE_JSON_SCHEMA = {
     topicCoherence: { type: 'number', minimum: 0, maximum: 1 },
     temporaryCondition: { type: 'boolean' },
     noisy: { type: 'boolean' },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', enum: WELLBEING_TAG_IDS },
+          turn: { type: 'integer' },
+          basis: { type: 'string', enum: ['said', 'inferred'] },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+        },
+        required: ['id', 'turn', 'basis', 'confidence'],
+      },
+    },
+    headline: { type: 'string' },
   },
-  required: ['emergencies', 'intake', 'staffSummary', 'familySummary', 'memory', 'topicCoherence', 'temporaryCondition', 'noisy'],
+  required: ['emergencies', 'intake', 'staffSummary', 'familySummary', 'memory', 'topicCoherence', 'temporaryCondition', 'noisy', 'tags', 'headline'],
 } as const;
+
+const TAG_LIST = WELLBEING_TAGS.map((t) => `- ${t.id}: ${t.label.en}${'hint' in t ? ` (${t.hint})` : ''}`);
 
 const STAFF_LANGUAGE: Record<Locale, string> = { ja: 'Japanese', en: 'English' };
 
@@ -124,6 +161,9 @@ export function reviewInstruction(staffLocale: Locale): string {
     'topicCoherence: 0 to 1, how well the resident\'s answers stay on topic and connect to each other (1 = fully coherent). Judge only the resident.',
     'temporaryCondition: true if the resident mentions something temporary that affects their speech today, such as a cold, sore throat, dentures, or being very tired.',
     'noisy: true if the transcript suggests heavy background noise or a bad line (many garbled or misheard turns).',
+    'tags: wellbeing tags for this call, chosen ONLY from the list below (give the id). Tag only what the resident says about themselves for today or the last few days: not other people, not things long past, not denials ("I\'m not lonely" is not mood.lonely). Do not tag anything by default: leave a topic out when it was not talked about. turn = the resident turn the tag comes from. basis = "said" if the resident says it in so many words, "inferred" if it clearly follows from what they say. confidence = 0 to 1. Leave out anything that does not fit a tag.',
+    ...TAG_LIST,
+    'headline: one short sentence for family in plain, warm English about how the resident seemed in this call, using their name. Mention a concern gently if there is one. Describe their mood only if what they say shows it; do not guess. No medical or diagnosis words, no quotes, nothing about how they speak, no details about money or medicines.',
   ].join('\n');
 }
 

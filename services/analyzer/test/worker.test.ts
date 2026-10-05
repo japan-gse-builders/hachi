@@ -25,6 +25,8 @@ describe('analyzeCall', () => {
     await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: [], model: true });
     const c = (await store.getCall('res-1', ref.callId))!;
     expect(c).toMatchObject({ analysisPending: false, summary: review().staffSummary, familySummary: review().familySummary });
+    expect(c.wellbeing).toMatchObject({ domains: { body: 'concern', food: 'concern', mood: 'good', sleep: 'unmentioned' }, headline: review().headline });
+    expect(c.wellbeing!.tags.map((t) => t.id)).toEqual(['body.tired', 'mood.looking_forward', 'food.ate_little']);
     expect(c.analysis).toMatchObject({ model: 'gemini-test', turns: 4, memory: review().memory });
     expect(c.speech).toBeDefined();
     expect(c.analysisLease).toBeUndefined();

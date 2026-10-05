@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, urgencyTone } from '../format';
+import { staffTagLine } from '../glance';
 import type { CaseDetail } from '../types';
 
 const STATUSES = [
@@ -120,6 +121,13 @@ export function CasePage() {
           {detail.calls.map((c) => (
             <article key={c.id}>
               <p className="meta">{formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}</p>
+              {c.wellbeing && c.wellbeing.tags.length > 0 && (
+                <ul className="tag-list" aria-label="Wellbeing tags with the turn each came from">
+                  {c.wellbeing.tags.map((t) => (
+                    <li key={t.id} className={`tag ${t.polarity} ${t.basis}`} title={t.quote ?? undefined}>{staffTagLine(t)}</li>
+                  ))}
+                </ul>
+              )}
               {c.summary && (
                 <>
                   <p><strong>Health.</strong> {c.summary.health}</p>

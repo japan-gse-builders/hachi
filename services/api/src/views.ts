@@ -1,20 +1,30 @@
 import {
   baselineFor,
   buildBaseline,
+  combineStates,
   effectiveUrgency,
+  LIFE_DOMAINS,
+  localDate,
   nextCallAt,
   prioritize,
   RULE_NAMES,
   sortQueue,
   SPEECH_FEATURES,
+  tagTrends,
   URGENCY_LABELS,
   usualRange,
+  visibleToFamily,
+  wellbeingTag,
+  type DomainState,
+  type LifeDomain,
   type Locale,
   type MeasurementMethod,
   type PrioritizedCase,
   type SpeechFeature,
+  type Turn,
+  type WellbeingTagId,
 } from '@hachi/core';
-import type { CallRecord, CaseEvent, Resident, StoredCase } from '@hachi/store';
+import type { CallRecord, CallWellbeing, CaseEvent, Resident, StoredCase } from '@hachi/store';
 
 export interface MediaSigner {
   /** Returns a short-lived HTTPS URL for a gs:// recording. */
@@ -132,6 +142,7 @@ export async function buildCaseDetail(
       status: x.status,
       durationSec: x.durationSec ?? null,
       summary: x.summary ?? null,
+      wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, x.transcript ?? [], locale) : null,
       transcript: evidenceCallIds.has(x.id) ? (x.transcript ?? []) : undefined,
     })),
     // Unusable calls are kept, marked, so staff can see e.g. a cold rather than a gap.
@@ -151,6 +162,27 @@ export async function buildCaseDetail(
   };
 }
 
+const describeTag = (id: WellbeingTagId, locale: Locale) => {
+  const t = wellbeingTag(id);
+  return { id, label: t.label[locale], domain: t.domain, polarity: t.polarity };
+};
+
+/** Staff see every tag with the resident's words it came from, so they can check it. */
+function staffWellbeing(w: CallWellbeing, transcript: Turn[], locale: Locale) {
+  return {
+    headline: w.headline ?? null,
+    domains: w.domains,
+    tags: w.tags.map((t) => ({
+      ...describeTag(t.id, locale),
+      audience: wellbeingTag(t.id).audience,
+      turn: t.turn,
+      basis: t.basis,
+      confidence: t.confidence,
+      quote: transcript[t.turn]?.text.slice(0, 300) ?? null,
+    })),
+  };
+}
+
 /** Staff only: the resident's usual range per feature and measuring method, as the analyzer compares against. */
 function speechBaselineView(calls: CallRecord[], serviceStartedAt: string) {
   const b = buildBaseline(calls.flatMap((x) => (x.speech ? [x.speech] : [])), serviceStartedAt);
@@ -166,29 +198,93 @@ function speechBaselineView(calls: CallRecord[], serviceStartedAt: string) {
 }
 
 export const FAMILY_WINDOW_DAYS = 14;
+/** Tag trends compare the latest calls with the same number of calls before them. */
+export const FAMILY_TREND_CALLS = 7;
+const FAMILY_TRENDS_SHOWN = 8;
 
 const STATUS_LABELS: Record<Locale, Record<StoredCase['status'], string>> = {
   ja: { open: '未対応', in_progress: '対応中', closed: '完了' },
   en: { open: 'Not started', in_progress: 'In progress', closed: 'Done' },
 };
 
+/** The model's sentence can read like an ongoing emergency long after staff have dealt with it. */
+const EMERGENCY_HEADLINE: Record<Locale, (name: string, status: string) => string> = {
+  ja: (name, status) => `${name}さんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：${status}。`,
+  en: (name, status) => `Hachi let the care team know about something ${name} said in this call. Care team follow-up: ${status}.`,
+};
+
+function familyHeadline(r: Resident, c: CallRecord, cases: StoredCase[], locale: Locale): string | null {
+  const emergency = cases.find((x) => x.rule === 'R1' && x.detections.some((d) => d.evidence.some((e) => e.callId === c.id)));
+  if (emergency) return EMERGENCY_HEADLINE[locale](r.name, STATUS_LABELS[locale][emergency.status]);
+  return c.wellbeing?.headline ?? null;
+}
+
+type LifeStates = Record<LifeDomain, DomainState>;
+
+const perLifeDomain = (state: (d: LifeDomain) => DomainState) => Object.fromEntries(LIFE_DOMAINS.map((d) => [d, state(d)])) as LifeStates;
+const familyTagIds = (w: CallWellbeing) => w.tags.map((t) => t.id).filter(visibleToFamily);
+const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
 /**
- * FAM-02, FAM-03, FAM-04. Deliberately excludes recordings, transcripts and speech analysis
- * so residents can talk freely.
+ * The latest call's domains, one column per resident-local day (null: no call that connected)
+ * and how often each family-visible tag came up. Calls analysed before tags existed count as
+ * "not talked about", never as fine.
+ */
+function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
+  const connected = [...calls].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
+  const today = localDate(now, r.timeZone);
+  const days = Array.from({ length: FAMILY_WINDOW_DAYS }, (_, i) => shiftDate(today, i + 1 - FAMILY_WINDOW_DAYS)).map((date) => {
+    const onDay = connected.filter((c) => dateOf(c) === date);
+    const tagged = onDay.flatMap((c) => (c.wellbeing ? [c.wellbeing] : []));
+    return {
+      date,
+      tagged: tagged.length > 0,
+      domains: onDay.length ? perLifeDomain((d) => combineStates(tagged.map((w) => w.domains[d] ?? 'unmentioned'))) : null,
+    };
+  });
+  const tagged = connected.flatMap((c) => (c.wellbeing ? [c.wellbeing] : []));
+  const trends = tagTrends(tagged.map(familyTagIds), FAMILY_TREND_CALLS)
+    .slice(0, FAMILY_TRENDS_SHOWN)
+    .map(({ id, ...counts }) => ({ ...describeTag(id, locale), ...counts }));
+  const latest = connected[0];
+  return {
+    latest: latest
+      ? {
+          startedAt: latest.startedAt,
+          headline: familyHeadline(r, latest, cases, locale),
+          domains: latest.wellbeing ? perLifeDomain((d) => latest.wellbeing!.domains[d] ?? 'unmentioned') : null,
+        }
+      : null,
+    days,
+    trends,
+  };
+}
+
+/**
+ * FAM-02, FAM-03, FAM-04. Deliberately excludes recordings, transcripts, speech analysis and the
+ * turns, basis and confidence behind tags, so residents can talk freely. Only `family` tags are
+ * listed; mood is shown as a domain state only.
  */
 export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
+  const finished = calls.filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress');
   return {
     resident: { id: r.id, name: r.name },
     nextCallAt: r.active ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
-    calls: calls
-      .filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress')
-      .map((c) => ({
+    glance: familyGlance(r, finished.filter((c) => c.status === 'completed'), cases, now, locale),
+    calls: finished.map((c) => {
+      const w = c.status === 'completed' ? c.wellbeing : undefined;
+      return {
         startedAt: c.startedAt,
         connected: c.status === 'completed',
         durationSec: c.status === 'completed' ? (c.durationSec ?? null) : null,
         summary: c.status === 'completed' ? (c.familySummary ?? null) : null,
-      })),
+        headline: c.status === 'completed' ? familyHeadline(r, c, cases, locale) : null,
+        domains: w ? perLifeDomain((d) => w.domains[d] ?? 'unmentioned') : null,
+        tags: w ? familyTagIds(w).map((id) => describeTag(id, locale)) : [],
+      };
+    }),
     alerts: cases
       .map((c) => ({ c, sent: c.notifications.filter((n) => n.recipient === 'family') }))
       .filter(({ sent }) => sent.length > 0)

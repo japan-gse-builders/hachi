@@ -1,13 +1,16 @@
 import type {
   Case,
   CallSpeechSample,
+  CallTag,
   Contact,
   DeliveryReport,
+  DomainState,
   IntakeObservation,
   OutboxMessage,
   Turn,
   Urgency,
   VulnerabilityProfile,
+  WellbeingDomain,
 } from '@hachi/core';
 
 export type CallChannel = 'pstn' | 'whatsapp';
@@ -70,6 +73,8 @@ export interface CallRecord {
   summary?: CallSummary;
   /** Plain-language summary for family (FAM-03). */
   familySummary?: CallSummary;
+  /** Wellbeing tags from the model review; absent on calls analysed before tags existed or without the model. */
+  wellbeing?: CallWellbeing;
   speech?: CallSpeechSample;
   analysisPending: boolean;
   createdAt: string;
@@ -96,6 +101,14 @@ export interface CallRecord {
   analysis?: CallAnalysis;
   /** An analysis worker holds the call until this time. */
   analysisLease?: string;
+}
+
+export interface CallWellbeing {
+  /** Checked against the transcript: known ids, resident turns, enough confidence. */
+  tags: CallTag[];
+  domains: Record<WellbeingDomain, DomainState>;
+  /** One plain sentence for family; absent when the model's sentence did not pass the checks. */
+  headline?: string;
 }
 
 /** CNV-07: what the resident talked about, used to open later calls (CNV-08). */
