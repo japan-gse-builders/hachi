@@ -83,7 +83,7 @@ export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string 
       maxAttempts: 3,
       retryDelaySec: 180,
       dispatchLookbackMin: 10,
-      twilio: { voiceFrom: '+18664289155' },
+      twilio: { voiceFrom: '+15005550006' },
     },
     now: overrides.now ?? (() => clock.now),
     newToken: () => `token-${++tokens}`,

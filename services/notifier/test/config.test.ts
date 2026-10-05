@@ -6,8 +6,8 @@ const base = {
   TWILIO_ACCOUNT_SID: 'AC123',
   TWILIO_API_KEY_SID: 'SK123',
   TWILIO_API_KEY_SECRET: 'test-secret',
-  TWILIO_SMS_FROM: '+19787559139',
-  TWILIO_VOICE_FROM: '+18664289155',
+  TWILIO_SMS_FROM: '+15005550007',
+  TWILIO_VOICE_FROM: '+15005550006',
   GOOGLE_CLOUD_PROJECT: 'hachi-test',
   TASKS_INVOKER_SA: 'hachi-tasks@hachi-test.iam.gserviceaccount.com',
 };
@@ -18,7 +18,7 @@ describe('loadConfig', () => {
     expect(c).toMatchObject({
       port: 8080,
       publicBaseUrl: 'https://hachi-notifier.example.run.app',
-      twilio: { smsFrom: '+19787559139', voiceFrom: '+18664289155', apiBaseUrl: 'https://api.twilio.com' },
+      twilio: { smsFrom: '+15005550007', voiceFrom: '+15005550006', apiBaseUrl: 'https://api.twilio.com' },
       smsAllowedPrefixes: ['+81'],
       tasks: { project: 'hachi-test', location: 'asia-northeast1', queue: 'notifications' },
       allowedCallers: [base.TASKS_INVOKER_SA],

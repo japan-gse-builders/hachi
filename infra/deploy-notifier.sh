@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploys the notification worker (SMS / email / push / voice alerts from the outbox).
 # Run deploy-telephony.sh first (it serves the Twilio delivery-status webhook). Safe to re-run.
-# Usage: PROJECT_ID=my-project ./infra/deploy-notifier.sh
+# Usage: PROJECT_ID=my-project TWILIO_SMS_FROM=+1... TWILIO_VOICE_FROM=+1... ./infra/deploy-notifier.sh
+# (the Twilio numbers can be omitted on re-deploys; the running service's values are kept)
 # Email is optional: create the secret `sendgrid-api-key` and set EMAIL_FROM to a verified sender.
 set -euo pipefail
 
@@ -12,8 +13,6 @@ SERVICE=hachi-notifier
 REPO=hachi
 QUEUE=notifications
 JOB=hachi-notify-sweep
-SMS_FROM="${TWILIO_SMS_FROM:-+19787559139}"
-VOICE_FROM="${TWILIO_VOICE_FROM:-+18664289155}"
 RUNTIME_SA="hachi-notifier@${PROJECT_ID}.iam.gserviceaccount.com"
 INVOKER_SA="hachi-tasks@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -21,6 +20,9 @@ SECRETS=(twilio-account-sid twilio-api-key-sid twilio-api-key-secret)
 
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
+source infra/lib.sh
+SMS_FROM="$(twilio_number TWILIO_SMS_FROM "$SERVICE" "$REGION")"
+VOICE_FROM="$(twilio_number TWILIO_VOICE_FROM "$SERVICE" "$REGION")"
 
 echo "==> Enabling APIs"
 gcloud services enable fcm.googleapis.com

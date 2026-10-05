@@ -108,7 +108,7 @@ describe('emergencyTransfer', () => {
     expect(r.outcome).toBe('placed');
     expect(telephony.calls.map((c) => c.to)).toEqual(['+819000000002', '+81300000000']);
     const alert = telephony.calls[0]!;
-    expect(alert).toMatchObject({ from: '+18664289155', ringTimeoutSec: 45 });
+    expect(alert).toMatchObject({ from: '+15005550006', ringTimeoutSec: 45 });
     expect(alert.statusCallbackUrl).toBeUndefined();
     expect(alert.twiml).toContain(`action="${BASE_URL}/twilio/alert-response?residentId=res-1&amp;callId=2026-10-02-0"`);
     expect(alert.twiml).toContain('Press 1 to be connected to Margaret Smith now.');

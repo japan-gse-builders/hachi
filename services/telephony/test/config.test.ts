@@ -8,7 +8,7 @@ describe('loadConfig', () => {
     TWILIO_API_KEY_SID: `SK${'b'.repeat(32)}`,
     TWILIO_API_KEY_SECRET: 'key-secret-value',
     TWILIO_AUTH_TOKEN: 'auth-token-value',
-    TWILIO_VOICE_FROM: '+18664289155',
+    TWILIO_VOICE_FROM: '+15005550006',
     GOOGLE_CLOUD_PROJECT: 'hachi-prod',
     TASKS_INVOKER_SA: 'tasks@hachi-prod.iam.gserviceaccount.com',
     TASK_CALLER_EMAILS: 'Tasks@hachi-prod.iam.gserviceaccount.com, scheduler@hachi-prod.iam.gserviceaccount.com',

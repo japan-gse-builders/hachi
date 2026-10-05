@@ -125,7 +125,7 @@ apps/web               Firebase Hosting: Web UI（職員用トリアージキュ
 - 送信の流れ: ケース更新時に Outbox（Firestore `outbox`）へ書き込み → 送信タスクをキュー `notifications` に投入 → Worker が 1 件ずつ送信。緊急時は Gateway が転送依頼の直後に投入する。投入に失敗しても、毎分のスイープが 2 分以上動きのない未送信分を拾う
 - 二重送信の防止: 送信済み・失敗・スキップの通知は二度と送らない。送信中は 60 秒の排他（リース）を取り、同じ通知の重複タスクは待たせる。送信成功の直後に書き込みが失敗した場合のみ、再送の可能性が残る（少なくとも 1 回は届くことを優先）
 - 再試行: 一時的なエラー（5xx、429、ネットワーク、認証設定の誤り）は Cloud Tasks のバックオフで最大 8 回。恒久的なエラー（番号の誤りなど）は即座に「失敗」として残し、Error ログを出す（Firestore の `failed` がデッドレターの代わり）
-- チャネル: SMS は Twilio（送信元 `+19787559139`、宛先は `SMS_ALLOWED_PREFIXES` で +81 のみに制限）、音声通報は Twilio の発信（URL を除いた文面を 2 回読み上げ）、プッシュは FCM、メールは SendGrid。SendGrid の鍵が未設定ならメールは「スキップ」として記録する
+- チャネル: SMS は Twilio（送信元は `TWILIO_SMS_FROM`、宛先は `SMS_ALLOWED_PREFIXES` で +81 のみに制限）、音声通報は Twilio の発信（URL を除いた文面を 2 回読み上げ）、プッシュは FCM、メールは SendGrid。SendGrid の鍵が未設定ならメールは「スキップ」として記録する
 - NTF-04: 送信に成功したら、送信日時・チャネル・送信先をケースの `notifications` に記録する（重複して記録しない）
 - ログには宛先（個人情報）を出さず、Outbox の ID だけを出す
 
@@ -208,8 +208,8 @@ apps/web               Firebase Hosting: Web UI（職員用トリアージキュ
 
 | リソース | 名前 | 設定 |
 |---|---|---|
-| Twilio 発信用番号（開発） | `+18664289155`（米国フリーダイヤル） | 通話のみ（SMS は無効）。環境変数 `TWILIO_VOICE_FROM`。本番では日本の 050 番号に差し替える |
-| Twilio SMS 送信用番号（開発） | `+19787559139`（米国ローカル番号、2026-10-02 取得） | SMS 送信用。環境変数 `TWILIO_SMS_FROM`。フェーズ 5 の通知 Worker が使う |
+| Twilio 発信用番号（開発） | 米国フリーダイヤル（番号はリポジトリに記載しない） | 通話のみ（SMS は無効）。環境変数 `TWILIO_VOICE_FROM`。本番では日本の 050 番号に差し替える |
+| Twilio SMS 送信用番号（開発） | 米国ローカル番号（2026-10-02 取得、番号はリポジトリに記載しない） | SMS 送信用。環境変数 `TWILIO_SMS_FROM`。フェーズ 5 の通知 Worker が使う |
 | Twilio WhatsApp 用番号（未登録） | `+14434894797`（米国ローカル番号、2026-10-02 取得） | WhatsApp 送信用に確保。まだ Meta には登録していない。SMS 用の番号とは別にしている |
 | Cloud Storage バケット（録音） | `oct1-hachi-recordings` | asia-northeast1 / Standard / 公開アクセス防止 / Uniform。API は環境変数 `RECORDINGS_BUCKET` で受け取り、このバケット以外の署名付き URL は発行しない |
 

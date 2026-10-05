@@ -6,7 +6,10 @@
  * no contact details, so nobody is called or notified. Everything is marked `synthetic: true`.
  * Gemini results cached by `eval:r3` are reused.
  *
- *   npm run seed:demo -w @hachi/analyzer -- [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run]
+ *   npm run seed:demo -w @hachi/analyzer -- [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
+ *
+ * --reset first deletes those demo residents (only if marked synthetic) with their calls, cases
+ * and recordings, so the demo can be rebuilt with today's dates and current code.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -30,6 +33,7 @@ const { values: args } = parseArgs({
     seed: { type: 'string', default: '2026' },
     people: { type: 'string', default: 'syn-c1,syn-c2,syn-s1' },
     'dry-run': { type: 'boolean', default: false },
+    reset: { type: 'boolean', default: false },
   },
 });
 
@@ -131,7 +135,21 @@ const serviceStartedAt = shifted(scenario.serviceStartedAt);
 
 for (const { profile: p, calls } of people) {
   const residentId = `demo-${p.id}`;
-  if (await store.getResident(residentId)) {
+  const existing = await store.getResident(residentId);
+  if (existing && args.reset) {
+    if (!existing.synthetic) throw new Error(`${residentId} is not marked synthetic; refusing to delete it`);
+    const cases = await db.collection('cases').where('residentId', '==', residentId).get();
+    console.log(`${residentId}: ${args['dry-run'] ? 'would delete' : 'deleting'} resident, its calls, ${cases.size} case(s) and recordings`);
+    if (!args['dry-run']) {
+      for (const c of cases.docs) {
+        const outbox = await db.collection('outbox').where('caseId', '==', c.id).get();
+        await Promise.all(outbox.docs.map((o) => o.ref.delete()));
+        await db.recursiveDelete(c.ref);
+      }
+      await db.recursiveDelete(db.collection('residents').doc(residentId));
+      await objects.deleteFiles({ prefix: `synthetic-demo/${residentId}/` });
+    }
+  } else if (existing) {
     console.log(`${residentId} already exists; skipped (delete it first to re-seed)`);
     continue;
   }

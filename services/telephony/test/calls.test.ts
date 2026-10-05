@@ -86,7 +86,7 @@ describe('placeCall', () => {
     const r = await placeCall(deps, INPUT, 0);
     expect(r).toEqual({ outcome: 'placed', providerCallId: expect.stringMatching(/^CA/) });
     const req = telephony.calls[0]!;
-    expect(req).toMatchObject({ to: '+819000000001', from: '+18664289155', ringTimeoutSec: 30, maxCallSec: 480 });
+    expect(req).toMatchObject({ to: '+819000000001', from: '+15005550006', ringTimeoutSec: 30, maxCallSec: 480 });
     expect(req.statusCallbackUrl).toBe(`${BASE_URL}/twilio/status?residentId=res-1&callId=2026-10-02-0`);
     expect(req.twiml).toContain('<Say');
     expect(req.twiml).toContain('Hachi, an AI assistant');

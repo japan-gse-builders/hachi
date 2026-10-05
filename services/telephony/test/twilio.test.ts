@@ -11,7 +11,7 @@ const CREDS = {
 
 const REQ = {
   to: '+819000000001',
-  from: '+18664289155',
+  from: '+15005550006',
   twiml: '<Response/>',
   statusCallbackUrl: 'https://t.example/twilio/status?residentId=r&callId=c',
   ringTimeoutSec: 30,
@@ -34,7 +34,7 @@ describe('TwilioVoice.placeCall', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     const body = init.body as URLSearchParams;
     expect(body.get('To')).toBe('+819000000001');
-    expect(body.get('From')).toBe('+18664289155');
+    expect(body.get('From')).toBe('+15005550006');
     expect(body.get('Twiml')).toBe('<Response/>');
     expect(body.get('StatusCallback')).toBe(REQ.statusCallbackUrl);
     expect(body.get('Timeout')).toBe('30');

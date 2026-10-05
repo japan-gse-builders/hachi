@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Creates (or updates) everything the outbound call pipeline needs and deploys it.
-# Safe to re-run. Usage: PROJECT_ID=my-project ./infra/deploy-telephony.sh
+# Safe to re-run. Usage: PROJECT_ID=my-project TWILIO_VOICE_FROM=+1... ./infra/deploy-telephony.sh
+# (TWILIO_VOICE_FROM can be omitted on re-deploys; the running service's value is kept)
 set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID to your Google Cloud project ID}"
@@ -9,7 +10,6 @@ SERVICE=hachi-telephony
 REPO=hachi
 QUEUE=outbound-calls
 JOB=hachi-dispatch
-VOICE_FROM="${TWILIO_VOICE_FROM:-+18664289155}"
 RUNTIME_SA="hachi-telephony@${PROJECT_ID}.iam.gserviceaccount.com"
 INVOKER_SA="hachi-tasks@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -17,6 +17,8 @@ SECRETS=(twilio-account-sid twilio-auth-token twilio-api-key-sid twilio-api-key-
 
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
+source infra/lib.sh
+VOICE_FROM="$(twilio_number TWILIO_VOICE_FROM "$SERVICE" "$REGION")"
 
 echo "==> Enabling APIs"
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
