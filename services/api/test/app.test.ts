@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
+import { CASE_CALLS } from '../src/views.js';
 import { MemoryStore } from '@hachi/store';
 import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, setup, storedCase } from './helpers.js';
 
@@ -256,22 +257,60 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect((await app.inject({ method: 'GET', url: '/api/cases/nope', ...as('staff') })).statusCode).toBe(404);
   });
 
-  it('includes the speech trend oldest first', async () => {
-    const { app, as, store } = await seeded();
-    const speech = (id: string, usable: boolean) => ({
-      callId: id,
-      at: '',
-      usable,
-      exclusionReasons: [],
-      features: { lexicalDiversity: 0.7, repairRate: 1, responseLatencyMs: 900, topicCoherence: null },
+  const spoken = (id: string, startedAt: string, usable = true, latency = 900, measuredFrom?: 'audio') =>
+    call({
+      id,
+      startedAt,
+      speech: {
+        callId: id,
+        at: startedAt,
+        usable,
+        exclusionReasons: usable ? [] : ['temporary_condition'],
+        features: { lexicalDiversity: 0.7, repairRate: 1, responseLatencyMs: latency, topicCoherence: null },
+        ...(measuredFrom ? { measuredFrom } : {}),
+      },
     });
+
+  it('includes the speech trend oldest first, marking calls left out of the analysis', async () => {
+    const { app, as, store } = await seeded();
     await store.addCalls([
-      call({ id: 's1', startedAt: '2026-09-28T01:00:00.000Z', speech: speech('s1', true) }),
-      call({ id: 's2', startedAt: '2026-09-29T01:00:00.000Z', speech: speech('s2', true) }),
-      call({ id: 's3', startedAt: '2026-09-30T01:00:00.000Z', speech: speech('s3', false) }),
+      spoken('s1', '2026-09-28T01:00:00.000Z'),
+      spoken('s2', '2026-09-29T01:00:00.000Z', true, 900, 'audio'),
+      spoken('s3', '2026-09-30T01:00:00.000Z', false),
     ]);
     const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') })).json();
-    expect(d.speechTrend.map((p: { callId: string }) => p.callId)).toEqual(['s1', 's2']);
+    expect(d.speechTrend.map((p: { callId: string }) => p.callId)).toEqual(['s1', 's2', 's3']);
+    expect(d.speechTrend[0]).toMatchObject({ usable: true, exclusionReasons: [], measuredFrom: 'transcript' });
+    expect(d.speechTrend[1].measuredFrom).toBe('audio');
+    expect(d.speechTrend[2]).toMatchObject({ usable: false, exclusionReasons: ['temporary_condition'] });
+    // The resident started on the day of the test calls: no usual range yet.
+    expect(d.speechBaseline).toBeNull();
+  });
+
+  it("returns the resident's usual speech range per measuring method, from older calls than it lists", async () => {
+    const { app, as, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, serviceStartedAt: '2026-06-01T00:00:00.000Z' }));
+    const day = (n: number) => new Date(Date.parse('2026-06-01T01:00:00.000Z') + n * 86_400_000).toISOString();
+    // 8 baseline calls in June (transcript timings) then 70 later calls, so June falls off the listed calls.
+    await store.addCalls([
+      ...Array.from({ length: 8 }, (_, i) => spoken(`b${i}`, day(i * 3), true, 800 + (i % 2) * 200)),
+      ...Array.from({ length: 70 }, (_, i) => spoken(`l${i}`, day(40 + i), true, 5000, 'audio')),
+    ]);
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') })).json();
+    expect(d.calls).toHaveLength(CASE_CALLS);
+    expect(d.speechTrend.some((p: { callId: string }) => p.callId.startsWith('b'))).toBe(false);
+    expect(d.speechBaseline).toMatchObject({ from: '2026-06-01T00:00:00.000Z', callCount: 8 });
+    const latency = d.speechBaseline.ranges.responseLatencyMs;
+    expect(latency.audio).toBeUndefined();
+    expect(latency.transcript.mean).toBeCloseTo(900);
+    expect(latency.transcript.low).toBeLessThan(900);
+    expect(latency.transcript.high).toBeGreaterThan(900);
+    expect(d.speechBaseline.ranges.lexicalDiversity.audio).toEqual(d.speechBaseline.ranges.lexicalDiversity.transcript);
+    expect(d.speechBaseline.ranges.topicCoherence).toBeUndefined();
+
+    const family = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') });
+    expect(family.statusCode).toBe(200);
+    for (const forbidden of ['speech', 'Baseline', 'ranges', 'usable', 'exclusion']) expect(family.body).not.toContain(forbidden);
   });
 
   it('updates status, urgency and rank with reasons, recording events (QUE-03, PRI-06)', async () => {

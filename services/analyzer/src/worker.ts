@@ -1,5 +1,5 @@
 import { analysisTask, requestDelivery, type TaskQueue } from '@hachi/cloud';
-import type { Detection, Locale, RuleId, TimingSource } from '@hachi/core';
+import { HISTORY_CALLS, type Detection, type Locale, type RuleId, type TimingSource } from '@hachi/core';
 import { NotFoundError, recordDetections, type CallRecord, type Store } from '@hachi/store';
 import { analyse } from './analysis.js';
 import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
@@ -122,7 +122,7 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     const timing: TimingSource = call.source === 'imported' ? 'transcript' : (voice ?? 'unavailable');
     const audioQuality = voice?.audioQuality ?? undefined;
 
-    const history = (await store.listCalls(ref.residentId, { limit: 120 })).filter((c) => c.id !== call.id);
+    const history = (await store.listCalls(ref.residentId, { limit: HISTORY_CALLS })).filter((c) => c.id !== call.id);
     const result = analyse({
       resident,
       call,

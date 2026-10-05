@@ -3,6 +3,7 @@ import {
   assessSpeechChange,
   buildBaseline,
   describeFeatureChange,
+  describeTrend,
   extractSpeechSample,
   mattr,
   median,
@@ -10,6 +11,7 @@ import {
   MIN_BASELINE_CALLS,
   repairRate,
   tokenize,
+  usualRange,
   type CallSpeechSample,
   type SpeechFeatures,
   type Turn,
@@ -248,5 +250,23 @@ describe('assessSpeechChange (SPK-02, SPK-03)', () => {
     for (const f of ['lexicalDiversity', 'repairRate', 'topicCoherence'] as const) {
       expect(describeFeatureChange({ ...c, feature: f }, 'ja')).not.toMatch(/認知症|dementia/i);
     }
+  });
+
+  it('describes the trend in words staff cannot misread, and says nothing when it is flat', () => {
+    expect(describeTrend('worsening', 'en')).toBe('getting worse over recent calls');
+    expect(describeTrend('improving', 'en')).toBe('easing over recent calls');
+    expect(describeTrend('stable', 'en')).toBeNull();
+    expect(describeTrend('stable', 'ja')).toBeNull();
+    expect(describeTrend('worsening', 'ja')).toMatch(/直近/);
+    expect(describeTrend('improving', 'ja')).toMatch(/和らいで/);
+  });
+});
+
+describe('usualRange', () => {
+  it('spans two of the standard deviations the assessment uses, never below zero', () => {
+    expect(usualRange('responseLatencyMs', { mean: 1000, std: 200, n: 8 })).toEqual({ mean: 1000, low: 600, high: 1400, n: 8 });
+    // A very steady baseline still gets the assessment's minimum spread.
+    expect(usualRange('responseLatencyMs', { mean: 1000, std: 10, n: 8 })).toMatchObject({ low: 700, high: 1300 });
+    expect(usualRange('repairRate', { mean: 0.4, std: 0.1, n: 8 }).low).toBe(0);
   });
 });

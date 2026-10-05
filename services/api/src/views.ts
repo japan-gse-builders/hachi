@@ -1,12 +1,18 @@
 import {
+  baselineFor,
+  buildBaseline,
   effectiveUrgency,
   nextCallAt,
   prioritize,
   RULE_NAMES,
   sortQueue,
+  SPEECH_FEATURES,
   URGENCY_LABELS,
+  usualRange,
   type Locale,
+  type MeasurementMethod,
   type PrioritizedCase,
+  type SpeechFeature,
 } from '@hachi/core';
 import type { CallRecord, CaseEvent, Resident, StoredCase } from '@hachi/store';
 
@@ -64,7 +70,10 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
   });
 }
 
-/** QUE-02 */
+/** Calls listed on the case page; the speech baseline may come from older ones. */
+export const CASE_CALLS = 60;
+
+/** QUE-02. `calls` are newest first, up to HISTORY_CALLS so the baseline matches the analyzer's. */
 export async function buildCaseDetail(
   c: StoredCase,
   r: Resident,
@@ -77,7 +86,8 @@ export async function buildCaseDetail(
 ) {
   const open = residentCases.filter((x) => x.status !== 'closed');
   const p = prioritizeStored(c, open.some((x) => x.id === c.id) ? open : [...open, c], r, now, locale);
-  const callById = new Map(calls.map((x) => [x.id, x]));
+  const shown = calls.slice(0, CASE_CALLS);
+  const callById = new Map(shown.map((x) => [x.id, x]));
   const evidenceCallIds = new Set(c.detections.flatMap((d) => d.evidence.map((e) => e.callId)));
   const audioUrls = new Map<string, string>();
   await Promise.all(
@@ -116,7 +126,7 @@ export async function buildCaseDetail(
       ...d,
       evidence: d.evidence.map((e) => ({ ...e, audioUrl: audioUrls.get(e.callId) ?? null })),
     })),
-    calls: calls.map((x) => ({
+    calls: shown.map((x) => ({
       id: x.id,
       startedAt: x.startedAt,
       status: x.status,
@@ -124,12 +134,35 @@ export async function buildCaseDetail(
       summary: x.summary ?? null,
       transcript: evidenceCallIds.has(x.id) ? (x.transcript ?? []) : undefined,
     })),
-    speechTrend: calls
-      .filter((x) => x.speech?.usable)
-      .map((x) => ({ callId: x.id, at: x.startedAt, features: x.speech!.features }))
+    // Unusable calls are kept, marked, so staff can see e.g. a cold rather than a gap.
+    speechTrend: shown
+      .filter((x) => x.speech)
+      .map((x) => ({
+        callId: x.id,
+        at: x.startedAt,
+        features: x.speech!.features,
+        usable: x.speech!.usable,
+        exclusionReasons: x.speech!.exclusionReasons,
+        measuredFrom: x.speech!.measuredFrom ?? 'transcript',
+      }))
       .reverse(),
+    speechBaseline: speechBaselineView(calls, r.serviceStartedAt),
     events,
   };
+}
+
+/** Staff only: the resident's usual range per feature and measuring method, as the analyzer compares against. */
+function speechBaselineView(calls: CallRecord[], serviceStartedAt: string) {
+  const b = buildBaseline(calls.flatMap((x) => (x.speech ? [x.speech] : [])), serviceStartedAt);
+  if (!b) return null;
+  const ranges: Partial<Record<SpeechFeature, Partial<Record<MeasurementMethod, ReturnType<typeof usualRange>>>>> = {};
+  for (const f of SPEECH_FEATURES) {
+    for (const m of ['audio', 'transcript'] as const) {
+      const st = baselineFor(b, f, m);
+      if (st) ranges[f] = { ...ranges[f], [m]: usualRange(f, st) };
+    }
+  }
+  return { from: b.from, to: b.to, callCount: b.callCount, ranges };
 }
 
 export const FAMILY_WINDOW_DAYS = 14;

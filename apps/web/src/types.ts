@@ -63,8 +63,34 @@ export interface CaseDetail {
     summary: { health: string; meals: string; topics: string[] } | null;
     transcript?: { speaker: 'resident' | 'agent'; text: string; startMs: number; endMs: number }[];
   }[];
-  speechTrend: { callId: string; at: string; features: Record<string, number | null> }[];
+  speechTrend: SpeechPoint[];
+  /** Missing from servers older than the speech chart; null until the resident has a baseline. */
+  speechBaseline?: SpeechBaseline | null;
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
+}
+
+export interface SpeechPoint {
+  callId: string;
+  at: string;
+  features: Record<string, number | null>;
+  /** Missing from older servers, which only sent usable calls. */
+  usable?: boolean;
+  exclusionReasons?: string[];
+  measuredFrom?: 'audio' | 'transcript' | 'text_only';
+}
+
+export interface UsualRange {
+  mean: number;
+  low: number;
+  high: number;
+  n: number;
+}
+
+export interface SpeechBaseline {
+  from: string;
+  to: string;
+  callCount: number;
+  ranges: Record<string, { audio?: UsualRange; transcript?: UsualRange } | undefined>;
 }
 
 export interface FamilyDashboard {

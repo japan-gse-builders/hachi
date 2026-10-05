@@ -3,6 +3,7 @@ import {
   assessSpeechChange,
   buildBaseline,
   describeFeatureChange,
+  describeTrend,
   detectR1,
   extractSpeechSample,
   localDate,
@@ -160,6 +161,7 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
     ...(fromRecording.length ? [] : longest),
   ];
   const changes = a.contributors.map((c) => describeFeatureChange(c, 'en')).join('; ') || 'Speech differs from usual';
+  const trend = describeTrend(a.trend, 'en');
   return {
     residentId: input.resident.id,
     rule: 'R3',
@@ -167,7 +169,7 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
     confidence: Math.min(0.9, 0.5 + a.magnitude / 8),
     changeMagnitude: a.magnitude,
     trend: a.trend,
-    summary: `${changes} (trend: ${a.trend})`,
+    summary: trend ? `${changes}; ${trend}` : changes,
     evidence: examples,
     detectedAt: input.now.toISOString(),
   };

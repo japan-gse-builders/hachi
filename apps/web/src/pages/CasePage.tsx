@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, speechLine, urgencyTone } from '../format';
+import { SpeechTrendCard } from '../components/SpeechTrendCard';
+import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, urgencyTone } from '../format';
 import type { CaseDetail } from '../types';
 
 const STATUSES = [
@@ -111,14 +112,7 @@ export function CasePage() {
         ))}
       </section>
 
-      {detail.speechTrend.length > 0 && (
-        <section className="card">
-          <h2>Speech over time</h2>
-          {detail.speechTrend.map((point) => (
-            <p key={point.callId} className="meta">{formatWhen(point.at)} · {speechLine(point.features)}</p>
-          ))}
-        </section>
-      )}
+      {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} />}
 
       <section className="card">
         <h2>Calls</h2>

@@ -203,6 +203,8 @@ export interface SpeechBaseline {
 }
 
 export const BASELINE_DAYS = 28;
+/** How many of a resident's latest calls the analysis reads, and so builds the baseline from. */
+export const HISTORY_CALLS = 120;
 export const MIN_BASELINE_CALLS = 8;
 
 function statsOf(values: (number | null)[]): FeatureStats | undefined {
@@ -364,4 +366,20 @@ const FEATURE_TEXT: Record<'ja' | 'en', Record<SpeechFeature, string>> = {
 
 export function describeFeatureChange(c: FeatureChange, locale: 'ja' | 'en'): string {
   return FEATURE_TEXT[locale][c.feature];
+}
+
+/** `trend` is about the size of the change across recent calls, so a flat one says nothing new. */
+const TREND_TEXT: Record<'ja' | 'en', Record<Trend, string | null>> = {
+  ja: { worsening: '直近の通話でさらに強まっている', improving: '直近の通話では和らいできている', stable: null },
+  en: { worsening: 'getting worse over recent calls', improving: 'easing over recent calls', stable: null },
+};
+
+export function describeTrend(trend: Trend, locale: 'ja' | 'en'): string | null {
+  return TREND_TEXT[locale][trend];
+}
+
+/** The resident's usual range for a feature: the baseline mean ± 2 of the standard deviations the assessment uses. */
+export function usualRange(f: SpeechFeature, s: FeatureStats): { mean: number; low: number; high: number; n: number } {
+  const spread = 2 * effectiveStd(f, s);
+  return { mean: s.mean, low: Math.max(0, s.mean - spread), high: s.mean + spread, n: s.n };
 }

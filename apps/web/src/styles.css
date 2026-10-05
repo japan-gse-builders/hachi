@@ -48,3 +48,18 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .agent { color: #5c564c; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .check input { width: auto; }
+.speech-charts { display: grid; gap: 16px; }
+@media (min-width: 640px) { .speech-charts { grid-template-columns: 1fr 1fr; } }
+.speech-chart { margin: 0; }
+.speech-chart figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.speech-chart svg { display: block; width: 100%; height: auto; background: #faf8f3; border-radius: 8px; }
+.speech-chart p { margin: 4px 0 0; }
+.speech-axis { display: flex; justify-content: space-between; font-size: 14px; }
+.speech-legend { margin: 0; }
+.speech-band { fill: #dcebe1; }
+.speech-mean { stroke: #1f4d3a; stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.6; }
+.speech-line { fill: none; stroke: #5c564c; stroke-width: 1.5; }
+.speech-point { fill: #1f4d3a; }
+.speech-outside { fill: #b3261e; }
+.speech-excluded { fill: white; stroke: #5c564c; stroke-width: 1.5; }
+details summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; color: #1f4d3a; font-weight: 600; }

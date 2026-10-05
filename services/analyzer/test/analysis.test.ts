@@ -173,8 +173,23 @@ describe('analyse', () => {
       expect(d.changeMagnitude).toBeGreaterThan(2);
       expect(d.confidence).toBeLessThanOrEqual(0.9);
       expect(d.summary).toContain('Response time is longer than usual');
-      expect(d.summary).toMatch(/\(trend: \w+\)$/);
+      expect(d.summary).not.toMatch(/trend/i);
       expect(r.update.speech!.usable).toBe(true);
+    });
+
+    it('words the trend so a flat one does not read as "no change"', () => {
+      const growing = [3000, 4500, 6000].map((ms, i) =>
+        past(`g${i}`, `2026-09-2${7 + i}T02:00:00.000Z`, features({ responseLatencyMs: ms, repairRate: 1 + i * 4 })),
+      );
+      const worse = analyse(input({ transcript: long, review: slowReview, history: [...baseline, ...growing] })).detections.find((x) => x.rule === 'R3')!;
+      expect(worse.trend).toBe('worsening');
+      expect(worse.summary).toMatch(/; getting worse over recent calls$/);
+
+      const today = analyse(input({ transcript: long, review: slowReview, history: baseline })).update.speech!.features;
+      const same = ['f1', 'f2', 'f3'].map((id, i) => past(id, `2026-09-2${7 + i}T02:00:00.000Z`, today));
+      const flat = analyse(input({ transcript: long, review: slowReview, history: [...baseline, ...same] })).detections.find((x) => x.rule === 'R3')!;
+      expect(flat.trend).toBe('stable');
+      expect(flat.summary).toBe(flat.summary.split('; ').filter((s) => /than usual$/.test(s)).join('; '));
     });
 
     it('quotes the longest things the resident said', () => {

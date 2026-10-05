@@ -1,4 +1,4 @@
-import type { Locale } from '@hachi/core';
+import { HISTORY_CALLS, type Locale } from '@hachi/core';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError, type ZodType } from 'zod';
 import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
@@ -158,7 +158,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const [r, residentCases, calls, events] = await Promise.all([
       getResidentOr404(c.residentId),
       store.listCasesByResident(c.residentId),
-      store.listCalls(c.residentId, { limit: 60 }),
+      store.listCalls(c.residentId, { limit: HISTORY_CALLS }),
       store.listCaseEvents(c.id),
     ]);
     return buildCaseDetail(c, r, residentCases, calls, events, signer, now(), localeOf(req));
