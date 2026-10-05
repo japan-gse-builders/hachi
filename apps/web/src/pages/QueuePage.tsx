@@ -32,7 +32,7 @@ export function QueuePage() {
   }, [token]);
 
   return (
-    <div className="stack">
+    <div className="stack tiles">
       <h2>Needs attention</h2>
       {error && <p className="error">{error}</p>}
       {items === null && !error && <p>Loading…</p>}

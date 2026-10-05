@@ -22,7 +22,7 @@ export function FamilyDashboardPage() {
   if (!data) return <p>Loading…</p>;
 
   return (
-    <div className="stack">
+    <div className="stack narrow">
       <FamilyDashboardView data={data} now={new Date()} />
       <AlertsCard />
     </div>

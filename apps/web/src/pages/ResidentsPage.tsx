@@ -36,7 +36,7 @@ export function ResidentsPage() {
   };
 
   return (
-    <div className="stack">
+    <div className="stack tiles">
       <div className="row">
         <h2>Residents</h2>
         <Link className="button" to="/staff/residents/new">Add resident</Link>

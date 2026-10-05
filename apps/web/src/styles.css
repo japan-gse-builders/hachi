@@ -11,7 +11,21 @@ body { margin: 0; }
 button, input, select, textarea { font: inherit; }
 a { color: #1f4d3a; }
 
-.app { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+/* Staff work on laptops and read several cases side by side; family screens stay narrow below. */
+.app { max-width: 1320px; margin: 0 auto; padding: 16px 16px 48px; }
+@media (min-width: 900px) { .app { padding: 24px 24px 64px; } }
+/* Phone-first reading width, kept for family and for single forms. */
+.narrow { max-width: 760px; }
+/* Independent cards tile across the window instead of stacking in one column. */
+@media (min-width: 900px) {
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); align-items: start; }
+  .tiles > h2, .tiles > p, .tiles > .row { grid-column: 1 / -1; }
+}
+/* Evidence and the decision on the left, the case's own records on the right. */
+@media (min-width: 1000px) {
+  .case { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: start; }
+  .case > section:first-child { grid-column: 1 / -1; }
+}
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
 .brand { font-weight: 700; color: #1f4d3a; text-decoration: none; font-size: 22px; }
 .nav { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -45,6 +59,8 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .error { background: #f8d4d0; padding: 12px; border-radius: 12px; }
 .quote { border-left: 4px solid #1f4d3a; padding-left: 12px; margin: 8px 0; }
 .transcript { display: grid; gap: 8px; }
+/* A card can now be as wide as the window; lines of speech stay short enough to read. */
+.quote p, .transcript p { max-width: 80ch; }
 .agent { color: #5c564c; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .check input { width: auto; }

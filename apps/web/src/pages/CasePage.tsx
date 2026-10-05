@@ -71,7 +71,7 @@ export function CasePage() {
   const evidence = detail.detections.flatMap((d) => d.evidence);
 
   return (
-    <div className="stack">
+    <div className="stack case">
       <section className={`card ${detail.case.urgency === 'emergency' ? 'card-emergency' : ''}`}>
         <span className={`badge ${urgencyTone(detail.case.urgency)}`}>{detail.case.urgencyLabel}</span>
         <h2>{detail.resident.name}</h2>
@@ -80,106 +80,111 @@ export function CasePage() {
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
       </section>
 
-      <section className="card">
-        <h2>What was said</h2>
-        {evidence.map((e, i) => (
-          <blockquote className="quote" key={`${e.callId}-${i}`}>
-            <p>“{e.quote}”</p>
-            <p className="meta">{clock(e.startMs)}</p>
-            {e.audioUrl && (
-              <audio controls preload="metadata" src={audioAt(e.audioUrl, e.startMs)}>
-                <track kind="captions" />
-              </audio>
-            )}
-          </blockquote>
-        ))}
-        {call && (
-          <div className="transcript">
-            {call.transcript!.map((t, i) => (
-              <p key={i} className={t.speaker === 'agent' ? 'agent' : ''}>
-                <strong>{speakerLabel(t.speaker, detail.resident.name)}: </strong>
-                {t.text}
-              </p>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Notifications</h2>
-        {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}
-        {detail.case.notifications.map((n, i) => (
-          <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address} · {deliveryLabel(n.delivery)}</p>
-        ))}
-      </section>
-
-      {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} />}
-
-      <section className="card">
-        <h2>Calls</h2>
-        <div className="calls">
-          {detail.calls.map((c) => (
-            <article key={c.id}>
-              <p className="meta">{formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}</p>
-              {c.wellbeing && c.wellbeing.tags.length > 0 && (
-                <ul className="tag-list" aria-label="Wellbeing tags with the turn each came from">
-                  {c.wellbeing.tags.map((t) => (
-                    <li key={t.id} className={`tag ${t.polarity} ${t.basis}`} title={t.quote ?? undefined}>{staffTagLine(t)}</li>
-                  ))}
-                </ul>
-              )}
-              {c.summary && (
-                <>
-                  <p><strong>Health.</strong> {c.summary.health}</p>
-                  <p><strong>Meals.</strong> {c.summary.meals}</p>
-                  {c.summary.topics.length > 0 && <p><strong>Topics.</strong> {topicList(c.summary.topics)}</p>}
-                </>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <form className="card stack" onSubmit={(e) => void save(e)}>
-        <h2>Update this case</h2>
-        {error && <p className="error">{error}</p>}
-        <label>Status
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label>Urgency
-          <select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
-            {URGENCIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label>Rank adjustment within this urgency (−10 to +10, higher comes first)
-          <input type="number" min={-10} max={10} step={1} value={offset} onChange={(e) => setOffset(Number(e.target.value))} />
-        </label>
-        <label>Reason (required when changing urgency or rank)
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
-        </label>
-        {status === 'closed' && (
-          <>
-            <label className="check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />There was a real concern</label>
-            <label>Note<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></label>
-          </>
-        )}
-        <button type="submit">Save</button>
-      </form>
-
-      {detail.events.length > 0 && (
+      {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
+      <div className="stack case-evidence">
         <section className="card">
-          <h2>History</h2>
-          {detail.events.map((event, i) => (
-            <p key={i} className="meta">
-              {formatWhen(event.at)} · {eventLabel(event.type)}
-              {event.from !== undefined && event.to !== undefined ? ` · ${String(event.from)} → ${String(event.to)}` : ''}
-              {event.reason ? ` · ${event.reason}` : ''}
-            </p>
+          <h2>What was said</h2>
+          {evidence.map((e, i) => (
+            <blockquote className="quote" key={`${e.callId}-${i}`}>
+              <p>“{e.quote}”</p>
+              <p className="meta">{clock(e.startMs)}</p>
+              {e.audioUrl && (
+                <audio controls preload="metadata" src={audioAt(e.audioUrl, e.startMs)}>
+                  <track kind="captions" />
+                </audio>
+              )}
+            </blockquote>
+          ))}
+          {call && (
+            <div className="transcript">
+              {call.transcript!.map((t, i) => (
+                <p key={i} className={t.speaker === 'agent' ? 'agent' : ''}>
+                  <strong>{speakerLabel(t.speaker, detail.resident.name)}: </strong>
+                  {t.text}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
+  
+        {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} />}
+  
+        <form className="card stack" onSubmit={(e) => void save(e)}>
+          <h2>Update this case</h2>
+          {error && <p className="error">{error}</p>}
+          <label>Status
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label>Urgency
+            <select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
+              {URGENCIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label>Rank adjustment within this urgency (−10 to +10, higher comes first)
+            <input type="number" min={-10} max={10} step={1} value={offset} onChange={(e) => setOffset(Number(e.target.value))} />
+          </label>
+          <label>Reason (required when changing urgency or rank)
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
+          </label>
+          {status === 'closed' && (
+            <>
+              <label className="check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />There was a real concern</label>
+              <label>Note<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></label>
+            </>
+          )}
+          <button type="submit">Save</button>
+        </form>
+      </div>
+
+      <div className="stack case-records">
+        <section className="card">
+          <h2>Notifications</h2>
+          {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}
+          {detail.case.notifications.map((n, i) => (
+            <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address} · {deliveryLabel(n.delivery)}</p>
           ))}
         </section>
-      )}
+  
+        <section className="card">
+          <h2>Calls</h2>
+          <div className="calls">
+            {detail.calls.map((c) => (
+              <article key={c.id}>
+                <p className="meta">{formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}</p>
+                {c.wellbeing && c.wellbeing.tags.length > 0 && (
+                  <ul className="tag-list" aria-label="Wellbeing tags with the turn each came from">
+                    {c.wellbeing.tags.map((t) => (
+                      <li key={t.id} className={`tag ${t.polarity} ${t.basis}`} title={t.quote ?? undefined}>{staffTagLine(t)}</li>
+                    ))}
+                  </ul>
+                )}
+                {c.summary && (
+                  <>
+                    <p><strong>Health.</strong> {c.summary.health}</p>
+                    <p><strong>Meals.</strong> {c.summary.meals}</p>
+                    {c.summary.topics.length > 0 && <p><strong>Topics.</strong> {topicList(c.summary.topics)}</p>}
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+  
+        {detail.events.length > 0 && (
+          <section className="card">
+            <h2>History</h2>
+            {detail.events.map((event, i) => (
+              <p key={i} className="meta">
+                {formatWhen(event.at)} · {eventLabel(event.type)}
+                {event.from !== undefined && event.to !== undefined ? ` · ${String(event.from)} → ${String(event.to)}` : ''}
+                {event.reason ? ` · ${event.reason}` : ''}
+              </p>
+            ))}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

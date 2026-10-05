@@ -31,7 +31,7 @@ export function FamilyHomePage() {
     );
   }
   return (
-    <div className="stack">
+    <div className="stack narrow">
       <h2>Who would you like to check on?</h2>
       {residents.map((r) => (
         <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
