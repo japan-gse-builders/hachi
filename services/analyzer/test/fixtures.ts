@@ -56,7 +56,8 @@ export function call(overrides: Partial<CallRecord> = {}): CallRecord {
 export function review(overrides: Partial<ModelReview> = {}): ModelReview {
   return {
     emergencies: [],
-    intake: { status: 'normal', reportedPoorDays: 0, evidenceTurns: [] },
+    answers: [],
+    intake: { status: 'normal', fluids: 'normal', reportedPoorDays: 0, evidenceTurns: [] },
     staffSummary: { health: 'Feeling a little tired', meals: 'Skipped breakfast', topics: ['Grandson visiting'] },
     familySummary: { health: 'A little tired', meals: 'Ate very little', topics: ['Grandson visiting'] },
     memory: { topics: ['grandson Ken'], plans: ['Ken visits on Sunday'], likes: ['grandson Ken'] },

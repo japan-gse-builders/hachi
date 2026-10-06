@@ -1,6 +1,6 @@
-import { WELLBEING_TAG_IDS } from '@hachi/core';
+import { ANSWER_LABELS, screenItem, WELLBEING_TAG_IDS } from '@hachi/core';
 import { describe, expect, it, vi } from 'vitest';
-import { formatTranscript, GeminiReviewer, RESPONSE_JSON_SCHEMA, reviewInstruction, ReviewError, reviewSchema } from '../src/model.js';
+import { formatTranscript, GeminiReviewer, responseJsonSchema, reviewInstruction, ReviewError, reviewSchema } from '../src/model.js';
 import { review, TRANSCRIPT } from './fixtures.js';
 
 function reviewer(impl: () => Promise<{ text?: string }>) {
@@ -27,11 +27,28 @@ describe('prompt', () => {
   });
 
   it('requires every field of the review in the JSON schema', () => {
-    expect([...RESPONSE_JSON_SCHEMA.required].sort()).toEqual(Object.keys(reviewSchema.shape).sort());
+    const schema = responseJsonSchema();
+    expect(Object.keys(schema.properties).sort()).toEqual(Object.keys(reviewSchema.shape).sort());
+    // Only the contact request is optional: most calls do not contain one, and an empty object
+    // the model filled in to satisfy the schema would be a request nobody made.
+    expect(Object.keys(schema.properties).filter((k) => !schema.required.includes(k))).toEqual(['contactRequest']);
+  });
+
+  it('lets the model answer only the questions this call asked, with that question\u2019s own options', () => {
+    const items = [screenItem('uls3.left_out')];
+    const answers = responseJsonSchema(items).properties.answers.items;
+    expect(answers.properties.itemId.enum).toEqual(['uls3.left_out']);
+    expect(answers.properties.answer.enum).toEqual(ANSWER_LABELS);
+    expect(responseJsonSchema().properties.answers.items.properties.itemId.enum).toEqual([]);
+
+    const prompt = reviewInstruction('en', items);
+    expect(prompt).toContain('- uls3.left_out: "How often do you feel left out?" Its answers: Hardly ever or never / Some of the time / Often.');
+    expect(prompt).toMatch(/a guessed answer is worse than none/);
+    expect(reviewInstruction('en')).toMatch(/an empty list, because this call had no set questions/);
   });
 
   it('lets the model choose tags only from the vocabulary, each citing a turn', () => {
-    const item = RESPONSE_JSON_SCHEMA.properties.tags.items;
+    const item = responseJsonSchema().properties.tags.items;
     expect(item.properties.id.enum).toEqual(WELLBEING_TAG_IDS);
     expect(item.properties.basis.enum).toEqual(['said', 'inferred']);
     expect([...item.required].sort()).toEqual(['basis', 'confidence', 'id', 'turn']);
@@ -76,7 +93,7 @@ describe('GeminiReviewer', () => {
     await expect(r.review(input)).resolves.toEqual(review());
     const req = generateContent.mock.calls[0]![0] as { model: string; config: Record<string, unknown> };
     expect(req.model).toBe('gemini-3.8-flash');
-    expect(req.config).toMatchObject({ responseMimeType: 'application/json', responseJsonSchema: RESPONSE_JSON_SCHEMA });
+    expect(req.config).toMatchObject({ responseMimeType: 'application/json', responseJsonSchema: responseJsonSchema() });
     expect(r.model).toBe('gemini-3.8-flash');
   });
 

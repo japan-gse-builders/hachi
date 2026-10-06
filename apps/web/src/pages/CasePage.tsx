@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { ScreeningCard } from '../components/ScreeningCard';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, topicList, urgencyTone } from '../format';
 import { staffTagLine } from '../glance';
@@ -108,6 +109,8 @@ export function CasePage() {
         </section>
   
         {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} />}
+
+        {detail.screening && <ScreeningCard screening={detail.screening} />}
   
         <form className="card stack" onSubmit={(e) => void save(e)}>
           <h2>Update this case</h2>

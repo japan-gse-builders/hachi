@@ -30,6 +30,9 @@ const SUMMARY: Record<R1Category, string> = {
   severe_bleeding: 'Reported heavy bleeding during the call',
   fear_of_dying: 'Said they feel they might be dying during the call',
   calling_for_help: 'Asked for help during the call',
+  sudden_headache: 'Described a sudden or worst-ever headache during the call',
+  vision_loss: 'Reported losing their sight or seeing double during the call',
+  balance_loss: 'Reported suddenly losing their balance during the call',
 };
 
 export function emergencySummary(input: Pick<EmergencyInput, 'category' | 'symptom'>): string {

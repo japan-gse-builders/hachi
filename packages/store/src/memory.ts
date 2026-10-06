@@ -1,4 +1,4 @@
-import type { CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
+import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -133,6 +133,14 @@ export class MemoryStore implements Store {
   }
 
   async listPendingOutbox(limit: number): Promise<OutboxEntry[]> {
-    return [...this.outbox.values()].filter((e) => e.status === 'pending').slice(0, limit).map(clone);
+    return this.outboxByStatus('pending', limit);
+  }
+
+  async listOutboxAwaitingApproval(limit: number): Promise<OutboxEntry[]> {
+    return this.outboxByStatus('awaiting_approval', limit);
+  }
+
+  private outboxByStatus(status: OutboxStatus, limit: number): OutboxEntry[] {
+    return [...this.outbox.values()].filter((e) => e.status === status).slice(0, limit).map(clone);
   }
 }

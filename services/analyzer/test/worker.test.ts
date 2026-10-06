@@ -7,8 +7,8 @@ import { call, rejected, resident, review, setup, TRANSCRIPT, unavailable } from
 
 const ref = { residentId: 'res-1', callId: '2026-10-02-1' };
 const breathless: Turn[] = [...TRANSCRIPT, { speaker: 'resident', text: "Actually I can't breathe very well.", startMs: 18000, endMs: 21000 }];
-const poor = review({ intake: { status: 'poor', reportedPoorDays: 0, evidenceTurns: [3] } });
-const starving = review({ intake: { status: 'poor', reportedPoorDays: 3, evidenceTurns: [3] } });
+const poor = review({ intake: { status: 'poor', fluids: 'unknown', reportedPoorDays: 0, evidenceTurns: [3] } });
+const starving = review({ intake: { status: 'poor', fluids: 'unknown', reportedPoorDays: 3, evidenceTurns: [3] } });
 
 describe('parseAnalyzeInput', () => {
   it('accepts only well-formed ids', () => {
@@ -52,6 +52,101 @@ describe('analyzeCall', () => {
     const outbox = await store.listOutboxByCase(c!.id);
     expect(outbox.length).toBeGreaterThan(0);
     expect(outbox.every((e) => e.status === 'pending')).toBe(true);
+  });
+
+  describe('a resident asking for someone to ring them (CNV-15, NTF-05)', () => {
+    const ASKED: Turn[] = [
+      ...TRANSCRIPT,
+      { speaker: 'agent', text: 'Would you like me to tell your family or a friend that you would like a phone call?', startMs: 17500, endMs: 21000 },
+      { speaker: 'resident', text: 'Yes, my neighbour Susan, on 090 1111 2222.', startMs: 21200, endMs: 25000 },
+    ];
+    const requested = (who: string, confirmed = true) => review({ contactRequest: { who, confirmed, turn: 5 } });
+    const asking = (over = {}) => ({ calls: [call({ transcript: ASKED, ...over })] });
+
+    it('texts the family contact we hold as soon as the call is analysed', async () => {
+      const { deps, store, notifications, reviewer } = await setup(asking());
+      reviewer.next(requested('my daughter Alice'));
+      await analyzeCall(deps, ref);
+      const [queued] = await store.listPendingOutbox(10);
+      expect(queued).toMatchObject({ kind: 'contact_request', recipient: 'family', address: '+819000000002', status: 'pending' });
+      expect(notifications.tasks.map((t) => t.path)).toEqual([SEND_NOTIFICATION_PATH]);
+    });
+
+    it('holds a number the resident read out, and asks the notifier to send nothing', async () => {
+      const { deps, store, notifications, reviewer } = await setup(asking());
+      reviewer.next(requested('my neighbour Susan'));
+      await analyzeCall(deps, ref);
+      const [waiting] = await store.listOutboxAwaitingApproval(10);
+      expect(waiting).toMatchObject({ recipient: 'contact', address: '+819011112222', requestedFor: 'my neighbour Susan' });
+      expect(await store.listPendingOutbox(10)).toEqual([]);
+      expect(notifications.tasks).toEqual([]);
+    });
+
+    it('keeps the request on the call even when there is no one to text', async () => {
+      const { deps, store, reviewer } = await setup({ ...asking(), resident: resident({ family: undefined, familyLookup: [] }) });
+      reviewer.next(requested('my daughter Alice', false));
+      await analyzeCall(deps, ref);
+      expect((await store.getCall('res-1', ref.callId))!.analysis!.contactRequest).toMatchObject({ who: 'my daughter Alice' });
+      expect(await store.listPendingOutbox(10)).toEqual([]);
+      expect(await store.listOutboxAwaitingApproval(10)).toEqual([]);
+    });
+
+    it('does not text anyone about a call that was imported from the past', async () => {
+      const { deps, store, reviewer } = await setup(asking({ source: 'imported' }));
+      reviewer.next(requested('my daughter Alice'));
+      await analyzeCall(deps, ref);
+      expect(await store.listPendingOutbox(10)).toEqual([]);
+    });
+
+    it('texts once when the analysis runs twice', async () => {
+      const { deps, store, reviewer } = await setup(asking());
+      reviewer.next(requested('my daughter Alice'), requested('my daughter Alice'));
+      await analyzeCall(deps, ref);
+      await store.updateCall('res-1', ref.callId, (c) => ({ ...c, analysisPending: true }));
+      await analyzeCall(deps, ref);
+      expect(await store.listPendingOutbox(10)).toHaveLength(1);
+    });
+  });
+
+  describe('telling family that more company would be welcome', () => {
+    const CONSENTED = resident({ consent: { shareMood: true, recordedAt: '2026-08-01T00:00:00.000Z', recordedBy: 'staff-1' } });
+    /** Every UCLA item answered "often", which is the top of the scale. */
+    const lonely = review({
+      answers: ['uls3.companionship', 'uls3.left_out', 'uls3.isolated'].map((itemId) => ({ itemId, answer: 'Often', turn: 1 })),
+    });
+
+    it('texts and emails the family once the resident has agreed their mood may be shared', async () => {
+      const { deps, store, notifications, reviewer } = await setup({ resident: CONSENTED });
+      reviewer.next(lonely);
+      await analyzeCall(deps, ref);
+      const queued = await store.listPendingOutbox(10);
+      expect(queued.map((e) => e.channel).sort()).toEqual(['email', 'sms']);
+      expect(queued.every((e) => e.kind === 'loneliness' && e.recipient === 'family')).toBe(true);
+      expect(notifications.tasks).toHaveLength(2);
+    });
+
+    it('tells the family nothing when the resident has not agreed to it', async () => {
+      const { deps, store, reviewer } = await setup();
+      reviewer.next(lonely);
+      await analyzeCall(deps, ref);
+      expect(await store.listPendingOutbox(10)).toEqual([]);
+    });
+
+    it('tells the family nothing while the screen is incomplete', async () => {
+      const { deps, store, reviewer } = await setup({ resident: CONSENTED });
+      reviewer.next(review({ answers: [{ itemId: 'uls3.left_out', answer: 'Often', turn: 1 }] }));
+      await analyzeCall(deps, ref);
+      expect(await store.listPendingOutbox(10)).toEqual([]);
+    });
+
+    it('does not tell them twice in one rotation', async () => {
+      const { deps, store, reviewer } = await setup({ resident: CONSENTED });
+      reviewer.next(lonely, lonely);
+      await analyzeCall(deps, ref);
+      await store.updateCall('res-1', ref.callId, (c) => ({ ...c, analysisPending: true }));
+      await analyzeCall(deps, ref);
+      expect(await store.listPendingOutbox(10)).toHaveLength(2);
+    });
   });
 
   it('does not repeat a detection for the same call', async () => {

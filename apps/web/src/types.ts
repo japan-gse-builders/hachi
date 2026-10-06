@@ -20,6 +20,47 @@ export interface NotificationItem {
   delivery?: { status: string; errorCode?: string; at: string };
 }
 
+export interface DomainStatus {
+  domain: string;
+  label: string;
+  answered: number;
+  of: number;
+  flagged: number;
+  /** Numbered Kihon items Hachi has no telephone question for, such as item 12 (a body-mass index). */
+  missing: number[];
+  /** Null when the answers cannot settle the domain's own criterion either way. */
+  meets: boolean | null;
+}
+
+export interface InstrumentScore {
+  instrument: string;
+  score: number;
+  answered: number;
+  of: number;
+  positive: boolean | null;
+}
+
+/** What the set questions add up to. Missing from servers older than the screening questions. */
+export interface Screening {
+  asOf: string;
+  domains: DomainStatus[];
+  overall: { answered: number; of: number; flagged: number; meets: boolean | null };
+  instruments: InstrumentScore[];
+  loneliness: { status: string; summary: string };
+  shareMood: boolean;
+}
+
+/** A text the resident asked for by phone, held until staff or their family agree to it. */
+export interface ContactRequest {
+  id: string;
+  residentId: string;
+  residentName: string;
+  requestedFor: string;
+  number: string;
+  body: string;
+  requestedAt: string;
+}
+
 export interface Evidence {
   callId: string;
   quote: string;
@@ -68,6 +109,7 @@ export interface CaseDetail {
   speechTrend: SpeechPoint[];
   /** Missing from servers older than the speech chart; null until the resident has a baseline. */
   speechBaseline?: SpeechBaseline | null;
+  screening?: Screening;
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
 }
 
@@ -169,4 +211,6 @@ export interface Resident {
   callTime: string;
   timeZone: string;
   active: boolean;
+  /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
+  consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
 }

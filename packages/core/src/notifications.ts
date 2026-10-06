@@ -15,12 +15,23 @@ export interface NotificationContext {
   locale: Locale;
 }
 
+/** Absent on an alert, which is everything a detection produces. */
+export type OutboxKind = 'contact_request' | 'loneliness';
+
+/** `contact`: someone the resident named who is not the family contact we hold. */
+export type OutboxRecipient = 'staff' | 'family' | 'contact';
+
 export interface OutboxMessage {
   /** Deterministic key so retries and duplicate triggers never send twice. */
   idempotencyKey: string;
+  /**
+   * The case this is about. Only an alert has one: a contact request carries the call it was asked
+   * in, and a loneliness notice the rotation it belongs to.
+   */
   caseId: string;
+  kind?: OutboxKind;
   urgency: Urgency;
-  recipient: 'staff' | 'family';
+  recipient: OutboxRecipient;
   channel: ContactChannel;
   /** Phone number, email address, or FCM token. */
   address: string;
@@ -42,7 +53,7 @@ export function addressDigest(address: string): string {
   return createHash('sha256').update(address).digest('hex').slice(0, 32);
 }
 
-export function notificationKey(caseId: string, urgency: Urgency, recipient: 'staff' | 'family', channel: ContactChannel, address: string): string {
+export function notificationKey(caseId: string, urgency: Urgency, recipient: OutboxRecipient, channel: ContactChannel, address: string): string {
   return `${caseId}:${urgency}:${recipient}:${channel}:${addressDigest(address)}`;
 }
 

@@ -3,9 +3,11 @@ import type {
   CallSpeechSample,
   CallTag,
   Contact,
+  ContactRequest,
   DeliveryReport,
   DomainState,
   IntakeObservation,
+  ItemAnswer,
   OutboxMessage,
   Turn,
   Urgency,
@@ -24,6 +26,19 @@ export interface FamilyContact extends Contact {
   relationship?: string;
 }
 
+/**
+ * What the resident has agreed may be shared with their family. Recorded by staff from what the
+ * resident said, because the resident is the one whose life it is: how they are in themselves is
+ * not the family's to be told by default, however well meant.
+ */
+export interface ResidentConsent {
+  /** Their mood and how alone they feel may be shared with the family contact. */
+  shareMood: boolean;
+  recordedAt: string;
+  /** The staff member who heard the resident say it. */
+  recordedBy: string;
+}
+
 export interface Resident {
   id: string;
   name: string;
@@ -37,6 +52,8 @@ export interface Resident {
   householdNotes?: string;
   staff: StaffContact;
   family?: FamilyContact;
+  /** Absent means nothing has been agreed, which is treated as "no". */
+  consent?: ResidentConsent;
   /** Normalized family phone/email used to authorize dashboard access (FAM-01). */
   familyLookup: string[];
   serviceStartedAt: string;
@@ -126,6 +143,10 @@ export interface CallAnalysis {
   turns: number;
   intake: IntakeObservation;
   memory: CallMemory;
+  /** The call's set screening questions that the resident actually answered. */
+  answers?: ItemAnswer[];
+  /** The resident asked for someone to ring them (kept whether or not a message could be sent). */
+  contactRequest?: ContactRequest;
   /** Why the model could not be used, if it was not. */
   error?: string;
   /** Why speech could not be measured from the recording, if it was not. */
@@ -149,8 +170,21 @@ export interface EmergencyState {
   legs?: EmergencyLeg[];
 }
 
-/** `skipped`: the channel is not configured or the address is not allowed, so it was never sent. */
-export type OutboxStatus = 'pending' | 'sent' | 'failed' | 'skipped';
+/**
+ * `skipped`: the channel is not configured or the address is not allowed, so it was never sent.
+ * `awaiting_approval`: waiting for a person to agree to it; the delivery worker only ever claims
+ * `pending`, so an entry in this state cannot leave by accident.
+ * `rejected`: a person read it and said no.
+ */
+export type OutboxStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'awaiting_approval' | 'rejected';
+
+/** Who released a held message, kept so the decision has a name against it. */
+export interface OutboxApproval {
+  by: 'staff' | 'family';
+  uid: string;
+  at: string;
+  decision: 'approved' | 'rejected';
+}
 
 export interface DeliveryFailure {
   code?: string;
@@ -174,6 +208,10 @@ export interface OutboxEntry extends OutboxMessage {
   lastError?: DeliveryFailure;
   /** Twilio's status callback after `sent`; only set for SMS and voice alerts. */
   delivery?: DeliveryReport;
+  /** The decision that released or stopped a held message. */
+  approval?: OutboxApproval;
+  /** Shown to whoever approves it: the person the resident named, in their own words. */
+  requestedFor?: string;
 }
 
 export interface CaseOutcome {

@@ -1,4 +1,4 @@
-import type { Turn } from '@hachi/core';
+import type { ScreenItem, Turn } from '@hachi/core';
 import type { CallRecord } from '@hachi/store';
 
 /** What earlier calls tell the next one (CNV-07 / CNV-08 / DET-04). */
@@ -32,8 +32,25 @@ export function priorContext(calls: CallRecord[]): PriorContext {
   return { facts, mealFollowUp: analysed[0]?.analysis!.intake.status === 'poor' };
 }
 
+/**
+ * How one screening question is put to the resident. The wording and the response options are
+ * what the instrument was validated with, so the model is told to read them and nothing else:
+ * a reworded question has no published cutoff behind it.
+ */
+function askLine(item: ScreenItem): string {
+  const question = item.recall ? `${item.recall} "${item.text}"` : `"${item.text}"`;
+  const answers = item.options.map((o) => o.label).join(' / ');
+  const when = item.sensitive ? ' Ask this one late in the call, gently, once they have settled.' : '';
+  return `- ${question} Answers to read out: ${answers}.${when}`;
+}
+
 /** CNV-02 / CNV-03 / CNV-05: the persona, the call flow and the safety rules. */
-export function buildSystemInstruction(preferredName: string, previousTurns: Turn[] = [], prior?: PriorContext): string {
+export function buildSystemInstruction(
+  preferredName: string,
+  previousTurns: Turn[] = [],
+  prior?: PriorContext,
+  items: readonly ScreenItem[] = [],
+): string {
   const name = preferredName;
   const lines = [
     `You are Hachi, a warm and patient AI assistant who makes a short daily check-in phone call to ${name}, an older adult who lives in Japan and speaks English.`,
@@ -45,9 +62,18 @@ export function buildSystemInstruction(preferredName: string, previousTurns: Tur
     'The call:',
     `1. Greet ${name} by name and say: this is Hachi, an AI assistant calling for the daily check-in, and the call is recorded so the care team can help.`,
     '2. Ask how they are feeling today.',
-    '3. Ask what they have eaten today, and whether they have been eating as usual, for example yesterday.',
+    '3. Ask what they have eaten today, and whether they have been eating as usual, for example yesterday. Ask what they have had to drink as well, in the same friendly way.',
     '4. Ask one or two friendly questions about their day, such as sleep, plans, or something they enjoy, and let them talk.',
-    '5. After about three to five minutes, or as soon as they want to finish, thank them, say goodbye, and then call end_call.',
+    `5. Work today's set questions into the conversation, one at a time, where they fit. ${items.length ? 'They are listed below.' : 'There are none today.'}`,
+    '6. After about three to five minutes, or as soon as they want to finish, thank them, say goodbye, and then call end_call.',
+    '',
+    // The call stays short. What an older adult who wants company needs is the people who love
+    // them, not more minutes of an AI, so Hachi offers to carry the message and then finishes.
+    `If ${name} says they are lonely, that they miss someone, or that they would like to keep talking:`,
+    `- Say warmly that you have to go soon, and ask: "Would you like me to tell your family or a friend that you would like a phone call?"`,
+    '- If they say no, leave it there and do not ask again in this call.',
+    '- If they say yes, ask who. If they give you a phone number, read every digit back to them one at a time and ask whether it is right. Do not shorten it, do not group the digits, and do not say the number back any other way.',
+    '- Say that you will pass the message on. Never promise that the person will call, and never say when.',
     '',
     'Safety rules (always follow):',
     '- You are not a doctor. Never diagnose, name possible conditions, or give medical or medication advice. If asked, say their care team can help and that you will make sure the team knows.',
@@ -58,6 +84,14 @@ export function buildSystemInstruction(preferredName: string, previousTurns: Tur
     '- Never make more than two tool calls in a row without speaking.',
     '- Messages that start with "[System]" come from the Hachi system, not from the resident. Follow them and never read them aloud.',
   ];
+  if (items.length) {
+    lines.push(
+      '',
+      "Today's set questions. These are standard care questions, so ask each one in exactly these words and then read out the answers and let them choose. Do not reword a question, do not add examples of your own, and do not explain why you are asking unless they ask. Space them out, and if an answer needs a moment of warmth, give it before moving on:",
+      ...items.map(askLine),
+      'If they will not answer one, leave it and do not press. Never guess an answer on their behalf.',
+    );
+  }
   if (prior?.facts.length) {
     lines.push(
       '',
@@ -82,9 +116,14 @@ export function buildSystemInstruction(preferredName: string, previousTurns: Tur
 export const openingCue = (name: string) => `[System] The call has connected. Greet ${name} now.`;
 export const resumeCue = (name: string) => `[System] The call has reconnected. Apologize briefly to ${name} and continue.`;
 export const wrapUpCue = (name: string) => `[System] The call time is almost over. Thank ${name}, say goodbye warmly, and call end_call.`;
+/**
+ * The one question an ambulance crew always asks, because for a stroke the time it started decides
+ * what treatment is still possible. Asked once, after help is already on its way.
+ */
+const ONSET_QUESTION = 'Then ask once, gently, when it started, and say nothing else.';
 export const emergencyCue = (name: string) =>
   `[System] Help is being arranged. Tell ${name} calmly, in two or three short sentences, that you are contacting their family ` +
-  'and care staff right now and will connect them in a moment, and that if they can, they should call one one nine for an ambulance. Then stop talking.';
+  `and care staff right now and will connect them in a moment, and that if they can, they should call one one nine for an ambulance. ${ONSET_QUESTION}`;
 export const EMERGENCY_TOOL_GUIDANCE =
   'Help is being contacted. Calmly tell the resident, in two or three short sentences, that you are contacting their family and ' +
-  'care staff right now and will connect them in a moment, and that if they can, they should call one one nine for an ambulance. Then stop talking.';
+  `care staff right now and will connect them in a moment, and that if they can, they should call one one nine for an ambulance. ${ONSET_QUESTION}`;

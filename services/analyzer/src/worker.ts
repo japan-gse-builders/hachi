@@ -1,6 +1,6 @@
 import { analysisTask, requestDelivery, type TaskQueue } from '@hachi/cloud';
-import { HISTORY_CALLS, type Detection, type Locale, type RuleId, type TimingSource } from '@hachi/core';
-import { NotFoundError, recordDetections, type CallRecord, type Store } from '@hachi/store';
+import { HISTORY_CALLS, itemsForCall, localDate, type Detection, type Locale, type RuleId, type TimingSource } from '@hachi/core';
+import { NotFoundError, recordContactRequest, recordDetections, recordLonelinessNotice, type CallRecord, type Store } from '@hachi/store';
 import { analyse } from './analysis.js';
 import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
 import { measureRecording, type RecordingSource, type SpeechListener } from './voice.js';
@@ -99,7 +99,17 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     const audioUri = call.source !== 'imported' && spoke && recordings && listener ? call.audioUri : undefined;
     let stored = false;
     const [reviewed, measured] = await Promise.allSettled([
-      spoke ? deps.reviewer.review({ preferredName: resident.preferredName, transcript, staffLocale: config.staffLocale }) : Promise.resolve(null),
+      spoke
+        ? deps.reviewer.review({
+            preferredName: resident.preferredName,
+            transcript,
+            staffLocale: config.staffLocale,
+            items: itemsForCall(
+              resident.serviceStartedAt.slice(0, 10),
+              call.localDate ?? localDate(new Date(call.startedAt), resident.timeZone),
+            ),
+          })
+        : Promise.resolve(null),
       audioUri
         ? recordings!.read(audioUri).then((wav) => {
             stored = true;
@@ -151,6 +161,23 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
           outbox.map((e) => e.id),
         );
       }
+    }
+
+    // Imported history is a record of calls that already happened; nobody is waiting on it.
+    if (call.source !== 'imported') {
+      const queued: string[] = [];
+      const request = result.update.analysis.contactRequest;
+      if (request) {
+        const entry = await recordContactRequest(store, resident, call.id, request, now);
+        if (entry?.status === 'pending') queued.push(entry.id);
+      }
+      const notices = await recordLonelinessNotice(store, resident, [{ ...call, ...result.update }, ...history], {
+        asOf: result.update.analysis.intake.date,
+        now,
+        appBaseUrl: config.appBaseUrl,
+      });
+      queued.push(...notices.map((e) => e.id));
+      if (deps.notifications && queued.length) await requestDelivery(deps.notifications, queued);
     }
 
     await release(result.update, transcript.length);

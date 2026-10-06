@@ -2,12 +2,16 @@ import {
   baselineFor,
   buildBaseline,
   combineStates,
+  domainStatus,
   effectiveUrgency,
+  KIHON_DOMAIN_LABELS,
   LIFE_DOMAINS,
   localDate,
   nextCallAt,
+  overallStatus,
   prioritize,
   RULE_NAMES,
+  scoreInstrument,
   sortQueue,
   SPEECH_FEATURES,
   tagTrends,
@@ -24,7 +28,7 @@ import {
   type Turn,
   type WellbeingTagId,
 } from '@hachi/core';
-import type { CallRecord, CallWellbeing, CaseEvent, Resident, StoredCase } from '@hachi/store';
+import { lonelinessFor, type CallRecord, type CallWellbeing, type CaseEvent, type Resident, type StoredCase } from '@hachi/store';
 
 export interface MediaSigner {
   /** Returns a short-lived HTTPS URL for a gs:// recording. */
@@ -158,7 +162,29 @@ export async function buildCaseDetail(
       }))
       .reverse(),
     speechBaseline: speechBaselineView(calls, r.serviceStartedAt),
+    screening: screeningView(r, calls, now),
     events,
+  };
+}
+
+/**
+ * What the set questions add up to, for staff. Hachi does not administer the Kihon Checklist and
+ * does not score it: residents here speak English and the instrument may not be reworded, so each
+ * domain is reported with how many of its numbered items have an answer at all. `meets` is null
+ * wherever the answers cannot settle it, and `missing` names items Hachi has no telephone question
+ * for, such as item 12, which is a body-mass index.
+ */
+function screeningView(r: Resident, calls: CallRecord[], now: Date) {
+  const asOf = localDate(now, r.timeZone);
+  const answers = calls.flatMap((c) => c.analysis?.answers ?? []);
+  return {
+    asOf,
+    domains: domainStatus(answers, asOf).map((d) => ({ ...d, label: KIHON_DOMAIN_LABELS[d.domain].en })),
+    overall: overallStatus(answers, asOf),
+    instruments: (['ULS-3', 'PHQ-2'] as const).map((i) => scoreInstrument(i, answers, asOf)),
+    loneliness: lonelinessFor(r, calls, asOf),
+    /** Whether the resident agreed their family may be told how they are in themselves. */
+    shareMood: Boolean(r.consent?.shareMood),
   };
 }
 

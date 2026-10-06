@@ -9,3 +9,6 @@ export * from './priority.js';
 export * from './notifications.js';
 export * from './schedule.js';
 export * from './wellbeing.js';
+export * from './screening.js';
+export * from './contactRequest.js';
+export * from './loneliness.js';

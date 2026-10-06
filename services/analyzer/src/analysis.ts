@@ -7,11 +7,16 @@ import {
   detectR1,
   extractSpeechSample,
   localDate,
+  matchAnswer,
   normalizeUtterance,
+  parseSpokenNumber,
+  screenItem,
   type CallSpeechSample,
+  type ContactRequest,
   type Detection,
   type Evidence,
   type IntakeObservation,
+  type ItemAnswer,
   type SpeechExample,
   type TimingSource,
   type Turn,
@@ -104,11 +109,58 @@ function r1Detection(input: AnalysisInput): Detection | null {
   };
 }
 
+/**
+ * Screening answers as the model read them off the transcript, keeping only what the resident
+ * could actually have said: a known item, one of that item's own options, and a resident turn
+ * behind it. The rest is discarded, because a wrong answer here would be scored as if it were real.
+ */
+export function groundAnswers(review: ModelReview, transcript: Turn[], date: string): ItemAnswer[] {
+  const out = new Map<string, ItemAnswer>();
+  for (const a of review.answers) {
+    if (transcript[a.turn]?.speaker !== 'resident') continue;
+    let item;
+    try {
+      item = screenItem(a.itemId);
+    } catch {
+      continue;
+    }
+    const option = matchAnswer(item, a.answer);
+    if (option === null) continue;
+    out.set(item.id, { date, itemId: item.id, option });
+  }
+  return [...out.values()];
+}
+
+/**
+ * The resident's request for a phone call, with the number read back out of their own turn rather
+ * than taken from the model. The model reports that a number was agreed; the digits come from the
+ * transcript, so a model that retypes one digit cannot redirect the message to a stranger.
+ */
+export function groundContactRequest(review: ModelReview, transcript: Turn[]): ContactRequest | null {
+  const r = review.contactRequest;
+  if (!r?.who.trim()) return null;
+  const turn = transcript[r.turn];
+  if (turn?.speaker !== 'resident') return null;
+  const number = r.confirmed ? parseSpokenNumber(turn.text) : null;
+  return {
+    who: r.who.trim(),
+    ...(number ? { number } : {}),
+    // Without a number we have read out of their own words, nothing was confirmed.
+    confirmed: Boolean(number),
+    turn: r.turn,
+  };
+}
+
 function intakeFor(input: AnalysisInput): IntakeObservation {
   const date = input.call.localDate ?? localDate(new Date(input.call.startedAt), input.resident.timeZone);
   const i = input.review?.intake;
   if (!i) return { date, status: 'unknown' };
-  return { date, status: i.status, ...(i.reportedPoorDays > 0 ? { reportedPoorDays: i.reportedPoorDays } : {}) };
+  return {
+    date,
+    status: i.status,
+    ...(i.fluids !== 'unknown' ? { fluids: i.fluids } : {}),
+    ...(i.reportedPoorDays > 0 ? { reportedPoorDays: i.reportedPoorDays } : {}),
+  };
 }
 
 function mealEvidence(input: AnalysisInput): Evidence[] {
@@ -120,9 +172,22 @@ function mealEvidence(input: AnalysisInput): Evidence[] {
   return turns.slice(0, 3).map((t) => evidence(call.id, t));
 }
 
+function days(n: number): string {
+  return n >= 2 ? ` for ${n} days` : '';
+}
+
+/** Reads to staff as the two separate worries they are, because the action differs. */
+function r2Summary(a: { poorIntakeDays: number; poorFluidDays: number }): string {
+  const parts: string[] = [];
+  if (a.poorIntakeDays > 0) parts.push(`has not been eating enough${days(a.poorIntakeDays)}`);
+  if (a.poorFluidDays > 0) parts.push(`has not been drinking enough${days(a.poorFluidDays)}`);
+  const text = parts.join(' and ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** DET-04: counts poor-intake days together with the earlier calls. */
 function r2Detection(input: AnalysisInput, intake: IntakeObservation): Detection | null {
-  if (intake.status !== 'poor') return null;
+  if (intake.status !== 'poor' && intake.fluids !== 'poor') return null;
   const since = Date.parse(input.call.startedAt) - R2_HISTORY_DAYS * 86_400_000;
   const observations = input.history
     .filter((c) => c.analysis?.intake && Date.parse(c.startedAt) >= since && c.startedAt <= input.call.startedAt)
@@ -135,7 +200,7 @@ function r2Detection(input: AnalysisInput, intake: IntakeObservation): Detection
     urgency: a.urgency,
     confidence: 0.8,
     poorIntakeDays: a.poorIntakeDays,
-    summary: a.poorIntakeDays >= 2 ? `Has not been eating enough for ${a.poorIntakeDays} days` : 'Has not been eating enough',
+    summary: r2Summary(a),
     evidence: mealEvidence(input),
     detectedAt: input.now.toISOString(),
   };
@@ -179,6 +244,8 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
 export function analyse(input: AnalysisInput): AnalysisResult {
   const { review, call, transcript } = input;
   const intake = intakeFor(input);
+  const answers = review ? groundAnswers(review, transcript, intake.date) : [];
+  const contactRequest = review ? groundContactRequest(review, transcript) : null;
   const speech = extractSpeechSample(
     call.id,
     call.startedAt,
@@ -207,6 +274,8 @@ export function analyse(input: AnalysisInput): AnalysisResult {
         turns: transcript.length,
         intake,
         memory: review?.memory ?? EMPTY_MEMORY,
+        ...(answers.length ? { answers } : {}),
+        ...(contactRequest ? { contactRequest } : {}),
         ...(input.modelError ? { error: input.modelError } : {}),
         ...(input.voiceError ? { voiceError: input.voiceError } : {}),
       },

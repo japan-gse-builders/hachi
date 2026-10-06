@@ -1,6 +1,6 @@
 import type { CallSpeechSample, Turn } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
-import { analyse, groundEmergencies, type AnalysisInput } from '../src/analysis.js';
+import { analyse, groundAnswers, groundContactRequest, groundEmergencies, type AnalysisInput } from '../src/analysis.js';
 import { call, NOW, resident, review, TRANSCRIPT } from './fixtures.js';
 
 function input(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
@@ -8,6 +8,102 @@ function input(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
 }
 
 const rules = (i: AnalysisInput) => analyse(i).detections.map((d) => d.rule);
+
+describe('screening answer grounding', () => {
+  const t: Turn[] = [
+    { speaker: 'agent', text: 'How often do you feel left out?', startMs: 0, endMs: 1000 },
+    { speaker: 'resident', text: 'Oh, some of the time I suppose.', startMs: 1200, endMs: 2500 },
+  ];
+  const ground = (answers: { itemId: string; answer: string; turn: number }[]) =>
+    groundAnswers(review({ answers }), t, '2026-10-02');
+
+  it('records the option the resident chose, dated to the call', () => {
+    expect(ground([{ itemId: 'uls3.left_out', answer: 'Some of the time', turn: 1 }])).toEqual([
+      { date: '2026-10-02', itemId: 'uls3.left_out', option: 1 },
+    ]);
+  });
+
+  it('accepts an option whose case differs from the published label', () => {
+    expect(ground([{ itemId: 'uls3.left_out', answer: 'some of the time', turn: 1 }])[0]!.option).toBe(1);
+  });
+
+  it('drops an answer credited to Hachi rather than the resident', () => {
+    expect(ground([{ itemId: 'uls3.left_out', answer: 'Often', turn: 0 }])).toEqual([]);
+  });
+
+  it('drops an item that is not in the vocabulary', () => {
+    expect(ground([{ itemId: 'uls3.invented', answer: 'Often', turn: 1 }])).toEqual([]);
+  });
+
+  it('drops an option the question never offered', () => {
+    expect(ground([{ itemId: 'uls3.left_out', answer: 'Nearly every day', turn: 1 }])).toEqual([]);
+  });
+
+  it('keeps one answer per question when the model repeats itself', () => {
+    const twice = ground([
+      { itemId: 'uls3.left_out', answer: 'Often', turn: 1 },
+      { itemId: 'uls3.left_out', answer: 'Hardly ever or never', turn: 1 },
+    ]);
+    expect(twice).toHaveLength(1);
+    expect(twice[0]!.option).toBe(0);
+  });
+
+  it('stores the answers on the call, and leaves the field off when there are none', () => {
+    const asked = analyse(
+      input({
+        transcript: t,
+        review: review({ answers: [{ itemId: 'uls3.left_out', answer: 'Often', turn: 1 }] }),
+      }),
+    );
+    expect(asked.update.analysis.answers).toEqual([
+      { date: '2026-10-02', itemId: 'uls3.left_out', option: 2 },
+    ]);
+    expect(analyse(input()).update.analysis.answers).toBeUndefined();
+  });
+});
+
+describe('contact request grounding', () => {
+  const t: Turn[] = [
+    { speaker: 'agent', text: 'Would you like me to tell your family or a friend that you would like a phone call?', startMs: 0, endMs: 3000 },
+    { speaker: 'resident', text: 'Yes please, my daughter Alice, her number is 090 1234 5678.', startMs: 3200, endMs: 8000 },
+    { speaker: 'agent', text: 'Let me read that back: zero, nine, zero, one, two, three, four, five, six, seven, eight. Is that right?', startMs: 8200, endMs: 14000 },
+    { speaker: 'resident', text: 'That is right, thank you.', startMs: 14200, endMs: 15500 },
+  ];
+  const ground = (contactRequest: { who: string; confirmed: boolean; turn: number } | undefined) =>
+    groundContactRequest(review({ contactRequest }), t);
+
+  it('reads the number out of the resident turn the request came from', () => {
+    expect(ground({ who: 'my daughter Alice', confirmed: true, turn: 1 })).toEqual({
+      who: 'my daughter Alice',
+      number: '+819012345678',
+      confirmed: true,
+      turn: 1,
+    });
+  });
+
+  it('keeps the request without a number when nothing was confirmed', () => {
+    expect(ground({ who: 'my daughter', confirmed: false, turn: 1 })).toEqual({ who: 'my daughter', confirmed: false, turn: 1 });
+  });
+
+  it('will not take a number from a turn that has none, however sure the model is', () => {
+    expect(ground({ who: 'my daughter', confirmed: true, turn: 3 })).toEqual({ who: 'my daughter', confirmed: false, turn: 3 });
+  });
+
+  it('drops a request credited to Hachi rather than the resident', () => {
+    expect(ground({ who: 'my daughter', confirmed: true, turn: 2 })).toBeNull();
+  });
+
+  it('drops a request with nobody named in it', () => {
+    expect(ground({ who: '  ', confirmed: true, turn: 1 })).toBeNull();
+    expect(ground(undefined)).toBeNull();
+  });
+
+  it('stores the request on the call, and leaves the field off when there was none', () => {
+    const asked = analyse(input({ transcript: t, review: review({ contactRequest: { who: 'my daughter Alice', confirmed: true, turn: 1 } }) }));
+    expect(asked.update.analysis.contactRequest).toEqual({ who: 'my daughter Alice', number: '+819012345678', confirmed: true, turn: 1 });
+    expect(analyse(input()).update.analysis.contactRequest).toBeUndefined();
+  });
+});
 
 describe('emergency grounding', () => {
   const t: Turn[] = [
@@ -48,7 +144,7 @@ describe('analyse', () => {
       at: NOW.toISOString(),
       model: 'gemini-test',
       turns: 4,
-      intake: { date: '2026-10-02', status: 'normal' },
+      intake: { date: '2026-10-02', status: 'normal', fluids: 'normal' },
       memory: review().memory,
     });
     expect(update.speech).toMatchObject({ callId: '2026-10-02-1', usable: false, exclusionReasons: ['too_little_speech'] });
@@ -76,7 +172,7 @@ describe('analyse', () => {
   });
 
   it('keeps R1 and R2 results when the tags change', () => {
-    const poor = { intake: { status: 'poor' as const, reportedPoorDays: 3, evidenceTurns: [3] } };
+    const poor = { intake: { status: 'poor' as const, fluids: 'unknown' as const, reportedPoorDays: 3, evidenceTurns: [3] } };
     const tagged = analyse(input({ review: review(poor) })).detections;
     const untagged = analyse(input({ review: review({ ...poor, tags: [], headline: '' }) })).detections;
     expect(untagged).toEqual(tagged);
@@ -129,7 +225,7 @@ describe('analyse', () => {
   });
 
   describe('R2', () => {
-    const poor = review({ intake: { status: 'poor', reportedPoorDays: 0, evidenceTurns: [3] } });
+    const poor = review({ intake: { status: 'poor', fluids: 'unknown', reportedPoorDays: 0, evidenceTurns: [3] } });
 
     it('watches a single day of poor intake, quoting the cited turn', () => {
       const [d] = analyse(input({ review: poor })).detections;
@@ -138,7 +234,7 @@ describe('analyse', () => {
     });
 
     it('is urgent when the resident reports several days', () => {
-      const [d] = analyse(input({ review: review({ intake: { status: 'poor', reportedPoorDays: 3, evidenceTurns: [] } }) })).detections;
+      const [d] = analyse(input({ review: review({ intake: { status: 'poor', fluids: 'unknown', reportedPoorDays: 3, evidenceTurns: [] } }) })).detections;
       expect(d).toMatchObject({ urgency: 'urgent', poorIntakeDays: 3, summary: 'Has not been eating enough for 3 days' });
       // Without cited turns, resident turns about food are used.
       expect(d!.evidence.map((e) => e.quote)).toEqual([TRANSCRIPT[3]!.text]);
@@ -168,7 +264,7 @@ describe('analyse', () => {
         analysis: { at: '', turns: 4, intake: { date: '2026-10-01', status: 'poor' }, memory: { topics: [], plans: [], likes: [] } },
       });
       expect(rules(input({ history: [yesterday] }))).toEqual([]);
-      expect(rules(input({ review: review({ intake: { status: 'unknown', reportedPoorDays: 0, evidenceTurns: [] } }) }))).toEqual([]);
+      expect(rules(input({ review: review({ intake: { status: 'unknown', fluids: 'unknown', reportedPoorDays: 0, evidenceTurns: [] } }) }))).toEqual([]);
     });
   });
 
@@ -306,7 +402,7 @@ describe('analyse', () => {
 
   it('never raises alerts for imported history', () => {
     const t: Turn[] = [{ speaker: 'resident', text: "I can't breathe.", startMs: 0, endMs: 1000 }];
-    const r = analyse(input({ call: call({ source: 'imported' }), transcript: t, review: review({ intake: { status: 'poor', reportedPoorDays: 3, evidenceTurns: [] } }) }));
+    const r = analyse(input({ call: call({ source: 'imported' }), transcript: t, review: review({ intake: { status: 'poor', fluids: 'unknown', reportedPoorDays: 3, evidenceTurns: [] } }) }));
     expect(r.detections).toEqual([]);
     expect(r.update.analysis.intake.status).toBe('poor');
   });

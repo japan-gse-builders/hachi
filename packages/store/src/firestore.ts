@@ -1,5 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import type { CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
+import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
 
 const BATCH_LIMIT = 400;
@@ -185,7 +185,15 @@ export class FirestoreStore implements Store {
 
   // Single-field filter only, so no composite index is needed.
   async listPendingOutbox(limit: number): Promise<OutboxEntry[]> {
-    const snap = await this.db.collection('outbox').where('status', '==', 'pending').limit(limit).get();
+    return this.outboxByStatus('pending', limit);
+  }
+
+  async listOutboxAwaitingApproval(limit: number): Promise<OutboxEntry[]> {
+    return this.outboxByStatus('awaiting_approval', limit);
+  }
+
+  private async outboxByStatus(status: OutboxStatus, limit: number): Promise<OutboxEntry[]> {
+    const snap = await this.db.collection('outbox').where('status', '==', status).limit(limit).get();
     return snap.docs.map((d) => d.data() as OutboxEntry);
   }
 }

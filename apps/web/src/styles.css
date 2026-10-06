@@ -64,6 +64,11 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .action { background: #d9e6f8; color: #1849a0; }
 .watch { background: #ece7dc; color: #5c564c; }
 .error { background: #f8d4d0; padding: 12px; border-radius: 12px; }
+.screening { border-collapse: collapse; width: 100%; text-align: left; }
+.screening th, .screening td { border-bottom: 1px solid #ece7dc; padding: 8px 12px 8px 0; vertical-align: top; }
+.screening thead th { font-size: 15px; color: #5c564c; }
+/* A denominator is the point of this table, so it must not wrap away from its numerator. */
+.screening td { white-space: nowrap; }
 .quote { border-left: 4px solid #1f4d3a; padding-left: 12px; margin: 8px 0; }
 .transcript { display: grid; gap: 8px; }
 /* A card can now be as wide as the window; lines of speech stay short enough to read. */

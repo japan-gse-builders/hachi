@@ -34,6 +34,13 @@ describe('detectR1: clear present-tense claims (DET-01, DET-05)', () => {
     ['I feel like I am going to die', 'fear_of_dying'],
     ['Please call an ambulance', 'calling_for_help'],
     ['Please help me', 'calling_for_help'],
+    ['I have the worst headache of my life', 'sudden_headache'],
+    ['This headache came on suddenly', 'sudden_headache'],
+    ["I can't see anything out of my left eye", 'vision_loss'],
+    ['I have lost the sight in one eye', 'vision_loss'],
+    ["I'm seeing double", 'vision_loss'],
+    ["I can't keep my balance at all", 'balance_loss'],
+    ['The room is spinning', 'balance_loss'],
   ])('%s -> %s', (text, category) => {
     expect(categories(text)).toContain(category);
   });
@@ -137,6 +144,30 @@ describe("detectR1: other people's events are not the resident's (DET-02)", () =
 
   it('first-person claims in a sentence about others are still caught', () => {
     expect(categories('My daughter says my chest pain is nothing, but it hurts')).toEqual(['chest_pain']);
+  });
+});
+
+describe('detectR1: the stroke signs beyond face, arm and speech', () => {
+  it.each([
+    "I can't see the doctor until Tuesday",
+    "I can't see why she would say that",
+    'I have lost my glasses again',
+    'I get a bit dizzy when I stand up too quickly',
+    'My husband had the worst headache yesterday',
+    'I had a terrible headache last night but it went away',
+    'The room was spinning earlier and then I felt fine',
+    'I have had headaches for years',
+  ])('%s is not an emergency', (text) => {
+    expect(detectR1(text)).toEqual([]);
+  });
+
+  it('keeps a sudden headache that is still going', () => {
+    expect(categories('I woke up with the worst headache and it is still there')).toEqual(['sudden_headache']);
+  });
+
+  it('separates losing sight from losing an object', () => {
+    expect(categories('I have lost the vision in my right eye')).toEqual(['vision_loss']);
+    expect(categories('I have lost my purse')).toEqual([]);
   });
 });
 

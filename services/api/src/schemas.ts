@@ -61,7 +61,12 @@ export type ResidentInput = z.infer<typeof residentInputSchema>;
 export const residentPatchSchema = z
   .object(residentFields)
   .partial()
-  .extend({ family: familyContactSchema.nullable().optional(), active: z.boolean().optional() });
+  .extend({
+    family: familyContactSchema.nullable().optional(),
+    active: z.boolean().optional(),
+    /** Staff record what the resident told them; `recordedAt` and `recordedBy` are the server's. */
+    shareMood: z.boolean().optional(),
+  });
 export type ResidentPatch = z.infer<typeof residentPatchSchema>;
 
 const turnSchema = z
@@ -111,3 +116,6 @@ export const caseUpdateSchema = z
 export type CaseUpdate = z.infer<typeof caseUpdateSchema>;
 
 export const pushTokenSchema = z.object({ token: z.string().min(10).max(4096) });
+
+/** The decision on a message held because the resident read the number out over the phone. */
+export const contactDecisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });

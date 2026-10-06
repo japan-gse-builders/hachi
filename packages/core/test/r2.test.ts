@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessR2, countPoorIntakeDays, type IntakeObservation } from '../src/r2.js';
+import { assessR2, countPoorFluidDays, countPoorIntakeDays, type IntakeObservation, type IntakeStatus } from '../src/r2.js';
 
 const poor = (date: string, reportedPoorDays?: number): IntakeObservation => ({ date, status: 'poor', reportedPoorDays });
 const normal = (date: string): IntakeObservation => ({ date, status: 'normal' });
@@ -53,15 +53,50 @@ describe('countPoorIntakeDays (DET-04)', () => {
 
 describe('assessR2 (rule table in section 2)', () => {
   it('no detection when eating normally', () => {
-    expect(assessR2([normal('2026-10-02')])).toEqual({ poorIntakeDays: 0, urgency: null, followUpNextCall: false });
+    expect(assessR2([normal('2026-10-02')])).toEqual({ poorIntakeDays: 0, poorFluidDays: 0, urgency: null, followUpNextCall: false });
   });
 
   it('one day of poor intake is watch and asks again next call', () => {
-    expect(assessR2([poor('2026-10-02')])).toEqual({ poorIntakeDays: 1, urgency: 'watch', followUpNextCall: true });
+    expect(assessR2([poor('2026-10-02')])).toEqual({ poorIntakeDays: 1, poorFluidDays: 0, urgency: 'watch', followUpNextCall: true });
   });
 
   it('two or more days is urgent (PRI-05 escalation case)', () => {
     expect(assessR2([poor('2026-10-01'), poor('2026-10-02')]).urgency).toBe('urgent');
     expect(assessR2([poor('2026-10-02', 4)]).urgency).toBe('urgent');
+  });
+});
+
+describe('assessR2: drinks are counted apart from food', () => {
+  const dry = (date: string, status: IntakeStatus = 'unknown'): IntakeObservation => ({ date, status, fluids: 'poor' });
+  const wet = (date: string, status: IntakeStatus = 'unknown'): IntakeObservation => ({ date, status, fluids: 'normal' });
+
+  it('counts a run of dry days on its own', () => {
+    expect(countPoorFluidDays([wet('2026-10-01'), dry('2026-10-02')])).toBe(1);
+    expect(countPoorFluidDays([dry('2026-10-01'), dry('2026-10-02')])).toBe(2);
+    expect(countPoorFluidDays([poor('2026-10-02', 4)])).toBe(0);
+  });
+
+  it('does not stretch a dry day by the days of eating the resident reported', () => {
+    expect(countPoorFluidDays([{ date: '2026-10-02', status: 'poor', reportedPoorDays: 4, fluids: 'poor' }])).toBe(1);
+  });
+
+  it('asks for a review soon after one dry day, sooner than for one day of missed meals', () => {
+    expect(assessR2([dry('2026-10-02', 'normal')])).toMatchObject({ poorFluidDays: 1, urgency: 'action' });
+  });
+
+  it('is urgent after two dry days', () => {
+    expect(assessR2([dry('2026-10-01', 'normal'), dry('2026-10-02', 'normal')]).urgency).toBe('urgent');
+  });
+
+  it('is urgent on the first day when nothing at all has gone in', () => {
+    expect(assessR2([dry('2026-10-02', 'poor')])).toMatchObject({ poorIntakeDays: 1, poorFluidDays: 1, urgency: 'urgent' });
+  });
+
+  it('asks again next call after a dry day, even when the meals were fine', () => {
+    expect(assessR2([dry('2026-10-02', 'normal')]).followUpNextCall).toBe(true);
+  });
+
+  it('treats drinks that never came up as unknown rather than poor', () => {
+    expect(assessR2([{ date: '2026-10-02', status: 'normal' }])).toMatchObject({ poorFluidDays: 0, urgency: null });
   });
 });

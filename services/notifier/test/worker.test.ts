@@ -129,6 +129,23 @@ describe('deliver', () => {
     expect((await store.getOutbox(e.id))!.status).toBe('skipped');
   });
 
+  it('cannot send a message that is still waiting for a person to agree to it', async () => {
+    const held = entry({ idempotencyKey: 'contact:call-1', kind: 'contact_request', recipient: 'contact', status: 'awaiting_approval' });
+    const { store, sms, deps } = await setup({ entries: [held] });
+    expect(await deliver(deps, held.id)).toEqual({ outcome: 'done', status: 'awaiting_approval' });
+    expect(sms.sent).toEqual([]);
+    expect((await store.getOutbox(held.id))!.attempts).toBe(0);
+  });
+
+  it('sends an approved contact request, and puts nothing about it on a case', async () => {
+    const approved = entry({ idempotencyKey: 'contact:call-1', kind: 'contact_request', recipient: 'contact', address: '+819011112222' });
+    const { store, sms, deps } = await setup({ entries: [approved] });
+    expect(await deliver(deps, approved.id)).toMatchObject({ outcome: 'sent' });
+    expect(sms.sent.map((s) => s.address)).toEqual(['+819011112222']);
+    // The message belongs to a call and to someone outside the household, so the case is untouched.
+    expect((await store.getCase('case-1'))!.notifications).toEqual([]);
+  });
+
   it('handles unknown ids and store failures', async () => {
     const { store, deps } = await setup();
     expect(await deliver(deps, 'f'.repeat(64))).toEqual({ outcome: 'not_found' });

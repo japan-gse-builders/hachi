@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { screenItem } from '@hachi/core';
 import type { CallMemory, CallRecord } from '@hachi/store';
 import { buildSystemInstruction, EMERGENCY_TOOL_GUIDANCE, emergencyCue, openingCue, priorContext, resumeCue, wrapUpCue } from '../src/prompt.js';
 
@@ -41,6 +42,50 @@ describe('buildSystemInstruction', () => {
     expect(resumed).toContain('Hachi: How are you feeling?');
     expect(resumed).toContain('Maggie: Pretty good.');
     expect(resumed).toMatch(/Do not start the greeting again/);
+  });
+
+  it('says there are no set questions when the day brings none', () => {
+    expect(prompt).toMatch(/There are none today/);
+    expect(prompt).not.toMatch(/Answers to read out/);
+  });
+
+  it('gives a screening question in its published words with its options read out', () => {
+    const withItems = buildSystemInstruction('Maggie', [], undefined, [screenItem('uls3.left_out')]);
+    expect(withItems).toContain('"How often do you feel left out?"');
+    expect(withItems).toContain('Answers to read out: Hardly ever or never / Some of the time / Often.');
+    expect(withItems).toMatch(/ask each one in exactly these words/);
+    expect(withItems).toMatch(/Do not reword a question/);
+    expect(withItems).toMatch(/Never guess an answer on their behalf/);
+  });
+
+  it('speaks a recall window as part of the question it belongs to', () => {
+    const withItems = buildSystemInstruction('Maggie', [], undefined, [screenItem('phq2.down')]);
+    expect(withItems).toContain('Over the last two weeks, how often have you been bothered by "feeling down, depressed, or hopeless?"');
+  });
+
+  describe('when the resident wants more than a check-in', () => {
+    it('offers to tell someone rather than staying on the line', () => {
+      expect(prompt).toMatch(/lonely, that they miss someone, or that they would like to keep talking/);
+      expect(prompt).toContain('"Would you like me to tell your family or a friend that you would like a phone call?"');
+      expect(prompt).toMatch(/you have to go soon/);
+    });
+
+    it('reads a spoken number back one digit at a time, which is the only way to catch a wrong one', () => {
+      expect(prompt).toMatch(/read every digit back to them one at a time/);
+      expect(prompt).toMatch(/Do not shorten it, do not group the digits/);
+    });
+
+    it('takes no for an answer and promises nothing on the other person\u2019s behalf', () => {
+      expect(prompt).toMatch(/do not ask again in this call/);
+      expect(prompt).toMatch(/Never promise that the person will call/);
+    });
+  });
+
+  it('holds a sensitive question back until the resident has settled', () => {
+    const sensitive = buildSystemInstruction('Maggie', [], undefined, [screenItem('uls3.isolated')]);
+    expect(sensitive).toMatch(/Ask this one late in the call, gently/);
+    const plain = buildSystemInstruction('Maggie', [], undefined, [screenItem('kcl.out_weekly')]);
+    expect(plain).not.toMatch(/late in the call/);
   });
 });
 
@@ -92,6 +137,11 @@ describe('cues', () => {
       expect(cue).toContain('Maggie');
     }
     expect(wrapUpCue('Maggie')).toContain('end_call');
+  });
+
+  it('ask when it started, which is what decides a stroke treatment', () => {
+    expect(emergencyCue('Maggie')).toMatch(/ask once, gently, when it started/);
+    expect(EMERGENCY_TOOL_GUIDANCE).toMatch(/ask once, gently, when it started/);
   });
 
   it('tell the resident to call 119 during an emergency', () => {

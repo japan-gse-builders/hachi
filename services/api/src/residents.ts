@@ -36,10 +36,12 @@ export function buildResident(input: ResidentInput, id: string, now: Date): Resi
   };
 }
 
-export function patchResident(r: Resident, patch: ResidentPatch, now: Date): Resident {
-  const { family, staff, ...rest } = patch;
+export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown'): Resident {
+  const { family, staff, shareMood, ...rest } = patch;
   const next: Resident = { ...r, ...rest, updatedAt: now.toISOString() };
   if (staff) next.staff = { ...staff, voice: staff.phone };
+  // Who heard it and when is the point of recording consent at all, so it is written here, not sent.
+  if (shareMood !== undefined) next.consent = { shareMood, recordedAt: now.toISOString(), recordedBy: staffUid };
   if (family === null) {
     delete next.family;
     next.familyLookup = [];

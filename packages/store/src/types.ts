@@ -51,4 +51,6 @@ export interface Store {
   updateOutbox(id: string, fn: (e: OutboxEntry) => OutboxEntry | null): Promise<OutboxEntry>;
   /** Pending entries in no particular order. */
   listPendingOutbox(limit: number): Promise<OutboxEntry[]>;
+  /** Entries held for a person's decision, in no particular order. */
+  listOutboxAwaitingApproval(limit: number): Promise<OutboxEntry[]>;
 }

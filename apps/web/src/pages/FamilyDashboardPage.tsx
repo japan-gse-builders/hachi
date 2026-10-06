@@ -3,6 +3,7 @@ import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { AlertsCard } from '../components/AlertsCard';
+import { ContactRequests } from '../components/ContactRequests';
 import { FamilyDashboardView } from '../components/FamilyDashboardView';
 import type { FamilyDashboard } from '../types';
 
@@ -23,6 +24,7 @@ export function FamilyDashboardPage() {
 
   return (
     <div className="stack narrow">
+      <ContactRequests />
       <FamilyDashboardView data={data} now={new Date()} />
       <AlertsCard />
     </div>

@@ -3,9 +3,10 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError, type ZodType } from 'zod';
 import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
 import { applyStaffUpdate } from './caseUpdate.js';
-import { NotFoundError, type Resident, type Store } from '@hachi/store';
+import { decideContactRequest, NotFoundError, type Resident, type Store } from '@hachi/store';
+import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
-import { callImportSchema, caseUpdateSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
+import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
 import { buildCaseDetail, buildFamilyDashboard, buildQueue, FAMILY_WINDOW_DAYS, type MediaSigner } from './views.js';
 
 export interface AppDeps {
@@ -129,9 +130,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   app.patch<{ Params: { id: string } }>('/api/residents/:id', async (req) => {
-    requireStaff(req);
+    const staff = requireStaff(req);
     const patch = parse(residentPatchSchema, req.body);
-    return store.updateResident(req.params.id, (r) => patchResident(r, patch, now()));
+    return store.updateResident(req.params.id, (r) => patchResident(r, patch, now(), staff.uid));
   });
 
   app.post<{ Params: { id: string } }>('/api/residents/:id/calls/import', async (req, reply) => {
@@ -192,6 +193,42 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const since = new Date(t.getTime() - FAMILY_WINDOW_DAYS * 86_400_000).toISOString();
     const [calls, cases] = await Promise.all([store.listCalls(r.id, { since }), store.listCasesByResident(r.id)]);
     return buildFamilyDashboard(r, calls, cases, t, localeOf(req));
+  });
+
+  // ---- Contact requests the resident made by phone (CNV-15, NTF-05) ----
+
+  /**
+   * A number the resident read out is one misheard digit away from a stranger, so the message
+   * waits for a person. Either their care staff or their own family may decide: the family often
+   * knows the number by heart, and staff are not always at a screen.
+   */
+  const heldRequests = async (req: FastifyRequest): Promise<Map<string, Resident>> => {
+    if (req.principal?.kind === 'staff') {
+      return new Map((await store.listResidents()).map((r) => [r.id, r]));
+    }
+    const fam = requireFamily(req);
+    return new Map((await familyResidents(fam.contacts)).map((r) => [r.id, r]));
+  };
+
+  app.get('/api/contact-requests', async (req) => {
+    const visible = await heldRequests(req);
+    return { requests: buildHeldRequests(await store.listOutboxAwaitingApproval(100), visible) };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/contact-requests/:id', async (req) => {
+    const { decision } = parse(contactDecisionSchema, req.body);
+    const visible = await heldRequests(req);
+    const entry = await store.getOutbox(req.params.id);
+    // One answer for "no such request" and "not yours", so requests cannot be enumerated.
+    if (!entry || entry.kind !== 'contact_request' || !visible.has(entry.residentId)) throw new NotFoundError('Contact request');
+    const { outcome } = await decideContactRequest(store, entry.id, {
+      by: req.principal!.kind === 'staff' ? 'staff' : 'family',
+      uid: req.principal!.uid,
+      at: now().toISOString(),
+      decision: decision === 'approve' ? 'approved' : 'rejected',
+    });
+    // Approving only queues it; the notification worker's sweep is what sends it.
+    return { outcome };
   });
 
   app.post('/api/family/push-tokens', async (req, reply) => {

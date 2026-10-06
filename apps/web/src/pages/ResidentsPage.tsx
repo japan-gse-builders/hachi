@@ -35,6 +35,24 @@ export function ResidentsPage() {
     }
   };
 
+  /**
+   * Recorded from what the resident said, so it is a thing staff tick after a conversation rather
+   * than a setting. Until it is ticked, the family is told nothing about how the resident is in
+   * themselves, however well meant that would be.
+   */
+  const setConsent = async (residentId: string, shareMood: boolean) => {
+    setResidents((prev) => prev?.map((r) => (r.id === residentId ? { ...r, consent: { ...r.consent, shareMood } } : r)) ?? prev);
+    try {
+      const saved = await api<Resident>(`/api/residents/${residentId}`, await token(), {
+        method: 'PATCH',
+        body: JSON.stringify({ shareMood }),
+      });
+      setResidents((prev) => prev?.map((r) => (r.id === residentId ? saved : r)) ?? prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that');
+    }
+  };
+
   return (
     <div className="stack tiles">
       <div className="row">
@@ -47,6 +65,10 @@ export function ResidentsPage() {
           <h2>{r.name}</h2>
           <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
           <p className="meta">Resident {r.id}</p>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(r.consent?.shareMood)} onChange={(e) => void setConsent(r.id, e.target.checked)} />
+            Agreed their family may be told how they are in themselves
+          </label>
           <label className="file">Import past calls (JSON)
             <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
             <span className="button ghost">Choose a file</span>

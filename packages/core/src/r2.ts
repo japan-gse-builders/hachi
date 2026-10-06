@@ -8,10 +8,17 @@ export interface IntakeObservation {
   status: IntakeStatus;
   /** Days without eating that the resident reported in that call ("haven't eaten for 3 days"). */
   reportedPoorDays?: number;
+  /**
+   * Drinks, counted apart from food. INTERACT's Stop and Watch lists drinking less as a trigger of
+   * its own, and in an older adult dehydration turns into delirium, a fall or a kidney injury
+   * faster than missed meals turn into anything.
+   */
+  fluids?: IntakeStatus;
 }
 
 export interface R2Assessment {
   poorIntakeDays: number;
+  poorFluidDays: number;
   urgency: Urgency | null;
   /** DET-04: ask about meals again on the next call. */
   followUpNextCall: boolean;
@@ -26,8 +33,19 @@ function dayIndex(date: string): number {
   return Math.round(t / DAY_MS);
 }
 
-function severity(o: IntakeObservation): number {
-  return o.status === 'poor' ? 1 + (o.reportedPoorDays ?? 1) : 0;
+type Kind = 'food' | 'fluids';
+
+function statusOf(o: IntakeObservation, kind: Kind): IntakeStatus {
+  return kind === 'food' ? o.status : (o.fluids ?? 'unknown');
+}
+
+/** Only eating carries a reported run of days; nobody says "I haven't had a drink for three days". */
+function reportedDays(o: IntakeObservation, kind: Kind): number {
+  return kind === 'food' ? Math.max(1, o.reportedPoorDays ?? 1) : 1;
+}
+
+function severity(o: IntakeObservation, kind: Kind): number {
+  return statusOf(o, kind) === 'poor' ? 1 + reportedDays(o, kind) : 0;
 }
 
 /**
@@ -35,13 +53,13 @@ function severity(o: IntakeObservation): number {
  * A single day without an observation (missed call) does not break the streak, so a
  * missed call between two poor days still escalates (PRI-04).
  */
-export function countPoorIntakeDays(observations: IntakeObservation[]): number {
+function countPoorDays(observations: IntakeObservation[], kind: Kind): number {
   const byDay = new Map<number, IntakeObservation>();
   for (const o of observations) {
-    if (o.status === 'unknown') continue;
+    if (statusOf(o, kind) === 'unknown') continue;
     const d = dayIndex(o.date);
     const prev = byDay.get(d);
-    if (!prev || severity(o) > severity(prev)) byDay.set(d, o);
+    if (!prev || severity(o, kind) > severity(prev, kind)) byDay.set(d, o);
   }
   const days = [...byDay.keys()].sort((a, b) => b - a);
   const latestDay = days[0];
@@ -52,18 +70,30 @@ export function countPoorIntakeDays(observations: IntakeObservation[]): number {
   let expected = latestDay;
   for (const d of days) {
     const o = byDay.get(d)!;
-    if (o.status !== 'poor' || expected - d > 1) break;
+    if (statusOf(o, kind) !== 'poor' || expected - d > 1) break;
     streak += 1;
-    best = Math.max(best, streak - 1 + Math.max(1, o.reportedPoorDays ?? 1));
+    best = Math.max(best, streak - 1 + reportedDays(o, kind));
     expected = d - 1;
   }
   return best;
 }
 
+export function countPoorIntakeDays(observations: IntakeObservation[]): number {
+  return countPoorDays(observations, 'food');
+}
+
+export function countPoorFluidDays(observations: IntakeObservation[]): number {
+  return countPoorDays(observations, 'fluids');
+}
+
 export function assessR2(observations: IntakeObservation[]): R2Assessment {
   const poorIntakeDays = countPoorIntakeDays(observations);
+  const poorFluidDays = countPoorFluidDays(observations);
   let urgency: Urgency | null = null;
-  if (poorIntakeDays >= 2) urgency = 'urgent';
+  // Nothing eaten and nothing drunk on the same day is someone taking nothing in at all, which
+  // does not wait for a second day.
+  if (poorIntakeDays >= 2 || poorFluidDays >= 2 || (poorIntakeDays >= 1 && poorFluidDays >= 1)) urgency = 'urgent';
+  else if (poorFluidDays === 1) urgency = 'action';
   else if (poorIntakeDays === 1) urgency = 'watch';
-  return { poorIntakeDays, urgency, followUpNextCall: poorIntakeDays > 0 };
+  return { poorIntakeDays, poorFluidDays, urgency, followUpNextCall: poorIntakeDays > 0 || poorFluidDays > 0 };
 }

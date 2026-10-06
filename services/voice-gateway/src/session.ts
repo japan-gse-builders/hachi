@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { R1Monitor, type Turn } from '@hachi/core';
+import { itemsForCall, localDate, R1Monitor, type ScreenItem, type Turn } from '@hachi/core';
 import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
@@ -97,6 +97,7 @@ export class CallSession {
   private streamNo = 1;
   private previousTurns: Turn[] = [];
   private prior?: PriorContext;
+  private items: readonly ScreenItem[] = [];
   private offsetMs = 0;
 
   private live?: LiveSession;
@@ -183,6 +184,11 @@ export class CallSession {
     this.streamNo = updated.streams ?? 1;
     this.previousTurns = call.transcript ?? [];
     this.offsetMs = this.previousTurns.length ? this.previousTurns[this.previousTurns.length - 1]!.endMs + 1000 : 0;
+    // The rotation runs on the calendar, so a resumed stream asks the same questions as the first.
+    this.items = itemsForCall(
+      resident.serviceStartedAt.slice(0, 10),
+      call.localDate ?? localDate(new Date(), resident.timeZone),
+    );
     try {
       const recent = await this.deps.store.listCalls(residentId, { limit: 8 });
       this.prior = priorContext(recent.filter((c) => c.id !== callId));
@@ -229,7 +235,10 @@ export class CallSession {
     let session: LiveSession | undefined;
     for (let attempt = 0; attempt < this.t.liveConnectAttempts && !session; attempt++) {
       try {
-        session = await this.deps.live.connect({ systemInstruction: buildSystemInstruction(this.name, history, this.prior) }, handlers);
+        session = await this.deps.live.connect(
+          { systemInstruction: buildSystemInstruction(this.name, history, this.prior, this.items) },
+          handlers,
+        );
       } catch (err) {
         this.deps.log.warn({ ...this.ids, attempt, err: (err as Error).message }, 'Gemini Live connect failed');
         if (attempt + 1 < this.t.liveConnectAttempts) await sleep(this.t.liveRetryDelayMs * (attempt + 1));

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { ContactRequests } from '../components/ContactRequests';
 import { deliveryLabel, formatWhen, urgencyTone } from '../format';
 import type { QueueItem } from '../types';
 
@@ -33,6 +34,7 @@ export function QueuePage() {
 
   return (
     <div className="stack tiles">
+      <ContactRequests />
       <h2>Needs attention</h2>
       {error && <p className="error">{error}</p>}
       {items === null && !error && <p>Loading…</p>}

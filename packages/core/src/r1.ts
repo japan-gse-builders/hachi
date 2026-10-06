@@ -6,7 +6,11 @@ export type R1Category =
   | 'loss_of_consciousness'
   | 'severe_bleeding'
   | 'fear_of_dying'
-  | 'calling_for_help';
+  | 'calling_for_help'
+  /** The B and the E of BE-FAST, and the headache that is the classic warning of a bleed. */
+  | 'sudden_headache'
+  | 'vision_loss'
+  | 'balance_loss';
 
 export interface R1Signal {
   category: R1Category;
@@ -55,6 +59,16 @@ const PATTERNS: R1Pattern[] = [
   // A request that ends there ("send someone?", "get someone to come round, please"), not an errand ("send someone to fix the boiler").
   { category: 'calling_for_help', regex: /\b(?:get|send|fetch) (?:someone|somebody|help)(?: (?:to come|round|over|here|now|quickly))*(?=\s*(?:[,.!?]|please\b|$))/g },
   { category: 'calling_for_help', regex: /\bneed (?:a doctor|help)\b(?!'s|\s+(?:with|to|for|about|appointment)\b)/g },
+  // A headache is only a red flag when it is unlike their others, so the wording has to carry that.
+  { category: 'sudden_headache', regex: new RegExp(`\\b(worst|terrible|blinding|thunderclap)\\b${S}{0,20}?\\bheadache\\b`, 'g'), passing: true },
+  { category: 'sudden_headache', regex: new RegExp(`\\bheadache\\b${S}{0,25}?\\b(worst|never had|like nothing|came on suddenly|all of a sudden|hit me)\\b`, 'g'), passing: true },
+  // "I can't see the doctor until Tuesday" and "I can't see why" are not this, so the object is fixed.
+  { category: 'vision_loss', regex: /\b(?:cannot|can't)\s+see\s+(?:anything|a thing|properly|straight|out of (?:my|one) (?:left |right )?eye)\b/g, chronic: true },
+  { category: 'vision_loss', regex: new RegExp(`\\b(lost|losing)\\b${S}{0,15}?\\b(sight|vision)\\b|\\b(?:my )?(?:sight|vision)\\b${S}{0,15}?\\b(?:has )?(?:gone|went)\\b`, 'g') },
+  { category: 'vision_loss', regex: /\b(double vision|seeing double|went blind)\b/g },
+  { category: 'balance_loss', regex: new RegExp(`\\b(?:cannot|can't|unable to)\\b${S}{0,15}?\\b(?:keep|get) my balance\\b`, 'g'), chronic: true },
+  { category: 'balance_loss', regex: new RegExp(`\\b(?:the room|everything)\\b${S}{0,15}?\\b(?:spinning|whirling)\\b`, 'g'), passing: true },
+  { category: 'balance_loss', regex: /\b(?:keep (?:veering|lurching) (?:over|to one side)|keep walking into (?:the )?walls?)\b/g },
 ];
 
 const NEGATORS = /\b(no|not|never|don't|doesn't|didn't|haven't|hasn't|isn't|aren't|wasn't|weren't|without|nothing|none|nor)\b/;

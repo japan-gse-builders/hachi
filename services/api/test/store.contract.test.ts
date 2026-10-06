@@ -139,6 +139,30 @@ function contract(name: string, make: () => Promise<Store>) {
       expect(await s.listPendingOutbox(1)).toHaveLength(1);
     });
 
+    it('keeps entries held for approval out of the queue the delivery worker reads', async () => {
+      const s = await make();
+      const base: OutboxEntry = {
+        id: 'held',
+        idempotencyKey: 'contact:call-1',
+        caseId: 'call-1',
+        kind: 'contact_request',
+        residentId: 'res-1',
+        urgency: 'watch',
+        recipient: 'contact',
+        channel: 'sms',
+        address: '+819011112222',
+        subject: 's',
+        body: 'b',
+        priority: 'normal',
+        status: 'awaiting_approval',
+        attempts: 0,
+        createdAt: '2026-10-01T03:00:00.000Z',
+      };
+      await s.enqueueOutbox([base, { ...base, id: 'queued', idempotencyKey: 'k2', status: 'pending' }]);
+      expect((await s.listPendingOutbox(10)).map((e) => e.id)).toEqual(['queued']);
+      expect((await s.listOutboxAwaitingApproval(10)).map((e) => e.id)).toEqual(['held']);
+    });
+
     it('returns copies, so callers cannot mutate stored state', async () => {
       const s = await make();
       await s.createResident(makeResident('r-1'));

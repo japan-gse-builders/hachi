@@ -12,6 +12,10 @@ export type DeliveryUpdateResult = 'updated' | 'stale' | 'mismatch' | 'not_found
  */
 export async function recordNotificationOnCase(store: Store, e: OutboxEntry): Promise<void> {
   if (!e.sentAt) return;
+  // Only an alert belongs to a case. A contact request belongs to a call and a loneliness notice
+  // to a rotation, and a contact is not on the case at all.
+  if (e.kind || e.recipient === 'contact') return;
+  const recipient = e.recipient;
   const sentAt = e.sentAt;
   const same = (n: NotificationRecord) => n.channel === e.channel && n.address === e.address && n.sentAt === sentAt;
   try {
@@ -19,7 +23,7 @@ export async function recordNotificationOnCase(store: Store, e: OutboxEntry): Pr
       const existing = c.notifications.find(same);
       if (!existing) {
         const record: NotificationRecord = {
-          recipient: e.recipient,
+          recipient,
           channel: e.channel,
           address: e.address,
           sentAt,
