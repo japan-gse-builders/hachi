@@ -28,6 +28,8 @@ export interface DomainStatus {
   flagged: number;
   /** Numbered Kihon items Hachi has no telephone question for, such as item 12 (a body-mass index). */
   missing: number[];
+  /** Flagged items the domain's rule needs. Zero means the checklist gives it no rule of its own. */
+  criterion?: number;
   /** Null when the answers cannot settle the domain's own criterion either way. */
   meets: boolean | null;
 }
@@ -37,6 +39,10 @@ export interface InstrumentScore {
   score: number;
   answered: number;
   of: number;
+  /** How many of the instrument's items can be asked by telephone. Fewer than `of` keeps it unread. */
+  askable?: number;
+  /** The instrument's published threshold. */
+  cutoff?: number;
   positive: boolean | null;
 }
 

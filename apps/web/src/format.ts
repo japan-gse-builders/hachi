@@ -149,6 +149,34 @@ export function audioAt(url: string, startMs: number | undefined): string {
   return startMs === undefined ? url : `${url}#t=${Math.floor(startMs / 1000)}`;
 }
 
+/** Numbered Kihon items as prose, because "item 23, 24 cannot be asked" reads as a single item. */
+export function itemList(ns: number[]): string {
+  if (ns.length === 1) return `item ${ns[0]}`;
+  return `items ${ns.slice(0, -1).join(', ')} and ${ns.at(-1)}`;
+}
+
+export interface Instrument {
+  score: number;
+  answered: number;
+  of: number;
+  askable?: number;
+  cutoff?: number;
+  positive: boolean | null;
+}
+
+/**
+ * Three different things a part-answered instrument can mean, kept apart because they ask different
+ * things of the reader. An instrument short of items by telephone will never be readable and that is
+ * nothing to wait for; one short of answers will be readable once the rotation gets there.
+ */
+export function instrumentLine(i: Instrument): string {
+  const cutoff = i.cutoff === undefined ? 'its cutoff' : `its cutoff of ${i.cutoff}`;
+  if (i.positive !== null) return `${i.score}, ${i.positive ? 'at or above' : 'below'} ${cutoff}`;
+  if (i.askable !== undefined && i.askable < i.of)
+    return `only ${i.askable} of its ${i.of} items can be asked by telephone, so Hachi never reports a result for it. ${i.answered} answered, scoring ${i.score}`;
+  return `answered ${i.answered} of ${i.of}, so it cannot be read yet`;
+}
+
 export function clock(ms: number | undefined): string {
   if (ms === undefined) return '';
   const total = Math.max(0, Math.round(ms / 1000));

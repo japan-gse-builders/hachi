@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { needsHomeScreen } from '../src/device';
-import { audioAt, callStatusLabel, channelList, clock, deliveryLabel, eventLabel, familyDeliveryList, formatWhen, minutes, phoneDisplay, speakerLabel, speechLine, topicList, urgencyTone } from '../src/format';
+import { audioAt, callStatusLabel, channelList, clock, deliveryLabel, eventLabel, familyDeliveryList, formatWhen, instrumentLine, itemList, minutes, phoneDisplay, speakerLabel, speechLine, topicList, urgencyTone } from '../src/format';
 
 describe('staff display helpers', () => {
   it('maps urgency to a tone and leaves unknown values calm', () => {
@@ -86,5 +86,36 @@ describe('staff display helpers', () => {
   it('starts the recording at the quoted words', () => {
     expect(audioAt('https://x/a.wav?sig=1', 55400)).toBe('https://x/a.wav?sig=1#t=55');
     expect(audioAt('https://x/a.wav', undefined)).toBe('https://x/a.wav');
+  });
+
+  it('writes a list of unaskable items as prose, not as one run-together number', () => {
+    expect(itemList([12])).toBe('item 12');
+    expect(itemList([23, 24])).toBe('items 23 and 24');
+    expect(itemList([7, 12, 23])).toBe('items 7, 12 and 23');
+  });
+
+  it('reads an instrument against its own cutoff once it is complete', () => {
+    expect(instrumentLine({ score: 3, answered: 2, of: 2, askable: 2, cutoff: 3, positive: true })).toBe(
+      '3, at or above its cutoff of 3',
+    );
+    expect(instrumentLine({ score: 2, answered: 2, of: 2, askable: 2, cutoff: 3, positive: false })).toBe(
+      '2, below its cutoff of 3',
+    );
+  });
+
+  it('tells an unfinished instrument apart from one the telephone cannot finish', () => {
+    expect(instrumentLine({ score: 3, answered: 1, of: 3, askable: 3, cutoff: 6, positive: null })).toBe(
+      'answered 1 of 3, so it cannot be read yet',
+    );
+    expect(instrumentLine({ score: 2, answered: 3, of: 5, askable: 3, cutoff: 3, positive: null })).toBe(
+      'only 3 of its 5 items can be asked by telephone, so Hachi never reports a result for it. 3 answered, scoring 2',
+    );
+  });
+
+  it('falls back to a cutoff it was not told, rather than printing undefined', () => {
+    expect(instrumentLine({ score: 1, answered: 3, of: 3, positive: true })).toBe('1, at or above its cutoff');
+    expect(instrumentLine({ score: 1, answered: 1, of: 3, positive: null })).toBe(
+      'answered 1 of 3, so it cannot be read yet',
+    );
   });
 });

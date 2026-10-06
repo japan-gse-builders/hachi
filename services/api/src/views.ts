@@ -173,6 +173,11 @@ export async function buildCaseDetail(
  * domain is reported with how many of its numbered items have an answer at all. `meets` is null
  * wherever the answers cannot settle it, and `missing` names items Hachi has no telephone question
  * for, such as item 12, which is a body-mass index.
+ *
+ * `instruments` is the same evidence in the other frame: what each published instrument makes of
+ * its own items, on its own cutoff. Staff here work to the Kihon domains, but the resident speaks
+ * English and may well have a doctor who does too, and to them a PHQ-2 or a STEADI result is the
+ * readable one. Reporting only the mapping would throw that away.
  */
 function screeningView(r: Resident, calls: CallRecord[], now: Date) {
   const asOf = localDate(now, r.timeZone);
@@ -181,7 +186,7 @@ function screeningView(r: Resident, calls: CallRecord[], now: Date) {
     asOf,
     domains: domainStatus(answers, asOf).map((d) => ({ ...d, label: KIHON_DOMAIN_LABELS[d.domain].en })),
     overall: overallStatus(answers, asOf),
-    instruments: (['ULS-3', 'PHQ-2'] as const).map((i) => scoreInstrument(i, answers, asOf)),
+    instruments: (['ULS-3', 'PHQ-2', 'FRAIL', 'STEADI'] as const).map((i) => scoreInstrument(i, answers, asOf)),
     loneliness: lonelinessFor(r, calls, asOf),
     /** Whether the resident agreed their family may be told how they are in themselves. */
     shareMood: Boolean(r.consent?.shareMood),

@@ -14,6 +14,11 @@
  * behaviour as the numbered item they cite. Where a validated English instrument exists for a
  * domain we use that instead and keep its own scoring. What Hachi reports is which domains look
  * worth a proper assessment by a professional, never a Kihon score.
+ *
+ * Results come out in both frames, because two different people read them. A care manager in Japan
+ * needs the Kihon domains, which is what 介護予防 eligibility is written in. The resident, their
+ * family and any English-speaking doctor they see need the instrument's own result, which is what
+ * the question was validated as. Neither frame is a translation of the other, so both are reported.
  */
 
 /** Instruments whose own wording and scoring we reproduce exactly. */
@@ -24,6 +29,8 @@ export type Instrument =
   | 'PHQ-2'
   /** Morley et al., the five-item frailty questionnaire, validated by self-report. */
   | 'FRAIL'
+  /** The US CDC's STEADI fall-risk initiative: its three key questions and the Stay Independent form. */
+  | 'STEADI'
   /** An English question about the behaviour a numbered Kihon Checklist item asks about. */
   | 'KCL-equivalent';
 
@@ -44,7 +51,10 @@ export interface ScreenItem {
   instrument: Instrument;
   /** Verbatim. Paraphrasing it discards the published cutoff. */
   text: string;
-  /** Spoken before the question; the window is part of the item. */
+  /**
+   * Whatever the instrument requires to be spoken before the item: a recall window, which is part
+   * of the item, or a self-report form's own instruction to say whether a statement is true.
+   */
   recall?: string;
   options: readonly ItemOption[];
   /** The numbered Kihon Checklist item this asks about the same behaviour as. */
@@ -241,9 +251,9 @@ export const SCREEN_ITEMS: readonly ScreenItem[] = [
     domain: 'iadl',
   },
   {
-    id: 'kcl.fall_year',
-    instrument: 'KCL-equivalent',
-    text: 'Have you had a fall in the past year?',
+    id: 'steadi.fall_year',
+    instrument: 'STEADI',
+    text: 'Have you fallen in the past year?',
     options: YES_IS_RISK,
     kihonItem: 9,
     domain: 'mobility',
@@ -257,9 +267,9 @@ export const SCREEN_ITEMS: readonly ScreenItem[] = [
     domain: 'iadl',
   },
   {
-    id: 'kcl.fall_fear',
-    instrument: 'KCL-equivalent',
-    text: 'Are you worried about falling?',
+    id: 'steadi.fall_fear',
+    instrument: 'STEADI',
+    text: 'Do you worry about falling?',
     options: YES_IS_RISK,
     kihonItem: 10,
     domain: 'mobility',
@@ -273,12 +283,28 @@ export const SCREEN_ITEMS: readonly ScreenItem[] = [
     domain: 'iadl',
   },
   {
+    id: 'steadi.unsteady',
+    instrument: 'STEADI',
+    text: 'Do you feel unsteady when standing or walking?',
+    options: YES_IS_RISK,
+    domain: 'mobility',
+  },
+  {
     id: 'kcl.visit_friends',
     instrument: 'KCL-equivalent',
     text: 'Do you visit friends at their homes?',
     options: NO_IS_RISK,
     kihonItem: 4,
     domain: 'iadl',
+  },
+  {
+    id: 'steadi.chair',
+    instrument: 'STEADI',
+    recall: 'Tell me whether this is true for you:',
+    text: 'I need to push with my hands to stand up from a chair.',
+    options: YES_IS_RISK,
+    kihonItem: 7,
+    domain: 'mobility',
   },
   {
     id: 'kcl.advise',
@@ -377,29 +403,51 @@ export function currentAnswers(answers: readonly ItemAnswer[], asOf: string): Ma
   return latest;
 }
 
+/** The instruments Hachi reports a result for in the instrument's own terms. */
+export type ScorableInstrument = 'ULS-3' | 'PHQ-2' | 'FRAIL' | 'STEADI';
+
 export interface InstrumentScore {
-  instrument: Instrument;
+  instrument: ScorableInstrument;
   score: number;
   /** Items answered out of the instrument's own length. */
   answered: number;
   of: number;
+  /**
+   * How many of those items Hachi can put to someone over the telephone. Fewer than `of` means
+   * `positive` can never be anything but null, which is a fact about the instrument rather than
+   * about this resident, and is shown as such.
+   */
+  askable: number;
+  /** The instrument's published threshold, reported so nobody has to take `positive` on trust. */
+  cutoff: number;
   /** Null until every item is answered: a part-scored instrument has no valid cutoff. */
   positive: boolean | null;
 }
 
-const INSTRUMENT_CUTOFF: Partial<Record<Instrument, { items: string[]; atLeast: number }>> = {
+/**
+ * `of` is the instrument's own published length, which is not always what Hachi can ask. Scoring a
+ * part-asked instrument on whatever came back would read as a result while resting on nothing, so
+ * such an instrument stays unread and says how far short it is.
+ */
+const INSTRUMENT_CUTOFF: Record<ScorableInstrument, { items: string[]; atLeast: number; of: number }> = {
   // Hughes et al. score 3-9; 6 and above is the grouping in common use, though no cutoff is agreed.
-  'ULS-3': { items: ['uls3.companionship', 'uls3.left_out', 'uls3.isolated'], atLeast: 6 },
+  'ULS-3': { items: ['uls3.companionship', 'uls3.left_out', 'uls3.isolated'], atLeast: 6, of: 3 },
   // Kroenke et al. found 3 optimal: sensitivity 83%, specificity 92% for major depression.
-  'PHQ-2': { items: ['phq2.interest', 'phq2.down'], atLeast: 3 },
+  'PHQ-2': { items: ['phq2.interest', 'phq2.down'], atLeast: 3, of: 2 },
+  // Morley et al. score 0-5, 3 and above frail. Illness, which counts five or more of eleven named
+  // conditions, and Loss of weight, which needs more than five per cent of body weight, cannot be
+  // asked over a telephone, so Hachi holds three of the five and never reports a FRAIL result.
+  FRAIL: { items: ['frail.fatigue', 'frail.resistance', 'frail.ambulation'], atLeast: 3, of: 5 },
+  // CDC STEADI: a yes to any one of the three key questions is an increased risk of falling.
+  STEADI: { items: ['steadi.fall_year', 'steadi.unsteady', 'steadi.fall_fear'], atLeast: 1, of: 3 },
 };
 
 export function scoreInstrument(
-  instrument: 'ULS-3' | 'PHQ-2',
+  instrument: ScorableInstrument,
   answers: readonly ItemAnswer[],
   asOf: string,
 ): InstrumentScore {
-  const cutoff = INSTRUMENT_CUTOFF[instrument]!;
+  const cutoff = INSTRUMENT_CUTOFF[instrument];
   const current = currentAnswers(answers, asOf);
   let score = 0;
   let answered = 0;
@@ -411,12 +459,14 @@ export function scoreInstrument(
     score += option.score;
     answered += 1;
   }
-  const complete = answered === cutoff.items.length;
+  const complete = answered === cutoff.of;
   return {
     instrument,
     score,
     answered,
-    of: cutoff.items.length,
+    of: cutoff.of,
+    askable: cutoff.items.length,
+    cutoff: cutoff.atLeast,
     positive: complete ? score >= cutoff.atLeast : null,
   };
 }
@@ -456,6 +506,12 @@ export interface DomainStatus {
   /** Numbered items Hachi has no telephone question for, which is why `of` may exceed coverage. */
   missing: number[];
   /**
+   * How many flagged items the domain's own rule needs. Zero means the checklist gives this domain
+   * no rule of its own, which is not the same as not having enough answers yet: no number of
+   * answers will ever settle it, and it is reported that way rather than as pending.
+   */
+  criterion: number;
+  /**
    * Whether the domain's own criterion is met. Null when the answers are incomplete: enough items
    * are flagged to pass, or too few are answered to rule it out, and either way a professional
    * has to look rather than a number being invented.
@@ -490,7 +546,7 @@ export function domainStatus(answers: readonly ItemAnswer[], asOf: string): Doma
     const unanswered = rule.items.length - answered;
     const meets =
       rule.atLeast === 0 ? null : flagged >= rule.atLeast ? true : flagged + unanswered < rule.atLeast ? false : null;
-    return { domain, answered, of: rule.items.length, flagged, missing, meets };
+    return { domain, answered, of: rule.items.length, flagged, missing, criterion: rule.atLeast, meets };
   });
 }
 

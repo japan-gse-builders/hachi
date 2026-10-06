@@ -62,6 +62,32 @@ describe('what the set questions add up to, for staff', () => {
     expect(phq).toMatchObject({ score: 3, answered: 2, of: 2, positive: true });
   });
 
+  it('reports the same answers in both frames, because two different people read them', async () => {
+    // Staff in Japan work to the Kihon domains, which is what 介護予防 eligibility is written in.
+    // The resident's own doctor reads STEADI. Neither frame is derivable from the other.
+    const { screening } = await withAnswers([
+      answer('steadi.fall_year', 0),
+      answer('steadi.unsteady', 1),
+      answer('steadi.fall_fear', 1),
+    ]);
+    expect(screening.instruments.map((i: { instrument: string }) => i.instrument)).toEqual([
+      'ULS-3',
+      'PHQ-2',
+      'FRAIL',
+      'STEADI',
+    ]);
+    const steadi = screening.instruments.find((i: { instrument: string }) => i.instrument === 'STEADI');
+    expect(steadi).toMatchObject({ score: 1, answered: 3, of: 3, askable: 3, cutoff: 1, positive: true });
+    // The Kihon mobility domain needs three of five and has one flagged, so it stays unsettled.
+    expect(domain(screening, 'mobility')).toMatchObject({ answered: 2, flagged: 1, meets: null });
+  });
+
+  it('says why an instrument is unread when the telephone itself is the limit', async () => {
+    const { screening } = await withAnswers([answer('frail.resistance', 0)]);
+    const frail = screening.instruments.find((i: { instrument: string }) => i.instrument === 'FRAIL');
+    expect(frail).toMatchObject({ answered: 1, of: 5, askable: 3, positive: null });
+  });
+
   it('says plainly whether the family may be told how the resident is in themselves', async () => {
     const { screening } = await withAnswers([]);
     expect(screening.shareMood).toBe(false);

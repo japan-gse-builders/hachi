@@ -61,6 +61,18 @@ describe('screening item vocabulary', () => {
     expect(screenItem('phq2.down').options.map((o) => o.score)).toEqual([0, 1, 2, 3]);
   });
 
+  it('asks the CDC STEADI key questions in the words CDC publishes them in', () => {
+    expect(screenItem('steadi.fall_year').text).toBe('Have you fallen in the past year?');
+    expect(screenItem('steadi.unsteady').text).toBe('Do you feel unsteady when standing or walking?');
+    expect(screenItem('steadi.fall_fear').text).toBe('Do you worry about falling?');
+  });
+
+  it('keeps a self-report statement as a statement, and frames it rather than rewriting it', () => {
+    const chair = screenItem('steadi.chair');
+    expect(chair.text).toBe('I need to push with my hands to stand up from a chair.');
+    expect(chair.recall).toBe('Tell me whether this is true for you:');
+  });
+
   it('throws on an unknown id rather than guessing', () => {
     expect(() => screenItem('uls3.nonsense')).toThrow('Unknown screening item');
   });
@@ -179,6 +191,44 @@ describe('scoreInstrument', () => {
     const broken = scoreInstrument('PHQ-2', [{ date: START, itemId: 'phq2.down', option: 9 }], START);
     expect(broken).toMatchObject({ score: 0, answered: 0, positive: null });
   });
+
+  it('calls STEADI positive on one yes, which is the threshold CDC sets', () => {
+    const answers = [
+      answer('steadi.fall_year', 'No'),
+      answer('steadi.unsteady', 'No'),
+      answer('steadi.fall_fear', 'Yes'),
+    ];
+    expect(scoreInstrument('STEADI', answers, START)).toMatchObject({ score: 1, cutoff: 1, positive: true });
+
+    const none = answers.map((a) => answer(a.itemId, 'No'));
+    expect(scoreInstrument('STEADI', none, START)).toMatchObject({ score: 0, positive: false });
+  });
+
+  it('never reports a FRAIL result, because two of its five items need more than a telephone', () => {
+    const all = [
+      answer('frail.fatigue', 'All or most of the time'),
+      answer('frail.resistance', 'Yes'),
+      answer('frail.ambulation', 'Yes'),
+    ];
+    // Three yeses reach the published cutoff of 3, and it still is not reported: the two items
+    // Hachi cannot ask could only push the score up, but a cutoff validated on five items does not
+    // transfer to three, so the honest answer is that this instrument is unread.
+    expect(scoreInstrument('FRAIL', all, START)).toMatchObject({
+      score: 3,
+      answered: 3,
+      of: 5,
+      askable: 3,
+      cutoff: 3,
+      positive: null,
+    });
+  });
+
+  it('reports how many items it can ask, so an unread instrument says why', () => {
+    for (const i of ['ULS-3', 'PHQ-2', 'STEADI'] as const) {
+      const score = scoreInstrument(i, [], START);
+      expect(score.askable).toBe(score.of);
+    }
+  });
 });
 
 function status(answers: ItemAnswer[], domain: KihonDomain) {
@@ -190,8 +240,8 @@ describe('domainStatus', () => {
     const three = [
       answer('frail.resistance', 'Yes'),
       answer('frail.ambulation', 'Yes'),
-      answer('kcl.fall_year', 'Yes'),
-      answer('kcl.fall_fear', 'No'),
+      answer('steadi.fall_year', 'Yes'),
+      answer('steadi.fall_fear', 'No'),
     ];
     expect(status(three, 'mobility')).toMatchObject({ flagged: 3, meets: true });
   });
@@ -200,14 +250,20 @@ describe('domainStatus', () => {
     const answers = [
       answer('frail.resistance', 'No'),
       answer('frail.ambulation', 'No'),
-      answer('kcl.fall_year', 'No'),
-      answer('kcl.fall_fear', 'No'),
+      answer('steadi.fall_year', 'No'),
+      answer('steadi.fall_fear', 'No'),
     ];
     expect(status(answers, 'mobility')).toMatchObject({ flagged: 0, answered: 4, meets: false });
   });
 
   it('holds back a verdict while the answers could still go either way', () => {
     expect(status([answer('frail.resistance', 'Yes')], 'mobility')).toMatchObject({ flagged: 1, meets: null });
+  });
+
+  it('can now ask every item of the mobility domain, the chair question included', () => {
+    // Item 7 is the chair stand, which had no telephone question until the STEADI form supplied one.
+    expect(screenItem('steadi.chair').kihonItem).toBe(7);
+    expect(status([], 'mobility')).toMatchObject({ of: 5, missing: [] });
   });
 
   it('reports the items it cannot ask over the telephone instead of scoring without them', () => {
@@ -225,7 +281,13 @@ describe('domainStatus', () => {
   });
 
   it('leaves the everyday activities domain unjudged, because the checklist gives it no rule of its own', () => {
-    expect(status([answer('kcl.shopping', 'No')], 'iadl')).toMatchObject({ flagged: 1, meets: null });
+    // criterion 0 says no answer will ever settle this, which is a different thing from pending.
+    expect(status([answer('kcl.shopping', 'No')], 'iadl')).toMatchObject({ flagged: 1, criterion: 0, meets: null });
+  });
+
+  it('reports each domain the number of flagged items its own rule needs', () => {
+    const criteria = Object.fromEntries(domainStatus([], START).map((d) => [d.domain, d.criterion]));
+    expect(criteria).toEqual({ iadl: 0, mobility: 3, nutrition: 2, oral: 2, housebound: 1, cognition: 1, mood: 2 });
   });
 
   it('covers every domain on every call', () => {
@@ -245,8 +307,8 @@ describe('overallStatus', () => {
       answer('kcl.advise', 'No'),
       answer('frail.resistance', 'Yes'),
       answer('frail.ambulation', 'Yes'),
-      answer('kcl.fall_year', 'Yes'),
-      answer('kcl.fall_fear', 'Yes'),
+      answer('steadi.fall_year', 'Yes'),
+      answer('steadi.fall_fear', 'Yes'),
       answer('kcl.weight_loss', 'Yes'),
     ];
     expect(overallStatus(flaggedTen, START)).toMatchObject({ flagged: 10, meets: true });
@@ -262,8 +324,8 @@ describe('overallStatus', () => {
       answer('kcl.advise', 'Yes'),
       answer('frail.resistance', 'No'),
       answer('frail.ambulation', 'No'),
-      answer('kcl.fall_year', 'No'),
-      answer('kcl.fall_fear', 'No'),
+      answer('steadi.fall_year', 'No'),
+      answer('steadi.fall_fear', 'No'),
       answer('kcl.weight_loss', 'No'),
       answer('kcl.chewing', 'No'),
     ];
