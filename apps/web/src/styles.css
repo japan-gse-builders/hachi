@@ -31,7 +31,7 @@ a { color: #1f4d3a; }
 .nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .nav a, .button, button { min-height: 48px; border-radius: 12px; padding: 10px 14px; text-decoration: none; }
 .button, button { border: 0; background: #1f4d3a; color: white; cursor: pointer; }
-button.ghost, a.ghost { background: transparent; color: #1f4d3a; border: 2px solid #1f4d3a; }
+.ghost { background: transparent; color: #1f4d3a; border: 2px solid #1f4d3a; }
 .stack { display: grid; gap: 12px; }
 .card { background: white; border-radius: 16px; padding: 16px; box-shadow: 0 1px 0 rgba(28, 25, 21, 0.08); }
 .card h2 { margin: 0 0 8px; font-size: 22px; }
@@ -50,7 +50,13 @@ legend { font-weight: 700; margin-bottom: 4px; }
 .meta { color: #5c564c; font-size: 16px; }
 label { display: grid; gap: 6px; font-weight: 600; }
 input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; border: 2px solid #d9d1c3; background: white; }
-.row { display: flex; gap: 8px; flex-wrap: wrap; }
+/* A heading's own margins are taller than a button, which stretched buttons sitting beside one. */
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > h2 { margin: 0; }
+/* The browser writes its own label on a file input, in its own language. Ours stays English. */
+.file input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file span { width: fit-content; display: inline-flex; align-items: center; }
+.file input:focus-visible + span { outline: 3px solid #1f4d3a; outline-offset: 2px; }
 .or-divider { margin: 0; text-align: center; text-transform: lowercase; }
 .badge { display: inline-block; border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 15px; }
 .emergency { background: #f8d4d0; color: #8a1c13; }

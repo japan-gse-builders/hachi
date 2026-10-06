@@ -9,7 +9,7 @@ interface FamilyResident {
 }
 
 export function FamilyHomePage() {
-  const { token, user, sendSignInLink } = useAuth();
+  const { token, user, confirmEmail } = useAuth();
   const [residents, setResidents] = useState<FamilyResident[] | null>(null);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
@@ -28,18 +28,11 @@ export function FamilyHomePage() {
       <section className="card stack narrow">
         <h2>Confirm your email address</h2>
         {sent ? (
-          <p>We sent a sign-in link to {user?.email}. Open it on this device; that confirms the address and signs you in.</p>
+          <p>We sent a link to {user?.email}. Open it, and you will come straight back here. Your password still works.</p>
         ) : (
           <>
             <p>Before we show you anyone&apos;s daily calls, we need to know this address is yours. We will email you a link to confirm it.</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (user?.email) void sendSignInLink(user.email).then(() => setSent(true));
-              }}
-            >
-              Email me a link
-            </button>
+            <button type="button" onClick={() => void confirmEmail().then(() => setSent(true))}>Email me a link</button>
           </>
         )}
       </section>

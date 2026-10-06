@@ -47,8 +47,9 @@ export function ResidentsPage() {
           <h2>{r.name}</h2>
           <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
           <p className="meta">Resident {r.id}</p>
-          <label>Import past calls (JSON)
+          <label className="file">Import past calls (JSON)
             <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
+            <span className="button ghost">Choose a file</span>
           </label>
           {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
         </article>

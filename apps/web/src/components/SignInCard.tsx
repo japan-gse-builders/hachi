@@ -3,7 +3,7 @@ import { useAuth } from '../auth';
 
 /** The code matters here: a locked-out account and a wrong password need different actions. */
 function signInError(code: string | undefined): string {
-  if (code === 'auth/too-many-requests') return 'Too many attempts from this device. Wait a few minutes, or ask for a sign-in link below.';
+  if (code === 'auth/too-many-requests') return 'Too many attempts from this device. Wait a few minutes, or reset your password below.';
   if (code === 'auth/network-request-failed') return 'Could not reach the sign-in service. Check your connection and try again.';
   if (code === 'auth/user-disabled') return 'This account is disabled. Ask an administrator to enable it.';
   if (code === 'auth/operation-not-allowed') return 'That way of signing in is not turned on for this project.';
@@ -29,7 +29,7 @@ type Sent = 'link' | 'reset';
 const SENT: Record<Sent, { title: string; body: (email: string) => string }> = {
   link: {
     title: 'Check your email',
-    body: (email) => `We sent a sign-in link to ${email}. Open it on this device to sign in. There is no password to remember.`,
+    body: (email) => `We sent a sign-in link to ${email}. Open it on this device to sign in. From then on this account has no password; use the link or Google each time, or set a password with “Reset my password”.`,
   },
   reset: {
     title: 'Check your email',
@@ -41,7 +41,7 @@ const SENT: Record<Sent, { title: string; body: (email: string) => string }> = {
  * One sign-in card for staff and family: Google, a password, or a link by email. The link doubles
  * as the way in when a password is forgotten, so nobody is locked out of their own calls.
  */
-export function SignInCard({ title, intro, footer }: { title: string; intro: string; footer: ReactNode }) {
+export function SignInCard({ title, intro, notice, footer }: { title: string; intro: string; notice?: string; footer: ReactNode }) {
   const { signIn, signInWithGoogle, sendPasswordReset, sendSignInLink } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -94,6 +94,7 @@ export function SignInCard({ title, intro, footer }: { title: string; intro: str
     <form className="card stack narrow" onSubmit={submit}>
       <h2>{title}</h2>
       <p className="meta">{intro}</p>
+      {notice && <p className="meta">{notice}</p>}
       {error && <p className="error">{error}</p>}
       <button type="button" className="ghost" disabled={busy} onClick={() => void run('google')}>Continue with Google</button>
       <p className="meta or-divider">or</p>
@@ -101,10 +102,11 @@ export function SignInCard({ title, intro, footer }: { title: string; intro: str
       <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       <div className="row">
-        <button type="button" className="ghost" disabled={busy} onClick={() => void run('link')}>Email me a sign-in link</button>
         <button type="button" className="ghost" disabled={busy} onClick={() => void run('reset')}>Reset my password</button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => void run('link')}>Email me a sign-in link</button>
       </div>
-      <p className="meta">No password yet, or forgotten it? Ask for a sign-in link and open it on this device.</p>
+      {/* Firebase deletes an account's password as soon as a sign-in link is used on it. */}
+      <p className="meta">Forgotten your password? Reset it. A sign-in link is for people who have no password: using one clears any password the account had.</p>
       {footer}
     </form>
   );

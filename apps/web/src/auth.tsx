@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   isSignInWithEmailLink,
   onAuthStateChanged,
+  sendEmailVerification,
   sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
@@ -42,6 +43,7 @@ interface Session {
   signInWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   sendSignInLink: (email: string) => Promise<void>;
+  confirmEmail: () => Promise<void>;
   isSignInLink: (href: string) => boolean;
   storedLinkEmail: () => string | null;
   finishSignInLink: (email: string, href: string) => Promise<void>;
@@ -106,6 +108,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sendSignInLink: async (email) => {
       await sendSignInLinkToEmail(requireAuth(), email, { url: `${window.location.origin}/family/finish`, handleCodeInApp: true });
       window.localStorage.setItem(LINK_EMAIL_KEY, email);
+    },
+    // Firebase drops an account's password the moment a sign-in link is used, so confirming an
+    // address has to go through verification instead of the link we already have to hand.
+    confirmEmail: async () => {
+      const current = requireAuth().currentUser;
+      if (!current) throw new Error('Sign in first');
+      await sendEmailVerification(current, { url: `${window.location.origin}/family` });
     },
     isSignInLink: (href) => Boolean(auth && isSignInWithEmailLink(auth, href)),
     storedLinkEmail: () => window.localStorage.getItem(LINK_EMAIL_KEY),
