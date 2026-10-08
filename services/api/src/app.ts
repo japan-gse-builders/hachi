@@ -1,4 +1,4 @@
-import { emptyLedger, HISTORY_CALLS, spendMonth, type Locale, type SpendSettings } from '@hachi/core';
+import { emptyLedger, HISTORY_CALLS, PRIVACY_NOTICE, spendMonth, type Locale, type SpendSettings } from '@hachi/core';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError, type ZodType } from 'zod';
 import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
@@ -114,13 +114,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/health', async () => ({ ok: true }));
+  app.get('/privacy-notice', async () => PRIVACY_NOTICE);
 
   // ---- Staff: residents (USR-01..04) ----
 
   app.post('/api/residents', async (req, reply) => {
-    requireStaff(req);
+    const staff = requireStaff(req);
     const input = parse(residentInputSchema, req.body);
-    const resident = buildResident(input, newId(), now());
+    const resident = buildResident(input, newId(), now(), staff.uid);
     await store.createResident(resident);
     return reply.status(201).send(resident);
   });

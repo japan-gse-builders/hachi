@@ -10,6 +10,7 @@ import {
   combineStates,
   domainStatus,
   effectiveUrgency,
+  hasCallConsent,
   KIHON_DOMAIN_LABELS,
   LIFE_DOMAINS,
   localDate,
@@ -193,7 +194,7 @@ export function buildUnreached(
 ): UnreachedView {
   const items: UnreachedResident[] = [];
   for (const { resident: r, calls } of entries) {
-    if (!r.active) continue;
+    if (!r.active || !hasCallConsent(r.callConsent)) continue;
     const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
     const today = localDate(now, r.timeZone);
     const reached = calls.filter((c) => missedReason(attemptOf(c)) === null && c.status === 'completed');
@@ -445,7 +446,7 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
   const finished = calls.filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress');
   return {
     resident: { id: r.id, name: r.name },
-    nextCallAt: r.active ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
+    nextCallAt: r.active && hasCallConsent(r.callConsent) ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
     glance: familyGlance(r, finished.filter((c) => c.status === 'completed'), cases, now, locale),
     calls: finished.map((c) => {
       const w = c.status === 'completed' ? c.wellbeing : undefined;

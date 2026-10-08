@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import {
   classifyGatewayFailure,
+  hasCallConsent,
   itemsForCall,
   localDate,
   R1Monitor,
@@ -203,7 +204,7 @@ export class CallSession {
     const [call, resident] = residentId && callId
       ? await Promise.all([this.deps.store.getCall(residentId, callId), this.deps.store.getResident(residentId)])
       : [null, null];
-    if (!call || !resident || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
+    if (!call || !resident?.active || !hasCallConsent(resident.callConsent) || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
       this.deps.log.warn({ residentId, callId }, 'rejected media stream');
       this.state = 'done';
       this.socket.close();

@@ -130,6 +130,13 @@ Urgency levels:
 See [docs/CONSENT_AND_PRIVACY.md](docs/CONSENT_AND_PRIVACY.md) for consent, retention and what is
 enforced in code versus handled operationally.
 
+The public `/privacy` page explains AI processing, recordings, sharing, retention and support without
+requiring sign-in. Before a resident's first call, staff read the same notice and record their explicit
+approval on **Add resident** or **Residents**. Details can be saved while approval is pending, but daily
+calls cannot start. Existing residents need this record too; no approvals are inferred or backfilled.
+Once recorded, approval is reused on later calls. **Pause calls** stops future check-ins; retention and
+deletion requests are handled by the care organisation. Mood sharing remains a separate permission.
+
 ## Running cost, and the ceiling on it
 
 Every resident costs money every day: a Live session billed by the second and a review billed by the
@@ -246,7 +253,9 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 - **Not a medical device.** It flags changes for people to check; it does not diagnose.
 - **A phone that never rings through is not followed up yet**: there is no automatic retry for
   no-answer (technical failures are retried). Picking up and not speaking is now R4.
-- **Consent and retention are operational**, not managed in the app yet (see the privacy doc).
+- **Consent is recorded by staff**, from the resident's explicit first-use approval. There is no
+  automated spoken withdrawal or repeated approval prompt. **Retention and deletion remain
+  operational** (see the privacy doc).
 - **The monthly AI budget has never actually been reached** in production. The ceiling and the
   degradation are covered by tests, and the numbers it counts are our estimate, not Google's
   invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
@@ -256,7 +265,7 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
   from a US number and only reach verified numbers. Production needs a Japanese 050 number. This is
   an account to buy, not a design decision: the phone channel itself is the point of the service.
 - Roadmap: more rules (medication, sleep, mood, falls, heat-stroke alerts), escalation and
-  acknowledgement of notifications, WhatsApp calling, consent and retention management in the app,
+  acknowledgement of notifications, WhatsApp calling, retention and deletion management in the app,
   Japanese conversations, and evaluation on consented real-world calls.
 
 ## License

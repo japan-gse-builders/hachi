@@ -16,3 +16,4 @@ export * from './wellbeing.js';
 export * from './screening.js';
 export * from './contactRequest.js';
 export * from './loneliness.js';
+export * from './privacy.js';

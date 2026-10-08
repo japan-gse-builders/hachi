@@ -266,4 +266,5 @@ export interface Resident {
   active: boolean;
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
   consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
+  callConsent?: import('./privacy').CallConsent;
 }

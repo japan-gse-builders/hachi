@@ -2,6 +2,7 @@ import {
   callReservationMicros,
   callTaskId,
   claimCall,
+  hasCallConsent,
   isDue,
   liveCallMicros,
   localDate,
@@ -82,6 +83,7 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
   const handle = async (r: Resident) => {
     try {
+      if (!hasCallConsent(r.callConsent)) return;
       if (!isDue(r.callTime, r.timeZone, windowStart, now)) return;
       const date = localDate(nextCallAt(r.callTime, r.timeZone, windowStart), r.timeZone);
       const outcome = await deps.queue.enqueue({
@@ -103,7 +105,7 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
 export type PlaceCallOutcome =
   | { outcome: 'placed'; providerCallId: string }
-  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' | 'budget_exhausted' | 'gateway_unavailable' }
+  | { outcome: 'skipped'; reason: 'inactive' | 'consent_required' | 'already_handled' | 'budget_exhausted' | 'gateway_unavailable' }
   | { outcome: 'retry_later'; reason: 'dial_in_progress' | 'provider_unavailable' }
   | { outcome: 'failed'; retryScheduled: boolean; code?: string };
 
@@ -173,6 +175,7 @@ function withoutLease(c: CallRecord): CallRecord {
 export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetryCount: number): Promise<PlaceCallOutcome> {
   const r = await deps.store.getResident(input.residentId);
   if (!r || !r.active) return { outcome: 'skipped', reason: 'inactive' };
+  if (!hasCallConsent(r.callConsent)) return { outcome: 'skipped', reason: 'consent_required' };
 
   const callId = callIdFor(input.localDate, input.attempt);
   const at = deps.now().toISOString();
