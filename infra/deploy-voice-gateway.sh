@@ -69,6 +69,17 @@ ANALYZE_ENV=""
 if gcloud run services describe hachi-analyzer --region "$TASKS_REGION" >/dev/null 2>&1; then
   ANALYZE_ENV=",ANALYZER_BASE_URL=https://hachi-analyzer-${PROJECT_NUMBER}.${TASKS_REGION}.run.app,ANALYSIS_QUEUE=call-analysis"
 fi
+# The forced-drop test hook (docs/VERIFY_LIVE_AND_LEDGER.md) has to come through here, because
+# --set-env-vars replaces the whole environment: a hook set by hand would be erased by the next
+# deploy, and — more usefully — a hook set here is erased by the next deploy that does not ask for
+# it. There is no state to remember to clean up.
+DROP_ENV=""
+if [[ -n "${FORCE_LIVE_DROP:-}" ]]; then
+  DROP_ENV=",FORCE_LIVE_DROP=${FORCE_LIVE_DROP}"
+  echo "!!  FORCE_LIVE_DROP=${FORCE_LIVE_DROP}"
+  echo "!!  The next call to that resident will have its Gemini Live socket closed on purpose."
+  echo "!!  No other resident is affected. Re-run this script without the variable to clear it."
+fi
 # Twilio cannot send Google credentials, so ingress is public; each stream must present the
 # per-call token stored in Firestore. CPU stays allocated because audio flows over an open
 # WebSocket between requests; the timeout bounds a single call.
@@ -78,7 +89,7 @@ fi
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 1Gi \
   --concurrency 20 --timeout 3600 --no-cpu-throttling --cpu-boost \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${DROP_ENV}"
 
 GATEWAY_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
 echo "==> Health check"

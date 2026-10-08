@@ -54,6 +54,23 @@ describe('loadConfig', () => {
     expect(c.silence).toEqual({ promptSec: 20, prompts: 1 });
   });
 
+  it('leaves the forced drop out unless it names a resident and a delay', () => {
+    // Absent, not false: every deployment that is not being tested must not carry the field at all.
+    expect(loadConfig(base).forcedLiveDrop).toBeUndefined();
+    expect(loadConfig({ ...base, FORCE_LIVE_DROP: '  ' }).forcedLiveDrop).toBeUndefined();
+    expect(loadConfig({ ...base, FORCE_LIVE_DROP: 'test-02102026160456:20' }).forcedLiveDrop).toEqual({
+      residentId: 'test-02102026160456',
+      afterSec: 20,
+    });
+  });
+
+  it.each([['20'], ['res-1'], ['res-1:'], ['res-1:4'], ['res-1:121'], [':20'], ['res 1:20'], ['res-1:20:30']])(
+    'refuses to start on FORCE_LIVE_DROP=%s rather than quietly doing nothing',
+    (value) => {
+      expect(() => loadConfig({ ...base, FORCE_LIVE_DROP: value })).toThrow(/FORCE_LIVE_DROP/);
+    },
+  );
+
   it.each([
     [{ GOOGLE_CLOUD_PROJECT: '' }, /GOOGLE_CLOUD_PROJECT/],
     [{ RECORDINGS_BUCKET: undefined }, /RECORDINGS_BUCKET is not set/],

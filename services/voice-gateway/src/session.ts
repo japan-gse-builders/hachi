@@ -51,7 +51,12 @@ export interface SessionDeps {
   /** Without it the analysis worker's sweep picks the call up. */
   analysis?: AnalysisRequester;
   log: Logger;
-  config: { maxConversationSec: number; silence: { promptSec: number; prompts: number } };
+  config: {
+    maxConversationSec: number;
+    silence: { promptSec: number; prompts: number };
+    /** See `GatewayConfig.forcedLiveDrop`. Absent in every deployment that is not being tested. */
+    forcedLiveDrop?: { residentId: string; afterSec: number };
+  };
   /** Overridable for tests. */
   timing?: Partial<SessionTiming>;
 }
@@ -135,6 +140,27 @@ export class CallSession {
   private liveFailure?: string;
   /** Latest point the Live API said it could restore this conversation from. */
   private resumeHandle?: string;
+  /**
+   * What the Live API did over the whole call, counted rather than logged event by event. Handles
+   * arrive every few seconds and token counts arrive every turn; a line each would bury the lines
+   * that say a call went wrong, across several hundred calls a day.
+   *
+   * `contextShrinks` is an inference and not a report. The protocol has no field for "I compressed
+   * the window", so the only evidence available is the prompt token count attached to each turn —
+   * which for Live is the whole session context — going down instead of up. A call whose
+   * `peakPromptTokens` never approaches the trigger says nothing either way, rather than saying no.
+   */
+  private readonly liveStats = {
+    handles: 0,
+    unusableHandles: 0,
+    resumedFromHandle: 0,
+    replayedTranscript: 0,
+    goAways: 0,
+    peakPromptTokens: 0,
+    contextShrinks: 0,
+  };
+  private lastPromptTokens = 0;
+  private forcedDropArmed = false;
   private pending: Int16Array[] = [];
   private pendingSamples = 0;
   private outgoing: Int16Array[] = [];
@@ -336,15 +362,52 @@ export class CallSession {
     this.live = session;
     this.liveReady = true;
     if (!resume) session.sendText(openingCue(this.name));
-    else if (!handle) session.sendText(resumeCue(this.name));
-    // A resumed session picks up mid-sentence, so there is nothing to apologize for and nothing to
-    // say. Nothing will speak either, so the silence clock is started here instead of on a turn end.
-    else this.armSilence();
+    else if (!handle) {
+      this.liveStats.replayedTranscript++;
+      // Warn rather than info: the handle is the path that keeps the audio context, so falling back
+      // is a quiet loss of the thing R3 measures, and nothing else in the call will mention it.
+      this.deps.log.warn({ ...this.ids, session: this.liveSessions, offered: this.liveStats.handles }, 'reconnected by replaying the conversation, not from a handle');
+      session.sendText(resumeCue(this.name));
+    } else {
+      this.liveStats.resumedFromHandle++;
+      this.deps.log.info({ ...this.ids, session: this.liveSessions, handleChars: handle.length }, 'reconnected from a Gemini Live resumption handle');
+      // A resumed session picks up mid-sentence, so there is nothing to apologize for and nothing to
+      // say. Nothing will speak either, so the silence clock is started here instead of on a turn end.
+      this.armSilence();
+    }
+    this.armForcedDrop();
     if (this.pending.length) {
       session.sendAudio(concatPcm(this.pending));
       this.pending = [];
       this.pendingSamples = 0;
     }
+  }
+
+  /**
+   * Closes the Live socket on purpose, once, on a call somebody is deliberately making. Resumption
+   * cannot be verified any other way: a healthy websocket does not drop, and the party whose
+   * behaviour is in question is the server, which in a test is a fake that we wrote.
+   *
+   * Three things bound it. It is off unless `FORCE_LIVE_DROP` is set; it fires for the single
+   * resident id named in that variable, so a setting left behind after a test cannot reach anybody;
+   * and it fires once per call, because a drop on every session would spend the three a call is
+   * allowed and end it as a gateway fault.
+   *
+   * It never fires while an emergency is in flight. At that point the model is telling the resident
+   * that help is coming, and cutting that off to learn something about reconnects is not a trade
+   * this service makes.
+   */
+  private armForcedDrop(): void {
+    const drop = this.deps.config.forcedLiveDrop;
+    if (!drop || this.forcedDropArmed || !this.ids || drop.residentId !== this.ids.residentId) return;
+    this.forcedDropArmed = true;
+    const generation = this.liveGeneration;
+    this.deps.log.warn({ ...this.ids, afterSec: drop.afterSec }, 'FORCE_LIVE_DROP is set: this call will have its Gemini Live socket closed on purpose');
+    this.timer(drop.afterSec * 1000, () => {
+      if (this.state !== 'active' || generation !== this.liveGeneration || this.endReason || this.emergency !== 'none') return;
+      this.deps.log.warn({ ...this.ids }, 'closing the Gemini Live socket to test resumption');
+      this.live?.drop();
+    });
   }
 
   private handlers(generation: number): LiveHandlers {
@@ -368,7 +431,27 @@ export class CallSession {
       },
       toolCalls: (calls) => current() && calls.forEach((c) => this.onToolCall(c)),
       resumable: (handle) => {
-        if (current()) this.resumeHandle = handle;
+        if (!current()) return;
+        // The first one gets a line of its own. A call that then fails outright never reaches the
+        // summary, and whether the server offered anything at all is the first thing worth knowing.
+        // Only the length is recorded: a handle is opaque but it is still state about one person.
+        if (!this.liveStats.handles) this.deps.log.info({ ...this.ids, handleChars: handle.length }, 'Gemini Live offered a resumption handle');
+        this.liveStats.handles++;
+        this.resumeHandle = handle;
+      },
+      notResumable: () => {
+        if (current()) this.liveStats.unusableHandles++;
+      },
+      usage: ({ promptTokens }) => {
+        if (!current() || promptTokens <= 0) return;
+        if (promptTokens < this.lastPromptTokens) this.liveStats.contextShrinks++;
+        this.lastPromptTokens = promptTokens;
+        this.liveStats.peakPromptTokens = Math.max(this.liveStats.peakPromptTokens, promptTokens);
+      },
+      goingAway: (timeLeft) => {
+        if (!current()) return;
+        this.liveStats.goAways++;
+        this.deps.log.warn({ ...this.ids, timeLeft }, 'Gemini Live says it is about to close the session');
       },
       closed: (reason) => {
         if (!current()) return;
@@ -548,6 +631,10 @@ export class CallSession {
     }
     this.socket.close();
     this.deps.log.info({ ...ids, reason, turns: transcript.length }, 'conversation ended');
+    // Kept apart from the line above because it is about the transport rather than about the call.
+    // One is read when asking what happened to a resident, the other when asking whether resumption
+    // and compression do what they were configured to do, which no single call can answer alone.
+    this.deps.log.info({ ...ids, sessions: this.liveSessions, ...this.liveStats }, 'Gemini Live session summary');
     await this.reportGateway(reason);
 
     try {

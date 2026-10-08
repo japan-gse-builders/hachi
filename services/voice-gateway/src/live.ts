@@ -31,6 +31,25 @@ export interface LiveHandlers {
    * recent resumable one is the only one worth keeping.
    */
   resumable(handle: string): void;
+  /**
+   * The server offered a point it cannot restore from, because it was mid-generation. Reported
+   * separately from `resumable` because "the server never offered a handle" and "every handle it
+   * offered was unusable" are different faults, and silently dropping these makes them look alike.
+   */
+  notResumable(): void;
+  /**
+   * What the server counted for the turn it has just answered. Live re-sends the whole session
+   * context on every turn, so `promptTokens` is the size of the context window rather than of one
+   * question. Nothing in the protocol says that the window was compressed, so this is the only
+   * quantity that can show whether the compression trigger was ever within reach.
+   */
+  usage(tokens: { promptTokens: number; totalTokens: number }): void;
+  /**
+   * The server intends to close the connection shortly. This is the case transparent resumption
+   * exists for, so it is worth telling apart from a close nobody announced: the first is the
+   * mechanism working as designed, the second is a fault.
+   */
+  goingAway(timeLeft: string | undefined): void;
   /** The session ended; not called after `close()`. */
   closed(reason: string): void;
 }
@@ -41,6 +60,12 @@ export interface LiveSession {
   sendText(text: string): void;
   respondToTool(call: ToolCall, response: Record<string, unknown>, scheduling: ToolScheduling): void;
   close(): void;
+  /**
+   * Closes the socket the way a network fault would, leaving `closed` to fire and the reconnect to
+   * follow. `close()` cannot stand in for it: marking the close as ours is exactly what stops a call
+   * we are ending from being read as a fault, and that is also what makes it useless here.
+   */
+  drop(): void;
 }
 
 export interface LiveSetup {
@@ -139,6 +164,7 @@ export class GeminiLiveConnector implements LiveConnector {
         closedByUs = true;
         session.close();
       },
+      drop: () => session.close(),
     };
   }
 }
@@ -155,10 +181,16 @@ export function dispatch(m: LiveServerMessage, h: LiveHandlers): void {
     if (c.outputTranscription?.text) h.outputTranscript(c.outputTranscription.text);
     if (c.turnComplete) h.turnComplete();
   }
+  const u = m.usageMetadata;
+  if (u) h.usage({ promptTokens: u.promptTokenCount ?? 0, totalTokens: u.totalTokenCount ?? 0 });
+  if (m.goAway) h.goingAway(m.goAway.timeLeft);
   const r = m.sessionResumptionUpdate;
   // A handle offered while the model is mid-generation comes back as not resumable, and using one
   // loses part of the conversation, so only the resumable ones are kept.
-  if (r?.resumable && r.newHandle) h.resumable(r.newHandle);
+  if (r) {
+    if (r.resumable && r.newHandle) h.resumable(r.newHandle);
+    else h.notResumable();
+  }
   const calls = m.toolCall?.functionCalls ?? [];
   if (calls.length) {
     h.toolCalls(calls.map((f) => ({ id: f.id ?? '', name: f.name ?? '', args: (f.args ?? {}) as Record<string, unknown> })));

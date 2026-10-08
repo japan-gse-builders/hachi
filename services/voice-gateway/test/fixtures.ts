@@ -49,6 +49,7 @@ export class FakeLiveSession implements LiveSession {
   readonly texts: string[] = [];
   readonly tools: { call: ToolCall; response: Record<string, unknown>; scheduling: ToolScheduling }[] = [];
   closed = false;
+  dropped = false;
 
   constructor(
     readonly setup: LiveSetup,
@@ -66,6 +67,11 @@ export class FakeLiveSession implements LiveSession {
   }
   close(): void {
     this.closed = true;
+  }
+  /** The socket going down under us: `closed` fires, which is the whole difference from `close()`. */
+  drop(): void {
+    this.dropped = true;
+    this.h.closed('closed: 1000');
   }
 }
 
@@ -132,10 +138,29 @@ export class FakeSocket implements TwilioSocket {
   }
 }
 
-export const silentLog: Logger = { info: () => {}, warn: () => {}, error: () => {} };
+export interface LoggedLine {
+  level: 'info' | 'warn' | 'error';
+  obj: Record<string, unknown>;
+  msg?: string;
+}
+
+/** Kept rather than discarded, because what the logs say is now part of what the gateway does. */
+export function recordingLog(): { lines: LoggedLine[]; log: Logger } {
+  const lines: LoggedLine[] = [];
+  const at = (level: LoggedLine['level']) => (obj: object, msg?: string) => {
+    lines.push({ level, obj: obj as Record<string, unknown>, ...(msg === undefined ? {} : { msg }) });
+  };
+  return { lines, log: { info: at('info'), warn: at('warn'), error: at('error') } };
+}
 
 export async function setup(
-  opts: { call?: Partial<CallRecord>; maxConversationSec?: number; silence?: Partial<SessionDeps['config']['silence']>; timing?: SessionDeps['timing'] } = {},
+  opts: {
+    call?: Partial<CallRecord>;
+    maxConversationSec?: number;
+    silence?: Partial<SessionDeps['config']['silence']>;
+    timing?: SessionDeps['timing'];
+    forcedLiveDrop?: SessionDeps['config']['forcedLiveDrop'];
+  } = {},
 ) {
   const store = new MemoryStore();
   await store.createResident(resident());
@@ -144,18 +169,23 @@ export async function setup(
   const emergency = new FakeEmergency();
   const recordings = new FakeRecordings();
   const socket = new FakeSocket();
+  const logged = recordingLog();
   const deps: SessionDeps = {
     store,
     live,
     emergency,
     recordings,
-    log: silentLog,
+    log: logged.log,
     // Far longer than any test takes, so only the tests that ask for it see the silence timer.
-    config: { maxConversationSec: opts.maxConversationSec ?? 480, silence: { promptSec: 30, prompts: 2, ...opts.silence } },
+    config: {
+      maxConversationSec: opts.maxConversationSec ?? 480,
+      silence: { promptSec: 30, prompts: 2, ...opts.silence },
+      ...(opts.forcedLiveDrop ? { forcedLiveDrop: opts.forcedLiveDrop } : {}),
+    },
     timing: { endFallbackMs: 150, emergencyFallbackMs: 150, liveRetryDelayMs: 1, emergencyRetryDelayMs: 1, ...opts.timing },
   };
   const session = new CallSession(deps, socket);
-  return { store, live, emergency, recordings, socket, session, deps };
+  return { store, live, emergency, recordings, socket, session, deps, logged: logged.lines };
 }
 
 export function startMessage(params: Record<string, string> = {}, callSid = 'CA1') {
