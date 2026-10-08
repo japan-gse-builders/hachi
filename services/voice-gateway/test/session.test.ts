@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { emergencyCue, EMERGENCY_TOOL_GUIDANCE, openingCue, resumeCue, wrapUpCue } from '../src/prompt.js';
+import { emergencyCue, EMERGENCY_TOOL_GUIDANCE, openingCue, resumeCue, silenceCue, silenceFarewellCue, wrapUpCue } from '../src/prompt.js';
 import { callDoc, IDS, markMessage, mediaMessage, setup, startMessage, tick, wait } from './fixtures.js';
 
 const loud24k = (n = 480) => new Int16Array(n).fill(6000);
@@ -231,6 +231,58 @@ describe('CallSession: transcript and ending', () => {
     await vi.waitFor(() => expect(ctx.socket.ofType('mark').some((m) => m.mark.name.startsWith('end'))).toBe(true), { timeout: 2000 });
     await ctx.session.onMessage(markMessage(await endMark(ctx)));
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('time_limit');
+  });
+
+  it('checks on a resident who never speaks, then ends the call as such', async () => {
+    const ctx = await started({ silence: { promptSec: 0.02, prompts: 2 } });
+    ctx.gemini.h.turnComplete();
+    await vi.waitFor(() => expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(2), { timeout: 2000 });
+    // The greeting and both prompts went unanswered, so Hachi says what happens next before hanging up.
+    await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceFarewellCue('Maggie')), { timeout: 2000 });
+    await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('silent_after_greeting');
+  });
+
+  it('separates going quiet partway through from never speaking at all', async () => {
+    const ctx = await started({ silence: { promptSec: 0.02, prompts: 1 } });
+    ctx.gemini.h.inputTranscript('Good morning');
+    ctx.gemini.h.turnComplete();
+    await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceCue('Maggie', true)), { timeout: 2000 });
+    await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
+    const call = (await ctx.store.getCall(IDS.residentId, IDS.callId))!;
+    expect(call.conversation?.endedBy).toBe('stopped_responding');
+    expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', false));
+  });
+
+  it('does not count the quiet before a reconnect as a resident who never spoke', async () => {
+    const transcript = [{ speaker: 'resident' as const, text: 'I am fine', startMs: 0, endMs: 900 }];
+    const ctx = await started({ call: { transcript }, silence: { promptSec: 0.02, prompts: 1 } });
+    ctx.gemini.h.turnComplete();
+    await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('stopped_responding');
+  });
+
+  it('starts the silence clock again whenever the resident answers', async () => {
+    const ctx = await started({ silence: { promptSec: 0.05, prompts: 1 } });
+    for (let i = 0; i < 4; i++) {
+      ctx.gemini.h.turnComplete();
+      await wait(30);
+      ctx.gemini.h.inputTranscript(`Answer ${i}`);
+    }
+    await wait(30);
+    expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', true));
+    expect(ctx.session.currentState).toBe('active');
+  });
+
+  it('does not hang up on silence while an emergency is being arranged', async () => {
+    const ctx = await started({ silence: { promptSec: 0.02, prompts: 1 } });
+    ctx.gemini.h.inputTranscript('I have terrible chest pain');
+    await vi.waitFor(() => expect(ctx.emergency.raised).toHaveLength(1), { timeout: 2000 });
+    ctx.gemini.h.turnComplete();
+    await wait(80);
+    expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', true));
+    const call = (await ctx.store.getCall(IDS.residentId, IDS.callId))!;
+    expect(call.conversation?.endedBy ?? 'emergency').toBe('emergency');
   });
 
   it('answers unknown tools with an error', async () => {

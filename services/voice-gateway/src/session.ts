@@ -4,7 +4,18 @@ import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store'
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, ToolCall } from './live.js';
-import { buildSystemInstruction, priorContext, EMERGENCY_TOOL_GUIDANCE, emergencyCue, openingCue, resumeCue, wrapUpCue, type PriorContext } from './prompt.js';
+import {
+  buildSystemInstruction,
+  priorContext,
+  EMERGENCY_TOOL_GUIDANCE,
+  emergencyCue,
+  openingCue,
+  resumeCue,
+  silenceCue,
+  silenceFarewellCue,
+  wrapUpCue,
+  type PriorContext,
+} from './prompt.js';
 import { CallRecorder } from './recorder.js';
 
 export interface RecordingSink {
@@ -31,7 +42,7 @@ export interface SessionDeps {
   /** Without it the analysis worker's sweep picks the call up. */
   analysis?: AnalysisRequester;
   log: Logger;
-  config: { maxConversationSec: number };
+  config: { maxConversationSec: number; silence: { promptSec: number; prompts: number } };
   /** Overridable for tests. */
   timing?: Partial<SessionTiming>;
 }
@@ -73,6 +84,12 @@ export interface TwilioSocket {
 }
 
 type State = 'waiting' | 'active' | 'finishing' | 'done';
+
+/**
+ * Endings that an emergency may still overwrite. The goodbye is still playing at this point, so if
+ * the resident says something alarming on the way out, that is what the call ended for.
+ */
+const REPLACEABLE_END: ReadonlySet<ConversationEnd> = new Set(['agent', 'time_limit', 'silent_after_greeting', 'stopped_responding']);
 
 function tokensMatch(expected: string | undefined, given: unknown): boolean {
   if (!expected || typeof given !== 'string') return false;
@@ -119,6 +136,10 @@ export class CallSession {
   private hangupMark?: string;
   private markSeq = 0;
   private timers: NodeJS.Timeout[] = [];
+  /** Separate from `timers` because it is restarted every time either side stops speaking. */
+  private silenceTimer?: NodeJS.Timeout;
+  private silencePrompts = 0;
+  private heardResident = false;
 
   constructor(
     private readonly deps: SessionDeps,
@@ -183,6 +204,8 @@ export class CallSession {
     }));
     this.streamNo = updated.streams ?? 1;
     this.previousTurns = call.transcript ?? [];
+    // A reconnected stream must not treat the quiet after the drop as a resident who never spoke.
+    this.heardResident = this.previousTurns.some((t) => t.speaker === 'resident');
     this.offsetMs = this.previousTurns.length ? this.previousTurns[this.previousTurns.length - 1]!.endMs + 1000 : 0;
     // The rotation runs on the calendar, so a resumed stream asks the same questions as the first.
     this.items = itemsForCall(
@@ -220,6 +243,37 @@ export class CallSession {
 
   private timer(ms: number, fn: () => void): void {
     this.timers.push(setTimeout(fn, ms));
+  }
+
+  /**
+   * Starts the clock on silence once Hachi has stopped talking. Nothing in the audio path notices a
+   * resident who says nothing: Gemini sends no transcript, so without this the call runs until the
+   * time limit and is then filed as a conversation that happened.
+   */
+  private armSilence(): void {
+    this.clearSilence();
+    if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
+    this.silenceTimer = setTimeout(() => this.onSilence(), this.deps.config.silence.promptSec * 1000);
+  }
+
+  private clearSilence(): void {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.silenceTimer = undefined;
+  }
+
+  private onSilence(): void {
+    this.silenceTimer = undefined;
+    if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
+    if (++this.silencePrompts <= this.deps.config.silence.prompts) {
+      this.live?.sendText(silenceCue(this.name, this.heardResident));
+      // Re-armed here as well as on turnComplete, so a model that answers with nothing still ends.
+      this.armSilence();
+      return;
+    }
+    const reason: ConversationEnd = this.heardResident ? 'stopped_responding' : 'silent_after_greeting';
+    this.deps.log.warn({ ...this.ids, reason, prompts: this.silencePrompts - 1 }, 'no answer from the resident');
+    this.live?.sendText(silenceFarewellCue(this.name));
+    this.requestEnd(reason);
   }
 
   private clockMs(): number {
@@ -275,6 +329,7 @@ export class CallSession {
         const name = `t${++this.markSeq}`;
         this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
         if (this.endReason) this.hangupMark = name;
+        else this.armSilence();
       },
       toolCalls: (calls) => current() && calls.forEach((c) => this.onToolCall(c)),
       closed: (reason) => {
@@ -338,6 +393,9 @@ export class CallSession {
   }
 
   private onResidentText(text: string): void {
+    this.heardResident = true;
+    this.clearSilence();
+    this.silencePrompts = 0;
     if (this.turns[this.turns.length - 1]?.speaker !== 'resident') this.monitor.endTurn();
     const turn = this.appendTurn('resident', text);
     const [signal] = this.monitor.push(text, { startMs: turn.startMs, endMs: turn.endMs });
@@ -369,6 +427,7 @@ export class CallSession {
   private async raiseEmergency(input: Omit<EmergencyInput, 'resident' | 'callId'>): Promise<void> {
     if (this.emergencyActive || !this.resident || !this.ids) return;
     this.emergency = 'raising';
+    this.clearSilence();
     this.deps.log.warn({ ...this.ids, category: input.category }, 'EMERGENCY detected during call');
     for (let attempt = 0; attempt < this.t.emergencyAttempts; attempt++) {
       try {
@@ -390,7 +449,8 @@ export class CallSession {
 
   /** Ends after the current speech has played (Twilio echoes the mark), or after a fallback delay. */
   private requestEnd(reason: ConversationEnd, fallbackMs = this.t.endFallbackMs): void {
-    if (this.state !== 'active' || (this.endReason && this.endReason !== 'agent' && this.endReason !== 'time_limit')) return;
+    if (this.state !== 'active' || (this.endReason && !REPLACEABLE_END.has(this.endReason))) return;
+    this.clearSilence();
     this.endReason = reason;
     const name = `end${++this.markSeq}`;
     this.hangupMark = name;
@@ -411,6 +471,7 @@ export class CallSession {
     const started = this.state === 'active';
     this.state = 'finishing';
     for (const t of this.timers) clearTimeout(t);
+    this.clearSilence();
     this.liveGeneration++;
     this.live?.close();
     this.live = undefined;

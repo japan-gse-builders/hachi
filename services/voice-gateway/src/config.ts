@@ -25,6 +25,12 @@ export interface GatewayConfig {
   };
   /** The AI wraps up shortly before this and hangs up at it. */
   maxConversationSec: number;
+  silence: {
+    /** Quiet for this long after Hachi finishes speaking and it checks whether they are still there. */
+    promptSec: number;
+    /** How many times it checks before accepting that nobody is answering. */
+    prompts: number;
+  };
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -78,5 +84,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
       invokerServiceAccount: required(env, 'TASKS_INVOKER_SA'),
     },
     maxConversationSec: int(env, 'MAX_CONVERSATION_SEC', 480, 90, 900),
+    silence: {
+      // Long enough that an older adult who needs a moment to find their words is not cut off, short
+      // enough that a call nobody is answering does not bill eight minutes of live audio.
+      promptSec: int(env, 'SILENCE_PROMPT_SEC', 12, 5, 120),
+      prompts: int(env, 'SILENCE_PROMPTS', 2, 1, 5),
+    },
   };
 }

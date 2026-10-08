@@ -153,7 +153,20 @@ export interface CallAnalysis {
   voiceError?: string;
 }
 
-export type ConversationEnd = 'agent' | 'resident' | 'time_limit' | 'emergency' | 'gateway_error';
+/**
+ * Why the conversation stopped. Silence has two names because they mean different things: someone
+ * who answers and never speaks at all may be unable to, while someone who answers, talks and then
+ * goes quiet has most likely just walked away. Collapsing both into "the call completed" would lose
+ * the first one, which is the more serious of the two.
+ */
+export type ConversationEnd =
+  | 'agent'
+  | 'resident'
+  | 'time_limit'
+  | 'emergency'
+  | 'gateway_error'
+  | 'silent_after_greeting'
+  | 'stopped_responding';
 
 export interface EmergencyLeg {
   recipient: 'staff' | 'family';

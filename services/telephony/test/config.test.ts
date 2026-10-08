@@ -21,7 +21,7 @@ describe('loadConfig', () => {
     expect(c.voiceStreamUrl).toBeUndefined();
     expect(c.tasks).toMatchObject({ location: 'asia-northeast1', callQueue: 'outbound-calls' });
     expect(c.allowedCallers).toEqual(['tasks@hachi-prod.iam.gserviceaccount.com', 'scheduler@hachi-prod.iam.gserviceaccount.com']);
-    expect(c).toMatchObject({ port: 8080, ringTimeoutSec: 30, maxCallSec: 1800, maxAttempts: 3, retryDelaySec: 180, dispatchLookbackMin: 10 });
+    expect(c).toMatchObject({ port: 8080, ringTimeoutSec: 30, maxCallSec: 1200, maxAttempts: 3, retryDelaySec: 180, dispatchLookbackMin: 10 });
     expect(c.sayVoice).toBe('Google.en-US-Neural2-F');
   });
 

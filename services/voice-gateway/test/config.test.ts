@@ -19,6 +19,7 @@ describe('loadConfig', () => {
       appBaseUrl: 'https://hachi-test.web.app',
       tasks: { location: 'asia-northeast1', emergencyQueue: 'emergency-calls', notifyQueue: 'notifications', analysisQueue: 'call-analysis', invokerServiceAccount: base.TASKS_INVOKER_SA },
       maxConversationSec: 480,
+      silence: { promptSec: 12, prompts: 2 },
     });
   });
 
@@ -33,6 +34,8 @@ describe('loadConfig', () => {
       TASKS_LOCATION: 'us-central1',
       EMERGENCY_QUEUE: 'urgent',
       MAX_CONVERSATION_SEC: '600',
+      SILENCE_PROMPT_SEC: '20',
+      SILENCE_PROMPTS: '1',
       NOTIFIER_BASE_URL: 'https://notifier.example/',
       NOTIFY_QUEUE: 'n2',
       ANALYZER_BASE_URL: 'https://analyzer.example/',
@@ -48,6 +51,7 @@ describe('loadConfig', () => {
     expect(c.tasks.location).toBe('us-central1');
     expect(c.tasks.emergencyQueue).toBe('urgent');
     expect(c.maxConversationSec).toBe(600);
+    expect(c.silence).toEqual({ promptSec: 20, prompts: 1 });
   });
 
   it.each([

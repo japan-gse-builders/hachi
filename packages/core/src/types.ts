@@ -1,6 +1,7 @@
+import type { NoResponseKind } from './r4.js';
 import type { Urgency } from './urgency.js';
 
-export type RuleId = 'R1' | 'R2' | 'R3';
+export type RuleId = 'R1' | 'R2' | 'R3' | 'R4';
 export type Locale = 'ja' | 'en';
 
 export interface Evidence {
@@ -25,6 +26,8 @@ export interface Detection {
   /** R3: composite change magnitude (adverse z-score). */
   changeMagnitude?: number;
   trend?: Trend;
+  /** R4: which silence was heard, since the two mean different things. */
+  noResponse?: NoResponseKind;
 }
 
 export type Trend = 'improving' | 'stable' | 'worsening';

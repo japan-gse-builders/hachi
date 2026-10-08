@@ -92,7 +92,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): TelephonyConfig {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
     ringTimeoutSec: int(env, 'RING_TIMEOUT_SEC', 30, 10, 60),
-    maxCallSec: int(env, 'MAX_CALL_SEC', 1800, 60, 14400),
+    // The outer limit on the phone leg, not on the conversation: the Voice Gateway finishes talking
+    // at MAX_CONVERSATION_SEC (8 minutes by default), and the rest of this is headroom for an
+    // emergency conference with family and staff, which must not be cut off mid-sentence. Half an
+    // hour of headroom was a backstop against nothing in particular; twenty minutes is still
+    // generous for the conference and bounds what one stuck call can cost.
+    maxCallSec: int(env, 'MAX_CALL_SEC', 1200, 60, 14400),
     maxAttempts: int(env, 'MAX_CALL_ATTEMPTS', 3, 1, 5),
     retryDelaySec: int(env, 'RETRY_DELAY_SEC', 180, 30, 3600),
     dispatchLookbackMin: int(env, 'DISPATCH_LOOKBACK_MIN', 10, 1, 50),

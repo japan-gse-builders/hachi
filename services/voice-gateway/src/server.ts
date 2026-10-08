@@ -60,7 +60,7 @@ const app = buildApp({
         },
       }
     : {}),
-  config: { maxConversationSec: config.maxConversationSec },
+  config: { maxConversationSec: config.maxConversationSec, silence: config.silence },
   logger: true,
 });
 

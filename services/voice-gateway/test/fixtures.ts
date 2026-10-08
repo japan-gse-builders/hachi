@@ -129,7 +129,9 @@ export class FakeSocket implements TwilioSocket {
 
 export const silentLog: Logger = { info: () => {}, warn: () => {}, error: () => {} };
 
-export async function setup(opts: { call?: Partial<CallRecord>; maxConversationSec?: number; timing?: SessionDeps['timing'] } = {}) {
+export async function setup(
+  opts: { call?: Partial<CallRecord>; maxConversationSec?: number; silence?: Partial<SessionDeps['config']['silence']>; timing?: SessionDeps['timing'] } = {},
+) {
   const store = new MemoryStore();
   await store.createResident(resident());
   await store.createCallIfAbsent(callDoc(opts.call));
@@ -143,7 +145,8 @@ export async function setup(opts: { call?: Partial<CallRecord>; maxConversationS
     emergency,
     recordings,
     log: silentLog,
-    config: { maxConversationSec: opts.maxConversationSec ?? 480 },
+    // Far longer than any test takes, so only the tests that ask for it see the silence timer.
+    config: { maxConversationSec: opts.maxConversationSec ?? 480, silence: { promptSec: 30, prompts: 2, ...opts.silence } },
     timing: { endFallbackMs: 150, emergencyFallbackMs: 150, liveRetryDelayMs: 1, emergencyRetryDelayMs: 1, ...opts.timing },
   };
   const session = new CallSession(deps, socket);

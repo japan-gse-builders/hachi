@@ -3,8 +3,8 @@ import type { Case, Locale, RuleId, VulnerabilityProfile } from './types.js';
 import { compareUrgency, type Urgency } from './urgency.js';
 
 export const RULE_NAMES: Record<Locale, Record<RuleId, string>> = {
-  ja: { R1: '急な体調の異変', R2: '食事がとれていない', R3: '話し方の変化' },
-  en: { R1: 'Acute symptoms', R2: 'Not eating', R3: 'Change in speech' },
+  ja: { R1: '急な体調の異変', R2: '食事がとれていない', R3: '話し方の変化', R4: '応答がない' },
+  en: { R1: 'Acute symptoms', R2: 'Not eating', R3: 'Change in speech', R4: 'No response' },
 };
 
 export interface PriorityFactor {
@@ -28,6 +28,8 @@ const T = {
     r2: (days: number) => (days >= 2 ? `${days}日続けてほとんど食べていない` : 'ほとんど食べられていない日がある'),
     r3: '話し方に平常時からの変化がある',
     r3Worsening: '話し方に平常時からの変化があり、悪化傾向',
+    r4Silent: '電話には出たが、ひとことも話していない',
+    r4Stopped: '通話の途中から応答がなくなった',
     overlap: (names: string[]) => `${names.join('・')}の兆候も重なっている`,
     noSupporter: '身近な支援者なし',
     livesAlone: '一人暮らし',
@@ -42,6 +44,8 @@ const T = {
     r2: (days: number) => (days >= 2 ? `Barely eating for ${days} days in a row` : 'Barely ate on one day'),
     r3: 'Speech has changed from their usual pattern',
     r3Worsening: 'Speech has changed from their usual pattern and is getting worse',
+    r4Silent: 'Answered the phone but never spoke',
+    r4Stopped: 'Stopped responding partway through the call',
     overlap: (names: string[]) => `Also shows: ${names.join(', ')}`,
     noSupporter: 'No close supporter',
     livesAlone: 'Lives alone',
@@ -65,6 +69,7 @@ function headline(c: Case, locale: Locale): string {
   const t = T[locale];
   if (c.rule === 'R1') return t.r1;
   if (c.rule === 'R2') return t.r2((latest(c, 'poorIntakeDays') as number | undefined) ?? 1);
+  if (c.rule === 'R4') return latest(c, 'noResponse') === 'stopped_responding' ? t.r4Stopped : t.r4Silent;
   return latest(c, 'trend') === 'worsening' ? t.r3Worsening : t.r3;
 }
 

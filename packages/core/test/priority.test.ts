@@ -41,6 +41,14 @@ describe('prioritize (PRI-02, PRI-03)', () => {
     expect(prioritize(stable, [], supported, NOW, 'en').reason).toBe('Speech has changed from their usual pattern');
   });
 
+  it('tells the two R4 silences apart in the one-glance reason', () => {
+    const silent = caseOf({ rule: 'R4', detections: [detection({ rule: 'R4', noResponse: 'silent_after_greeting' })] });
+    const stopped = caseOf({ rule: 'R4', detections: [detection({ rule: 'R4', noResponse: 'stopped_responding' })] });
+    expect(prioritize(silent, [], supported, NOW).reason).toBe('電話には出たが、ひとことも話していない');
+    expect(prioritize(stopped, [], supported, NOW).reason).toBe('通話の途中から応答がなくなった');
+    expect(prioritize(stopped, [], supported, NOW, 'en').reason).toBe('Stopped responding partway through the call');
+  });
+
   it('ranks higher with higher confidence', () => {
     const lo = prioritize(caseOf({ detections: [detection({ confidence: 0.3 })] }), [], supported, NOW);
     const hi = prioritize(caseOf({ detections: [detection({ confidence: 0.9 })] }), [], supported, NOW);

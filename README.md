@@ -42,13 +42,14 @@ Hachi does not replace people. It makes a daily conversation possible at scale a
 7. **Review.** Staff use the triage queue and case pages; family members see a read-only dashboard.
    Both are a React PWA on Firebase Hosting backed by the API on Cloud Run.
 
-## The three rules
+## The four rules
 
 | Rule | What it looks for | Evidence | Urgency |
 |---|---|---|---|
 | **R1 Acute symptoms** | Chest pain, can't breathe, fallen and can't get up, and similar danger happening now. Hedged wording ("it's nothing, but my chest…") counts; past events, other people and denials do not. | What the resident says (in-call monitor + post-call review) | Immediate action |
 | **R2 Not eating** | Little or no food, counted as consecutive days across calls (including "I haven't eaten for 3 days"). | What the resident says | 1 day: Monitor; 2+ days: Review today |
 | **R3 Change in speech** | Slower responses, more self-repairs, narrower vocabulary, weaker topic coherence. | How the resident speaks, compared only with their **own** 28-day baseline (at least 8 usable calls) | Clear change: Review soon; slight change: Monitor |
+| **R4 No response** | Picked up the phone and never spoke, through the greeting and two prompts. Also: answering, talking, then going quiet, if it happens again within the week. | The silence itself, plus the recording | Never spoke: Review today; repeatedly trails off: Monitor |
 
 Response latency is measured from the stereo recording with voice-activity detection (transcript
 timestamps lag by several seconds); self-repairs are counted by Gemini listening to the resident's
@@ -128,7 +129,7 @@ Automated tests cover the rules, prioritisation, notification policy and all ser
 ## Repository layout
 
 ```
-packages/core      Domain logic: R1/R2/R3, cases, prioritisation, notifications, schedule (pure functions)
+packages/core      Domain logic: R1/R2/R3/R4, cases, prioritisation, notifications, schedule (pure functions)
 packages/store     Firestore and in-memory data layer
 packages/cloud     Cloud Tasks, OIDC verification, shared cloud helpers
 services/telephony Dialling, Twilio webhooks, emergency bridging
@@ -194,8 +195,8 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 - **R3 is validated only on synthetic audio.** Real calls, real baselines and real changes are needed
   before the thresholds can be trusted; staff feedback on each case is stored for that purpose.
 - **Not a medical device.** It flags changes for people to check; it does not diagnose.
-- **Missed calls are not followed up yet**: a resident who does not answer is not treated as a sign,
-  and there is no automatic retry for no-answer (technical failures are retried).
+- **A phone that never rings through is not followed up yet**: there is no automatic retry for
+  no-answer (technical failures are retried). Picking up and not speaking is now R4.
 - **Consent and retention are operational**, not managed in the app yet (see the privacy doc).
 - **Web push is implemented but not configured** in the current deployment; alerts go by SMS, email
   and voice.

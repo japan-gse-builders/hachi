@@ -268,6 +268,44 @@ describe('analyse', () => {
     });
   });
 
+  describe('R4', () => {
+    const silent = (endedBy: 'silent_after_greeting' | 'stopped_responding', overrides = {}) =>
+      input({
+        call: call({ conversation: { endedBy, at: NOW.toISOString() }, ...overrides }),
+        // A call nobody spoke on has nothing for the model to read, so R4 stands on its own.
+        transcript: [],
+        review: null,
+      });
+
+    it('raises a case when the resident answered and never spoke', () => {
+      const [d] = analyse(silent('silent_after_greeting')).detections;
+      expect(d).toMatchObject({ rule: 'R4', urgency: 'urgent', confidence: 1, noResponse: 'silent_after_greeting' });
+      // The silence is the finding; there is no quote to stand behind it.
+      expect(d!.evidence).toEqual([]);
+    });
+
+    it('stays quiet about one call that trailed off', () => {
+      expect(rules(silent('stopped_responding'))).toEqual([]);
+    });
+
+    it('raises a case once trailing off happens again within the week', () => {
+      const earlier = call({ id: '2026-10-01-1', startedAt: '2026-10-01T02:00:00.000Z', conversation: { endedBy: 'stopped_responding', at: '' } });
+      const [d] = analyse({ ...silent('stopped_responding'), history: [earlier] }).detections;
+      expect(d).toMatchObject({ rule: 'R4', urgency: 'watch', noResponse: 'stopped_responding' });
+      expect(d!.summary).toContain('2 recent calls');
+    });
+
+    it('does not count an old call or a different ending towards the run', () => {
+      const lastMonth = call({ id: '2026-09-01-1', startedAt: '2026-09-01T02:00:00.000Z', conversation: { endedBy: 'stopped_responding', at: '' } });
+      const normal = call({ id: '2026-10-01-1', startedAt: '2026-10-01T02:00:00.000Z' });
+      expect(rules({ ...silent('stopped_responding'), history: [lastMonth, normal] })).toEqual([]);
+    });
+
+    it('says nothing about a call that ended normally', () => {
+      expect(rules(input({ review: null }))).toEqual([]);
+    });
+  });
+
   describe('R3', () => {
     const features = (o: Partial<CallSpeechSample['features']> = {}) => ({
       lexicalDiversity: 0.8,

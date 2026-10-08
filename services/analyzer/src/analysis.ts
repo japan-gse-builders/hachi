@@ -1,4 +1,5 @@
 import {
+  assessNoResponse,
   assessR2,
   assessSpeechChange,
   buildBaseline,
@@ -49,6 +50,7 @@ export interface AnalysisResult {
 }
 
 const R2_HISTORY_DAYS = 7;
+const R4_HISTORY_DAYS = 7;
 const MEAL_WORDS = /\b(eat|eaten|ate|eating|food|meal|meals|breakfast|lunch|dinner|hungry|appetite|rice|bread|biscuits?|snacks?|soup|cook|cooked)\b/i;
 const EMPTY_MEMORY: CallMemory = { topics: [], plans: [], likes: [] };
 
@@ -241,6 +243,31 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
   };
 }
 
+/** R4: the call where nobody said anything. The other three rules all need words to work on. */
+function r4Detection(input: AnalysisInput): Detection | null {
+  const { call, resident, history, now } = input;
+  const ended = call.conversation?.endedBy;
+  if (ended !== 'silent_after_greeting' && ended !== 'stopped_responding') return null;
+  const since = Date.parse(call.startedAt) - R4_HISTORY_DAYS * 86_400_000;
+  const same = history.filter(
+    (c) => c.id !== call.id && c.conversation?.endedBy === ended && Date.parse(c.startedAt) >= since && c.startedAt <= call.startedAt,
+  );
+  const a = assessNoResponse(ended, same.length + 1);
+  if (!a.urgency) return null;
+  return {
+    residentId: resident.id,
+    rule: 'R4',
+    urgency: a.urgency,
+    // Nothing was interpreted here: either the line carried words or it did not.
+    confidence: 1,
+    noResponse: ended,
+    summary: a.summary,
+    // The silence is the finding, so there is no quote to show; the recording stands in for it.
+    evidence: [],
+    detectedAt: now.toISOString(),
+  };
+}
+
 export function analyse(input: AnalysisInput): AnalysisResult {
   const { review, call, transcript } = input;
   const intake = intakeFor(input);
@@ -261,7 +288,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
   const detections =
     call.source === 'imported'
       ? []
-      : [r1Detection(input), r2Detection(input, intake), r3Detection(input, speech)].filter((d): d is Detection => d !== null);
+      : [r1Detection(input), r2Detection(input, intake), r3Detection(input, speech), r4Detection(input)].filter((d): d is Detection => d !== null);
 
   return {
     detections,

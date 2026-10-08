@@ -117,6 +117,20 @@ export const openingCue = (name: string) => `[System] The call has connected. Gr
 export const resumeCue = (name: string) => `[System] The call has reconnected. Apologize briefly to ${name} and continue.`;
 export const wrapUpCue = (name: string) => `[System] The call time is almost over. Thank ${name}, say goodbye warmly, and call end_call.`;
 /**
+ * Said into silence. The line is deliberately easy to answer with one word, because the reason for
+ * the silence may be that speaking is hard right now, and it names the service again in case an
+ * unfamiliar voice is what stopped them.
+ */
+export const silenceCue = (name: string, everSpoke: boolean) =>
+  everSpoke
+    ? `[System] ${name} has gone quiet. Gently check whether they are still there and whether they are all right, in one short sentence, and wait.`
+    : `[System] ${name} has not said anything yet. Say their name warmly, say again that this is Hachi calling for the daily check-in, ` +
+      'ask whether they can hear you, and tell them that a yes or even a sound is enough. Keep it to two short sentences and wait.';
+/** The last thing they hear if nobody answers: short, and it says what happens next. */
+export const silenceFarewellCue = (name: string) =>
+  `[System] There is still no answer. In one or two short sentences, tell ${name} warmly that you will let their care team know and ` +
+  'that someone will check in, say goodbye, and then stop speaking. Do not ask another question.';
+/**
  * The one question an ambulance crew always asks, because for a stroke the time it started decides
  * what treatment is still possible. Asked once, after help is already on its way.
  */
