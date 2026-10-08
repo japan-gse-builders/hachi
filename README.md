@@ -262,3 +262,9 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 ## License
 
 [Apache License 2.0](LICENSE)
+
+The web UI uses self-hosted **DM Serif Display** for headings, with the existing Avenir Next / Segoe UI
+body stack. The font is licensed separately under the
+[SIL Open Font License 1.1](apps/web/public/fonts/DMSerifDisplay-OFL.txt).
+See [Web typography](docs/TYPOGRAPHY.md) for the heading scale, font-loading behavior, contrast
+measurements and matched before/after screenshots.

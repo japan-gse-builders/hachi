@@ -82,7 +82,7 @@ export function SignInCard({ title, intro, notice, footer }: { title: string; in
   if (sent) {
     return (
       <section className="card stack narrow">
-        <h2>{SENT[sent].title}</h2>
+        <h1>{SENT[sent].title}</h1>
         <p>{SENT[sent].body(email.trim())}</p>
         <p className="meta">If it does not arrive in a few minutes, check your spam folder.</p>
         <button type="button" className="ghost" onClick={() => setSent(null)}>Back to sign in</button>
@@ -92,7 +92,7 @@ export function SignInCard({ title, intro, notice, footer }: { title: string; in
 
   return (
     <form className="card stack narrow" onSubmit={submit}>
-      <h2>{title}</h2>
+      <h1>{title}</h1>
       <p className="meta">{intro}</p>
       {notice && <p className="meta">{notice}</p>}
       {error && <p className="error">{error}</p>}

@@ -56,7 +56,7 @@ export function ResidentsPage() {
   return (
     <div className="stack tiles">
       <div className="row">
-        <h2>Residents</h2>
+        <h1>Residents</h1>
         <Link className="button" to="/staff/residents/new">Add resident</Link>
       </div>
       {error && <p className="error">{error}</p>}

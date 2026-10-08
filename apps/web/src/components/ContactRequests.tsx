@@ -46,7 +46,7 @@ export function ContactRequests() {
       {error && <p className="error">{error}</p>}
       {requests.map((r) => (
         <div key={r.id} className="card">
-          <h2>{r.residentName}</h2>
+          <h3>{r.residentName}</h3>
           <p>
             Asked us to text <strong>{r.requestedFor}</strong> on <strong>{r.number}</strong>.
           </p>
