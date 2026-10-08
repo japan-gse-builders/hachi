@@ -56,5 +56,5 @@ With the font [blocked](screenshots/typography/blocked-glance-mobile.png), or
 in Georgia and the family screen fits the phone. The delayed font then swaps in successfully.
 The temporary preview and browser tooling are outside the repository and are not part of the app.
 
-Validation: `npm run check` (1,043 tests passed, 13 Firestore emulator tests skipped),
+Validation: `npm run check` (1,064 tests passed, 13 Firestore emulator tests skipped),
 `npm run build`, and `npm run build -w @hachi/web`.
