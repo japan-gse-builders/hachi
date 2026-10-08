@@ -5,12 +5,25 @@ export interface QueueItem {
   rule: string;
   urgency: string;
   urgencyLabel: string;
+  urgencyMeaning: string;
   summary: string;
   reason: string;
   score: number;
   detectedAt: string;
   status: string;
+  statusLabel: string;
   notifications: NotificationItem[];
+}
+
+export interface UrgencyLegendItem {
+  urgency: string;
+  label: string;
+  action: string;
+}
+
+export interface Queue {
+  items: QueueItem[];
+  legend: UrgencyLegendItem[];
 }
 
 export interface NotificationItem {
@@ -82,10 +95,12 @@ export interface CaseDetail {
     ruleName: string;
     urgency: string;
     urgencyLabel: string;
+    urgencyMeaning: string;
     autoUrgency: string;
     staffUrgency: string | null;
     staffScoreOffset: number;
     status: string;
+    statusLabel: string;
     reason: string;
     score: number;
     firstDetectedAt: string;
@@ -100,6 +115,7 @@ export interface CaseDetail {
     phone: string;
     vulnerability: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
     householdNotes: string | null;
+    synthetic: boolean;
   };
   detections: { summary: string; detectedAt: string; evidence: Evidence[] }[];
   calls: {
@@ -117,6 +133,8 @@ export interface CaseDetail {
   speechBaseline?: SpeechBaseline | null;
   screening?: Screening;
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
+  statusOptions: { value: string; label: string }[];
+  urgencyOptions: { value: string; label: string; meaning: string }[];
 }
 
 export interface StaffTag extends TagLabel {

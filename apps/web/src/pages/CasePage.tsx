@@ -8,19 +8,6 @@ import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen,
 import { staffTagLine } from '../glance';
 import type { CaseDetail } from '../types';
 
-const STATUSES = [
-  ['open', 'Not started'],
-  ['in_progress', 'In progress'],
-  ['closed', 'Done'],
-] as const;
-
-const URGENCIES = [
-  ['emergency', 'Immediate action'],
-  ['urgent', 'Review today'],
-  ['action', 'Review soon'],
-  ['watch', 'Monitor'],
-] as const;
-
 export function CasePage() {
   const { id = '' } = useParams();
   const { token } = useAuth();
@@ -74,7 +61,11 @@ export function CasePage() {
   return (
     <div className="stack case">
       <section className={`card ${detail.case.urgency === 'emergency' ? 'card-emergency' : ''}`}>
-        <span className={`badge ${urgencyTone(detail.case.urgency)}`}>{detail.case.urgencyLabel}</span>
+        <p className="row">
+          <span className={`badge ${urgencyTone(detail.case.urgency)}`}>{detail.case.urgencyLabel}</span>
+          {/* One case on the screen, so what the level asks for is written out rather than hidden in a tooltip. */}
+          <span className="meta">{detail.case.urgencyMeaning}</span>
+        </p>
         <h2>{detail.resident.name}</h2>
         <p className="reason">{detail.case.reason}</p>
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
@@ -87,8 +78,12 @@ export function CasePage() {
           <h2>What was said</h2>
           {evidence.map((e, i) => (
             <blockquote className="quote" key={`${e.callId}-${i}`}>
-              <p>“{e.quote}”</p>
-              <p className="meta">{clock(e.startMs)}</p>
+              {/* The quote is what makes the case checkable, so it reads before the rule that found it. */}
+              <p className="quote-words">“{e.quote}”</p>
+              <p className="meta">
+                In their own words · {clock(e.startMs)} into the call
+                {detail.resident.synthetic ? ' · Synthetic demo resident, not a real person' : ''}
+              </p>
               {e.audioUrl && (
                 <audio controls preload="metadata" src={audioAt(e.audioUrl, e.startMs)}>
                   <track kind="captions" />
@@ -117,14 +112,15 @@ export function CasePage() {
           {error && <p className="error">{error}</p>}
           <label>Status
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              {STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {detail.statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           <label>Urgency
             <select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
-              {URGENCIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {detail.urgencyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
+          <p className="meta">{detail.urgencyOptions.find((o) => o.value === urgency)?.meaning}</p>
           <label>Rank adjustment within this urgency (−10 to +10, higher comes first)
             <input type="number" min={-10} max={10} step={1} value={offset} onChange={(e) => setOffset(Number(e.target.value))} />
           </label>

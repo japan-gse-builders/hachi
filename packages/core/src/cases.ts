@@ -1,5 +1,13 @@
-import type { Case, Detection } from './types.js';
+import type { Case, CaseStatus, Detection } from './types.js';
 import { compareUrgency, maxUrgency, type Urgency } from './urgency.js';
+
+export const CASE_STATUSES = ['open', 'in_progress', 'closed'] as const satisfies readonly CaseStatus[];
+
+/** How the three states are named to staff. Written as the work, not as the row in the database. */
+export const CASE_STATUS_LABELS: Record<'ja' | 'en', Record<CaseStatus, string>> = {
+  ja: { open: '未対応', in_progress: '対応中', closed: '完了' },
+  en: { open: 'Not started', in_progress: 'In progress', closed: 'Done' },
+};
 
 export type CaseChangeType = 'created' | 'escalated' | 'updated';
 

@@ -60,6 +60,9 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .file input:focus-visible + span { outline: 3px solid #1f4d3a; outline-offset: 2px; }
 .or-divider { margin: 0; text-align: center; text-transform: lowercase; }
 .badge { display: inline-block; border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 15px; }
+/* The scale, spelled out above the queue: visible to everyone, not only to a mouse on a badge. */
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; color: #5c564c; font-size: 16px; }
+.legend li { display: flex; align-items: center; gap: 6px; }
 .emergency { background: #f8d4d0; color: #8a1c13; }
 .urgent { background: #f8e3c4; color: #8a4b08; }
 .action { background: #d9e6f8; color: #1849a0; }
@@ -70,7 +73,9 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .screening thead th { font-size: 15px; color: #5c564c; }
 /* A denominator is the point of this table, so it must not wrap away from its numerator. */
 .screening td { white-space: nowrap; }
-.quote { border-left: 4px solid #1f4d3a; padding-left: 12px; margin: 8px 0; }
+/* The resident's own words are what a case stands on, so they are set apart and read first. */
+.quote { background: #f1f3ec; border-left: 4px solid #1f4d3a; border-radius: 0 12px 12px 0; padding: 16px; margin: 8px 0; }
+.quote-words { font-size: 22px; line-height: 1.4; margin: 0 0 8px; }
 .transcript { display: grid; gap: 8px; }
 /* A card can now be as wide as the window; lines of speech stay short enough to read. */
 .quote p, .transcript p { max-width: 80ch; }

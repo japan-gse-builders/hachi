@@ -1,6 +1,8 @@
 import {
   baselineFor,
   buildBaseline,
+  CASE_STATUS_LABELS,
+  CASE_STATUSES,
   combineStates,
   domainStatus,
   effectiveUrgency,
@@ -15,7 +17,10 @@ import {
   sortQueue,
   SPEECH_FEATURES,
   tagTrends,
+  URGENCIES,
+  URGENCY_ACTIONS,
   URGENCY_LABELS,
+  URGENCY_MEANINGS,
   usualRange,
   visibleToFamily,
   wellbeingTag,
@@ -47,12 +52,20 @@ export interface QueueItem {
   rule: string;
   urgency: string;
   urgencyLabel: string;
+  /** What this level asks of staff, so the scale is readable without the documentation. */
+  urgencyMeaning: string;
   summary: string;
   reason: string;
   score: number;
   detectedAt: string;
   status: string;
+  statusLabel: string;
   notifications: StoredCase['notifications'];
+}
+
+/** The whole scale, in order, for a legend above the queue: a card only ever shows its own level. */
+export function urgencyLegend(locale: Locale) {
+  return URGENCIES.map((u) => ({ urgency: u, label: URGENCY_LABELS[locale][u], action: URGENCY_ACTIONS[locale][u] }));
 }
 
 /** QUE-01 */
@@ -74,11 +87,13 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       rule: c.rule,
       urgency: p.urgency,
       urgencyLabel: URGENCY_LABELS[locale][p.urgency],
+      urgencyMeaning: URGENCY_MEANINGS[locale][p.urgency],
       summary: c.detections.at(-1)?.summary ?? '',
       reason: p.reason,
       score: p.score,
       detectedAt: c.firstDetectedAt,
       status: c.status,
+      statusLabel: CASE_STATUS_LABELS[locale][c.status],
       notifications: c.notifications,
     };
   });
@@ -117,10 +132,12 @@ export async function buildCaseDetail(
       ruleName: RULE_NAMES[locale][c.rule],
       urgency: effectiveUrgency(c),
       urgencyLabel: URGENCY_LABELS[locale][effectiveUrgency(c)],
+      urgencyMeaning: URGENCY_MEANINGS[locale][effectiveUrgency(c)],
       autoUrgency: c.autoUrgency,
       staffUrgency: c.staffUrgency ?? null,
       staffScoreOffset: c.staffScoreOffset ?? 0,
       status: c.status,
+      statusLabel: CASE_STATUS_LABELS[locale][c.status],
       reason: p.reason,
       score: p.score,
       firstDetectedAt: c.firstDetectedAt,
@@ -135,6 +152,8 @@ export async function buildCaseDetail(
       phone: r.phone,
       vulnerability: r.vulnerability,
       householdNotes: r.householdNotes ?? null,
+      // USR-04: the evidence carries this too, so a demo quote is never read as a real one.
+      synthetic: r.synthetic === true,
     },
     detections: c.detections.map((d) => ({
       ...d,
@@ -164,6 +183,10 @@ export async function buildCaseDetail(
     speechBaseline: speechBaselineView(calls, r.serviceStartedAt),
     screening: screeningView(r, calls, now),
     events,
+    // The update form offers every state and level, so their names come from here too rather than
+    // being written a second time in the app, where they would drift and stay English.
+    statusOptions: CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[locale][s] })),
+    urgencyOptions: URGENCIES.map((u) => ({ value: u, label: URGENCY_LABELS[locale][u], meaning: URGENCY_MEANINGS[locale][u] })),
   };
 }
 
@@ -233,11 +256,6 @@ export const FAMILY_WINDOW_DAYS = 14;
 export const FAMILY_TREND_CALLS = 7;
 const FAMILY_TRENDS_SHOWN = 8;
 
-const STATUS_LABELS: Record<Locale, Record<StoredCase['status'], string>> = {
-  ja: { open: '未対応', in_progress: '対応中', closed: '完了' },
-  en: { open: 'Not started', in_progress: 'In progress', closed: 'Done' },
-};
-
 /** The model's sentence can read like an ongoing emergency long after staff have dealt with it. */
 const EMERGENCY_HEADLINE: Record<Locale, (name: string, status: string) => string> = {
   ja: (name, status) => `${name}さんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：${status}。`,
@@ -246,7 +264,7 @@ const EMERGENCY_HEADLINE: Record<Locale, (name: string, status: string) => strin
 
 function familyHeadline(r: Resident, c: CallRecord, cases: StoredCase[], locale: Locale): string | null {
   const emergency = cases.find((x) => x.rule === 'R1' && x.detections.some((d) => d.evidence.some((e) => e.callId === c.id)));
-  if (emergency) return EMERGENCY_HEADLINE[locale](r.name, STATUS_LABELS[locale][emergency.status]);
+  if (emergency) return EMERGENCY_HEADLINE[locale](r.name, CASE_STATUS_LABELS[locale][emergency.status]);
   return c.wellbeing?.headline ?? null;
 }
 
@@ -325,7 +343,7 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
         // Per message, without addresses; null until the provider reports (and always for email and push).
         deliveries: sent.map((n) => ({ channel: n.channel, status: n.delivery?.status ?? null, errorCode: n.delivery?.errorCode ?? null })),
         caseStatus: c.status,
-        caseStatusLabel: STATUS_LABELS[locale][c.status],
+        caseStatusLabel: CASE_STATUS_LABELS[locale][c.status],
       }))
       .sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
     staff: { name: r.staff.name, phone: r.staff.phone, email: r.staff.email ?? null },

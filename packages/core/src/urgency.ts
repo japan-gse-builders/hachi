@@ -8,6 +8,32 @@ export const URGENCY_LABELS: Record<'ja' | 'en', Record<Urgency, string>> = {
   en: { emergency: 'Immediate action', urgent: 'Review today', action: 'Review soon', watch: 'Monitor' },
 };
 
+/**
+ * What each level asks of the reader. A label alone ranks the cases but does not say what to do
+ * about one, and the four levels are the main instruction this product gives staff, so the
+ * sentence travels with the label instead of living only in the documentation.
+ */
+export const URGENCY_MEANINGS: Record<'ja' | 'en', Record<Urgency, string>> = {
+  ja: {
+    emergency: '生命や健康に差し迫った危険の可能性。いま動く。',
+    urgent: '今日中に本人に連絡して確かめる。',
+    action: '数日のうちに様子を見る。',
+    watch: 'いまは対応不要。変化が続くかを今後の通話で見る。',
+  },
+  en: {
+    emergency: 'Possible immediate danger to life or health. Act now.',
+    urgent: 'Needs checking today: contact the resident.',
+    action: 'Follow up within the next few days.',
+    watch: 'No action yet. Watch whether the change continues.',
+  },
+};
+
+/** The same instruction, short enough to show all four levels on one line above a queue. */
+export const URGENCY_ACTIONS: Record<'ja' | 'en', Record<Urgency, string>> = {
+  ja: { emergency: 'いま動く', urgent: '今日中に確認', action: '数日のうちに', watch: '様子を見る' },
+  en: { emergency: 'act now', urgent: 'check today', action: 'within a few days', watch: 'watch for now' },
+};
+
 export function urgencyRank(u: Urgency): number {
   return RANK[u];
 }

@@ -224,6 +224,27 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(en.json().items[0].urgencyLabel).toBe('Immediate action');
   });
 
+  it('carries what each level asks for, and the whole scale as a legend (QUE-01)', async () => {
+    const { app, as } = await seeded();
+    const body = (await app.inject({ method: 'GET', url: '/api/queue?locale=en', ...as('staff') })).json();
+    expect(body.items[0].urgencyMeaning).toBe('Possible immediate danger to life or health. Act now.');
+    // A card only ever shows its own level, so the queue carries the other three as well.
+    expect(body.legend.map((l: { urgency: string }) => l.urgency)).toEqual(['emergency', 'urgent', 'action', 'watch']);
+    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now' });
+    const ja = (await app.inject({ method: 'GET', url: '/api/queue', ...as('staff') })).json();
+    expect(ja.legend[0].label).toBe('緊急');
+    expect(ja.items[0].urgencyMeaning).toContain('いま動く');
+  });
+
+  it('names the case state rather than printing the stored value (QUE-01)', async () => {
+    const { app, as, store } = await seeded();
+    await store.putCase(storedCase({ id: 'watch', residentId: 'res-2', rule: 'R3', status: 'in_progress' }));
+    const items = (await app.inject({ method: 'GET', url: '/api/queue?locale=en', ...as('staff') })).json().items;
+    const working = items.find((i: { caseId: string }) => i.caseId === 'watch');
+    expect(working).toMatchObject({ status: 'in_progress', statusLabel: 'In progress' });
+    expect(items[0]).toMatchObject({ status: 'open', statusLabel: 'Not started' });
+  });
+
   it('skips cases whose resident no longer exists', async () => {
     const { app, as, store } = await seeded();
     await store.putCase(storedCase({ id: 'orphan', residentId: 'gone' }));
@@ -249,6 +270,30 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(d.calls.find((c: { id: string }) => c.id === 'call-1').transcript).toHaveLength(2);
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').transcript).toBeUndefined();
     expect(d.resident.householdNotes).toBeNull();
+    expect(d.resident.synthetic).toBe(false);
+  });
+
+  it('sends the update form its choices, so their names are not written twice (QUE-03)', async () => {
+    const { app, as } = await seeded();
+    const en = (await app.inject({ method: 'GET', url: '/api/cases/emergency?locale=en', ...as('staff') })).json();
+    expect(en.case).toMatchObject({ statusLabel: 'Not started', urgencyMeaning: 'Possible immediate danger to life or health. Act now.' });
+    expect(en.statusOptions).toEqual([
+      { value: 'open', label: 'Not started' },
+      { value: 'in_progress', label: 'In progress' },
+      { value: 'closed', label: 'Done' },
+    ]);
+    expect(en.urgencyOptions.map((o: { value: string }) => o.value)).toEqual(['emergency', 'urgent', 'action', 'watch']);
+    expect(en.urgencyOptions[1]).toEqual({ value: 'urgent', label: 'Review today', meaning: 'Needs checking today: contact the resident.' });
+    const ja = (await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') })).json();
+    expect(ja.statusOptions[0].label).toBe('未対応');
+    expect(ja.urgencyOptions[0].label).toBe('緊急');
+  });
+
+  it('marks a synthetic resident on the case so a demo quote is not read as a real one (USR-04)', async () => {
+    const { app, as, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, synthetic: true }));
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') })).json();
+    expect(d.resident.synthetic).toBe(true);
   });
 
   it('shows staff every tag with the turn, basis and confidence behind it', async () => {

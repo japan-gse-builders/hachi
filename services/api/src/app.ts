@@ -7,7 +7,7 @@ import { decideContactRequest, NotFoundError, type Resident, type Store } from '
 import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
 import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
-import { buildCaseDetail, buildFamilyDashboard, buildQueue, FAMILY_WINDOW_DAYS, type MediaSigner } from './views.js';
+import { buildCaseDetail, buildFamilyDashboard, buildQueue, FAMILY_WINDOW_DAYS, urgencyLegend, type MediaSigner } from './views.js';
 
 export interface AppDeps {
   store: Store;
@@ -149,7 +149,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/api/queue', async (req) => {
     requireStaff(req);
     const [cases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
-    return { items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), now(), localeOf(req)) };
+    const locale = localeOf(req);
+    return { items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), now(), locale), legend: urgencyLegend(locale) };
   });
 
   app.get<{ Params: { id: string } }>('/api/cases/:id', async (req) => {
