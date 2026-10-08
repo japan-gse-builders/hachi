@@ -1,3 +1,4 @@
+import { recordGatewayFailure } from '@hachi/core';
 import type { CallRecord } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { afterStream, alertResponse, conferenceName, emergencyTargets, emergencyTransfer, holdTwiml } from '../src/bridge.js';
@@ -70,6 +71,48 @@ describe('afterStream', () => {
     const { deps, queue } = await setup({ attempt: undefined }, { stream: false });
     expect(await afterStream(deps, IDS)).toContain('technical problem');
     expect(queue.tasks).toHaveLength(0);
+  });
+});
+
+describe('afterStream when the gateway is known to be broken', () => {
+  const SPEND_CAP = 'closed: 1008 Spend cap breached for project: projects/871712096742 for service: aiplatform.googleapis.com';
+
+  const broken = async (call: Partial<CallRecord> = {}) => {
+    const ctx = await setup({ conversation: { endedBy: 'gateway_error', at: NOW.toISOString() }, ...call });
+    await ctx.store.mutateGatewayBreaker((b) => recordGatewayFailure(b, SPEND_CAP, NOW));
+    return ctx;
+  };
+
+  it('does not reopen the media stream into the same fault', async () => {
+    const { deps } = await broken();
+    const xml = await afterStream(deps, IDS);
+    expect(xml).not.toContain('<Stream');
+    expect(xml).toContain('<Hangup/>');
+  });
+
+  it('does not ring the resident back, and does not promise to', async () => {
+    const { deps, store, queue } = await broken();
+    const xml = await afterStream(deps, IDS);
+    // Nothing is going to fix this in a few minutes, so nothing may say so. The resident cannot
+    // tell a promise we will not keep from a real emergency callback.
+    expect(xml).not.toContain('call you back');
+    expect(xml).toContain('our system isn&apos;t working at the moment');
+    expect(xml).toContain('care team can see');
+    expect(queue.tasks).toHaveLength(0);
+    expect((await store.getCall('res-1', IDS.callId))!.failure).toMatchObject({ code: 'gateway_unavailable', retryable: false });
+  });
+
+  it('still bridges an emergency into the conference', async () => {
+    // Checked here as well as in placeCall, because this is the path a resident who is already on
+    // the phone takes, and it is decided before the breaker is ever consulted.
+    const { deps } = await broken({ emergency: EMERGENCY, conversation: { endedBy: 'emergency', at: NOW.toISOString() } });
+    expect(await afterStream(deps, IDS)).toContain(`>${conferenceName(IDS)}</Conference>`);
+  });
+
+  it('reconnects again once the cooldown lets a call through', async () => {
+    const { deps, clock } = await broken();
+    clock.now = new Date(NOW.getTime() + deps.config.gateway.cooldownMs);
+    expect(await afterStream(deps, IDS)).toContain('<Stream url="wss://gw.example/twilio/stream">');
   });
 });
 

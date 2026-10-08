@@ -1,3 +1,4 @@
+import { gatewayVerdict } from '@hachi/core';
 import type { EmergencyLeg, Resident } from '@hachi/store';
 import { scheduleRetry, type CallDeps } from './calls.js';
 import { escapeXml, streamTwiml, TelephonyError } from './twilio.js';
@@ -31,6 +32,10 @@ function say(deps: CallDeps, text: string): string {
  * the conversation ended before closing, so this decides the next step:
  * emergency → bridge the resident into a conference with family and staff;
  * normal end → hang up; dropped stream → reconnect (a few times), then apologize and retry later.
+ *
+ * A gateway the breaker has given up on skips the reconnections and the retry. The resident is on
+ * the phone by then and has to be told something, so there is still an apology, but it no longer
+ * promises a call back in a few minutes when nothing is going to call back.
  */
 export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string> {
   const call = await deps.store.getCall(ids.residentId, ids.callId);
@@ -45,7 +50,12 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
   const ended = call.conversation?.endedBy;
   if (ended && ended !== 'gateway_error') return HANGUP;
 
-  if (deps.config.voiceStreamUrl && call.streamToken && (call.streams ?? 0) < MAX_STREAMS) {
+  // The gateway records what went wrong before closing the stream, so this reads a verdict about
+  // this very call. Reconnecting into a fault that meets every session identically costs nine Live
+  // sessions and three rings a day for one resident, all of them ending in the same apology.
+  const down = gatewayVerdict(await deps.store.getGatewayBreaker(), deps.now(), deps.config.gateway) === 'down';
+
+  if (!down && deps.config.voiceStreamUrl && call.streamToken && (call.streams ?? 0) < MAX_STREAMS) {
     return streamTwiml({
       ...ids,
       streamUrl: deps.config.voiceStreamUrl,
@@ -56,12 +66,19 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
 
   await deps.store.updateCall(ids.residentId, ids.callId, (c) => ({
     ...c,
-    failure: { message: 'The conversation could not be continued (Voice Gateway unavailable)', retryable: true },
+    failure: {
+      ...(down ? { code: 'gateway_unavailable' } : {}),
+      message: 'The conversation could not be continued (Voice Gateway unavailable)',
+      retryable: !down,
+    },
   }));
-  if (call.attempt !== undefined && call.localDate) {
+  if (!down && call.attempt !== undefined && call.localDate) {
     await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate, attempt: call.attempt });
   }
-  return `<Response>${say(deps, "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye.")}<Hangup/></Response>`;
+  const apology = down
+    ? "I'm sorry, our system isn't working at the moment, so we can't talk today. Your care team can see that we could not reach you. Goodbye."
+    : "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye.";
+  return `<Response>${say(deps, apology)}<Hangup/></Response>`;
 }
 
 /** Played to the resident while family or staff are being reached. */

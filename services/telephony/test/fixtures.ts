@@ -1,4 +1,4 @@
-import { parseSpendSettings } from '@hachi/core';
+import { DEFAULT_GATEWAY_POLICY, parseSpendSettings, type GatewayPolicy } from '@hachi/core';
 import { MemoryStore, type Resident } from '@hachi/store';
 import type { CallDeps } from '../src/calls.js';
 import type { EnqueueRequest, TaskCallerVerifier, TaskQueue } from '@hachi/cloud';
@@ -65,7 +65,9 @@ export class FakeVerifier implements TaskCallerVerifier {
   }
 }
 
-export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string; monthlyCapUsd?: number } = {}) {
+export function makeDeps(
+  overrides: { now?: () => Date; voiceStreamUrl?: string; monthlyCapUsd?: number; gateway?: Partial<GatewayPolicy> } = {},
+) {
   const store = new MemoryStore();
   const queue = new FakeQueue();
   const telephony = new FakeTelephony();
@@ -88,6 +90,7 @@ export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string;
       twilio: { voiceFrom: '+15005550006' },
       // A cap no test reaches by accident; the tests about the ceiling set their own.
       spend: parseSpendSettings({ AI_MONTHLY_CAP_USD: String(overrides.monthlyCapUsd ?? 1000) }),
+      gateway: { ...DEFAULT_GATEWAY_POLICY, ...overrides.gateway },
     },
     now: overrides.now ?? (() => clock.now),
     newToken: () => `token-${++tokens}`,

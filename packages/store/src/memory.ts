@@ -1,4 +1,4 @@
-import { emptyLedger, type SpendLedger } from '@hachi/core';
+import { emptyLedger, healthyGateway, type GatewayBreaker, type SpendLedger } from '@hachi/core';
 import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
 
@@ -12,6 +12,7 @@ export class MemoryStore implements Store {
   private events = new Map<string, CaseEvent>();
   private outbox = new Map<string, OutboxEntry>();
   private ledgers = new Map<string, SpendLedger>();
+  private breaker: GatewayBreaker | null = null;
 
   async createResident(r: Resident): Promise<void> {
     if (this.residents.has(r.id)) throw new Error(`Resident ${r.id} already exists`);
@@ -156,6 +157,17 @@ export class MemoryStore implements Store {
     const next = fn(clone(current));
     if (!next) return null;
     this.ledgers.set(month, clone(next));
+    return clone(next);
+  }
+
+  async getGatewayBreaker(): Promise<GatewayBreaker | null> {
+    return this.breaker ? clone(this.breaker) : null;
+  }
+
+  async mutateGatewayBreaker(fn: (b: GatewayBreaker) => GatewayBreaker | null): Promise<GatewayBreaker | null> {
+    const next = fn(clone(this.breaker ?? healthyGateway(new Date(0).toISOString())));
+    if (!next) return null;
+    this.breaker = clone(next);
     return clone(next);
   }
 }

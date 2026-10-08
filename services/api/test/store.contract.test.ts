@@ -181,6 +181,16 @@ function contract(name: string, make: () => Promise<Store>) {
       expect((await s.getSpendLedger('2026-10'))?.spentMicros).toBe(500);
       expect(await s.getSpendLedger('2026-11')).toBeNull();
     });
+
+    it('starts with nothing known about the gateway and writes nothing when a call is refused', async () => {
+      const s = await make();
+      // Nothing known has to mean "dial", or an empty database would stop the whole service.
+      expect(await s.getGatewayBreaker()).toBeNull();
+      const tripped = await s.mutateGatewayBreaker((b) => ({ ...b, failures: b.failures + 1, fault: 'systemic' }));
+      expect(tripped).toMatchObject({ failures: 1, fault: 'systemic' });
+      expect(await s.mutateGatewayBreaker(() => null)).toBeNull();
+      expect(await s.getGatewayBreaker()).toMatchObject({ failures: 1 });
+    });
   });
 }
 

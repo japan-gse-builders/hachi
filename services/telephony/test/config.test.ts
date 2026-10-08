@@ -23,13 +23,21 @@ describe('loadConfig', () => {
     expect(c.allowedCallers).toEqual(['tasks@hachi-prod.iam.gserviceaccount.com', 'scheduler@hachi-prod.iam.gserviceaccount.com']);
     expect(c).toMatchObject({ port: 8080, ringTimeoutSec: 30, maxCallSec: 1200, maxAttempts: 3, retryDelaySec: 180, dispatchLookbackMin: 10 });
     expect(c.sayVoice).toBe('Google.en-US-Neural2-F');
+    expect(c.gateway).toEqual({ transientFailures: 3, cooldownMs: 900_000 });
   });
 
   it('reads optional settings', () => {
-    const c = loadConfig({ ...env, VOICE_STREAM_URL: 'wss://gw.example/stream', MAX_CALL_SEC: '300', TWILIO_API_BASE_URL: 'https://api.tokyo.us1.twilio.com' });
+    const c = loadConfig({
+      ...env,
+      VOICE_STREAM_URL: 'wss://gw.example/stream',
+      MAX_CALL_SEC: '300',
+      TWILIO_API_BASE_URL: 'https://api.tokyo.us1.twilio.com',
+      GATEWAY_COOLDOWN_SEC: '600',
+    });
     expect(c.voiceStreamUrl).toBe('wss://gw.example/stream');
     expect(c.maxCallSec).toBe(300);
     expect(c.twilio.apiBaseUrl).toBe('https://api.tokyo.us1.twilio.com');
+    expect(c.gateway.cooldownMs).toBe(600_000);
   });
 
   it('fails fast without echoing secret values', () => {
@@ -42,6 +50,8 @@ describe('loadConfig', () => {
       [{ PUBLIC_BASE_URL: 'not a url' }, /not a valid URL/],
       [{ VOICE_STREAM_URL: 'https://gw.example' }, /must use wss/],
       [{ MAX_CALL_SEC: '99999' }, /MAX_CALL_SEC/],
+      [{ GATEWAY_COOLDOWN_SEC: '0' }, /GATEWAY_COOLDOWN_SEC/],
+      [{ GATEWAY_TRANSIENT_FAILURES: '0' }, /GATEWAY_TRANSIENT_FAILURES/],
       [{ RING_TIMEOUT_SEC: 'abc' }, /RING_TIMEOUT_SEC/],
     ];
     for (const [patch, re] of cases) {

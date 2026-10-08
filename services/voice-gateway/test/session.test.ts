@@ -580,3 +580,73 @@ describe('CallSession: memory and analysis', () => {
     expect(unsaved.socket.closed).toBe(true);
   });
 });
+
+describe('CallSession: reporting whether the gateway works', () => {
+  /** Verbatim from production: Vertex AI refusing the project, while Twilio rings the phone fine. */
+  const SPEND_CAP = 'closed: 1008 Spend cap breached for project: projects/871712096742 for service: aiplatform.googleapis.com';
+
+  it('stops trying when the fault will meet every attempt the same way', async () => {
+    const ctx = await setup();
+    ctx.live.failures = 3;
+    ctx.live.failWith = SPEND_CAP;
+    await ctx.session.onMessage(startMessage());
+    // One attempt, not three. The resident is holding the phone through every one of them.
+    expect(ctx.live.failures).toBe(2);
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('gateway_error');
+  });
+
+  it('still retries a transient connect failure', async () => {
+    const ctx = await setup();
+    ctx.live.failures = 2;
+    await ctx.session.onMessage(startMessage());
+    expect(ctx.live.sessions).toHaveLength(1);
+    expect((await ctx.store.getGatewayBreaker())?.failures ?? 0).toBe(0);
+  });
+
+  it('does not reopen a session the server closed for a systemic reason', async () => {
+    const ctx = await started();
+    ctx.gemini.h.closed(SPEND_CAP);
+    await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));
+    expect(ctx.live.sessions).toHaveLength(1);
+  });
+
+  it('writes down what Vertex AI said, so the next call is not placed blind', async () => {
+    const ctx = await started();
+    ctx.gemini.h.closed(SPEND_CAP);
+    await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));
+    const b = (await ctx.store.getGatewayBreaker())!;
+    expect(b).toMatchObject({ failures: 1, fault: 'systemic' });
+    expect(b.reason).toContain('Spend cap breached');
+  });
+
+  it('records a transient fault as transient, so one dropped socket stops nothing', async () => {
+    const ctx = await started({ timing: { maxLiveSessions: 1 } });
+    ctx.gemini.h.closed('closed: 1006');
+    await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));
+    expect(await ctx.store.getGatewayBreaker()).toMatchObject({ failures: 1, fault: 'transient' });
+  });
+
+  it('clears the fault when a call holds a conversation', async () => {
+    const ctx = await started();
+    await ctx.store.mutateGatewayBreaker((b) => ({ ...b, failures: 1, fault: 'systemic', lastFailedAt: '2026-10-02T00:00:00.000Z' }));
+    await ctx.session.finish('agent');
+    expect(await ctx.store.getGatewayBreaker()).toMatchObject({ failures: 0 });
+  });
+
+  it('says nothing either way when no session was ever established', async () => {
+    // A resident who hangs up during the connect is not evidence about the gateway, and guessing
+    // would either stop a working service or reopen a broken one.
+    const ctx = await setup();
+    await ctx.session.finish('resident');
+    expect(await ctx.store.getGatewayBreaker()).toBeNull();
+  });
+
+  it('raises the emergency even on a call that then reports the gateway broken', async () => {
+    const ctx = await started();
+    ctx.gemini.h.inputTranscript('I think I am having a heart attack');
+    await vi.waitFor(() => expect(ctx.emergency.raised).toHaveLength(1));
+    ctx.gemini.h.closed(SPEND_CAP);
+    await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));
+    expect(ctx.emergency.raised).toHaveLength(1);
+  });
+});

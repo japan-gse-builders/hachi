@@ -1,4 +1,4 @@
-import { emptyLedger, type SpendLedger } from '@hachi/core';
+import { emptyLedger, healthyGateway, type GatewayBreaker, type SpendLedger } from '@hachi/core';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
@@ -15,6 +15,7 @@ const ALREADY_EXISTS = 6;
  *   cases/{id}/events/{eventId}
  *   outbox/{sha256(idempotencyKey)}
  *   spend/{YYYY-MM}
+ *   service/gateway
  * The Firestore instance must be created with `ignoreUndefinedProperties: true`.
  */
 export class FirestoreStore implements Store {
@@ -215,6 +216,31 @@ export class FirestoreStore implements Store {
       const snap = await tx.get(ref);
       const current = snap.exists ? (snap.data() as SpendLedger) : emptyLedger(month, new Date(0).toISOString());
       const next = fn(current);
+      if (!next) return null;
+      tx.set(ref, next);
+      return next;
+    });
+  }
+
+  private gatewayDoc() {
+    return this.db.collection('service').doc('gateway');
+  }
+
+  async getGatewayBreaker(): Promise<GatewayBreaker | null> {
+    const snap = await this.gatewayDoc().get();
+    return snap.exists ? (snap.data() as GatewayBreaker) : null;
+  }
+
+  /**
+   * One document for the whole service, so the read that decides whether a phone may ring and the
+   * write that claims the single trial call a cooldown allows are the same transaction. Two
+   * workers dialing at once would otherwise both see the cooldown expire and both ring somebody.
+   */
+  async mutateGatewayBreaker(fn: (b: GatewayBreaker) => GatewayBreaker | null): Promise<GatewayBreaker | null> {
+    const ref = this.gatewayDoc();
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const next = fn(snap.exists ? (snap.data() as GatewayBreaker) : healthyGateway(new Date(0).toISOString()));
       if (!next) return null;
       tx.set(ref, next);
       return next;

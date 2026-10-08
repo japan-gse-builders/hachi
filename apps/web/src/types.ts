@@ -21,9 +21,26 @@ export interface UrgencyLegendItem {
   action: string;
 }
 
+/** A resident nobody has spoken to. Wording is localized by the API, not here. */
+export interface UnreachedResident {
+  residentId: string;
+  residentName: string;
+  localDate: string;
+  reason: string;
+  reasonLabel: string;
+  meaning: string;
+  attempts: number;
+  at: string;
+  ourFault: boolean;
+  lastReachedAt: string | null;
+  tried: string;
+}
+
 export interface Queue {
   items: QueueItem[];
   legend: UrgencyLegendItem[];
+  /** Missing from servers older than the unreached list. */
+  unreached?: { items: UnreachedResident[]; note: string | null };
 }
 
 /** This month's AI spend. Null when the API was started without a budget configured. */

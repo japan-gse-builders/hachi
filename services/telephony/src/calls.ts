@@ -1,4 +1,15 @@
-import { callReservationMicros, callTaskId, isDue, liveCallMicros, localDate, nextCallAt, reserve, settle, spendMonth } from '@hachi/core';
+import {
+  callReservationMicros,
+  callTaskId,
+  claimCall,
+  isDue,
+  liveCallMicros,
+  localDate,
+  nextCallAt,
+  reserve,
+  settle,
+  spendMonth,
+} from '@hachi/core';
 import type { CallRecord, CallStatus, Resident, Store } from '@hachi/store';
 import type { TelephonyConfig } from './config.js';
 import type { TaskQueue } from '@hachi/cloud';
@@ -20,6 +31,7 @@ export interface CallDeps {
     | 'retryDelaySec'
     | 'dispatchLookbackMin'
     | 'spend'
+    | 'gateway'
   > & { twilio: Pick<TelephonyConfig['twilio'], 'voiceFrom'> };
   now: () => Date;
   newToken: () => string;
@@ -91,7 +103,7 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
 export type PlaceCallOutcome =
   | { outcome: 'placed'; providerCallId: string }
-  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' | 'budget_exhausted' }
+  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' | 'budget_exhausted' | 'gateway_unavailable' }
   | { outcome: 'retry_later'; reason: 'dial_in_progress' | 'provider_unavailable' }
   | { outcome: 'failed'; retryScheduled: boolean; code?: string };
 
@@ -120,6 +132,21 @@ export async function settleCallSpend(deps: CallDeps, residentId: string, callId
   const now = deps.now();
   const actual = durationSec === undefined ? undefined : liveCallMicros(durationSec, deps.config.spend.prices);
   await deps.store.mutateSpendLedger(spendMonth(now), (l) => settle(l, spendLeaseId(residentId, callId), actual, now));
+}
+
+/**
+ * Refuses the call when the last calls told us the conversation cannot happen, and otherwise takes
+ * the one trial call a cooldown allows. One transaction, for the same reason the budget's is: two
+ * workers that both read an expired cooldown would otherwise both ring somebody.
+ *
+ * Only the daily check-in comes through here. Reaching family and staff about an emergency goes
+ * straight to the provider and is not gated on anything, because the thing that is broken is the
+ * conversation, and an alert call does not need one.
+ */
+async function claimGatewayForCall(deps: CallDeps): Promise<boolean> {
+  const now = deps.now();
+  const after = await deps.store.mutateGatewayBreaker((b) => claimCall(b, now, deps.config.gateway));
+  return after !== null;
 }
 
 export async function scheduleRetry(deps: CallDeps, input: PlaceCallInput): Promise<boolean> {
@@ -175,6 +202,24 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     if (current.providerCallId || current.status !== 'scheduled') return { outcome: 'skipped', reason: 'already_handled' };
     if (current.dialLease?.token !== token) return { outcome: 'retry_later', reason: 'dial_in_progress' };
     streamToken = current.streamToken!;
+  }
+
+  // Before the budget, because money reserved for a call that will not work is money the month
+  // cannot spend on a call that would. `retryable` is false on purpose: nothing is scheduled to
+  // try this attempt again, and the honest record is that today's check-in did not happen. What
+  // brings calls back is the breaker's own cooldown, not this document.
+  if (!(await claimGatewayForCall(deps))) {
+    await deps.store.updateCall(r.id, callId, (c) => ({
+      ...withoutLease(c),
+      status: 'failed',
+      endedAt: deps.now().toISOString(),
+      failure: {
+        code: 'gateway_unavailable',
+        message: 'The Voice Gateway could not hold a conversation on the last calls, so this one was not placed',
+        retryable: false,
+      },
+    }));
+    return { outcome: 'skipped', reason: 'gateway_unavailable' };
   }
 
   // After the lease, so a refused call is recorded against this attempt rather than retried forever.

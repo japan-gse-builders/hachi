@@ -44,6 +44,25 @@ export function QueuePage() {
           <strong>Check-in calls have stopped.</strong> {spend.note}
         </p>
       )}
+      {/* Above the cases on purpose: a resident with no case at all may be the one to worry about. */}
+      {queue?.unreached && queue.unreached.items.length > 0 && (
+        <div className="card card-emergency stack">
+          <p>
+            <strong>Nobody has been reached.</strong> {queue.unreached.note}
+          </p>
+          <ul className="legend" aria-label="Residents nobody has spoken to">
+            {queue.unreached.items.map((u) => (
+              <li key={`${u.residentId}-${u.localDate}`}>
+                <Link to={`/staff/residents/${u.residentId}`}>{u.residentName}</Link>{' '}
+                <span className="badge watch">{u.reasonLabel}</span> {u.meaning}
+                <span className="meta">
+                  {u.localDate} · {u.tried}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <h2>Needs attention</h2>
       {/* A card shows only its own level, so the whole scale is spelled out once, in reading order. */}
       {queue && queue.legend.length > 0 && (

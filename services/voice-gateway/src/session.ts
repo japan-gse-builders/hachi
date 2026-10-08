@@ -1,5 +1,14 @@
 import { timingSafeEqual } from 'node:crypto';
-import { itemsForCall, localDate, R1Monitor, type ScreenItem, type Turn } from '@hachi/core';
+import {
+  classifyGatewayFailure,
+  itemsForCall,
+  localDate,
+  R1Monitor,
+  recordGatewayFailure,
+  recordGatewaySuccess,
+  type ScreenItem,
+  type Turn,
+} from '@hachi/core';
 import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
@@ -120,6 +129,10 @@ export class CallSession {
   private live?: LiveSession;
   private liveGeneration = 0;
   private liveSessions = 0;
+  /** True once a session was established, so a resident who hung up first is not read as a fault. */
+  private liveReady = false;
+  /** The Live API's own words for the latest failure; the only thing that says whether to retry. */
+  private liveFailure?: string;
   /** Latest point the Live API said it could restore this conversation from. */
   private resumeHandle?: string;
   private pending: Int16Array[] = [];
@@ -304,7 +317,12 @@ export class CallSession {
       try {
         session = await this.deps.live.connect(setupFor(handle), handlers);
       } catch (err) {
-        this.deps.log.warn({ ...this.ids, attempt, resumed: Boolean(handle), err: (err as Error).message }, 'Gemini Live connect failed');
+        const reason = (err as Error).message;
+        this.liveFailure = reason;
+        this.deps.log.warn({ ...this.ids, attempt, resumed: Boolean(handle), err: reason }, 'Gemini Live connect failed');
+        // A fault that meets every attempt identically meets the next two as well, and each one is
+        // more dead air for somebody holding a phone to their ear.
+        if (classifyGatewayFailure(reason) === 'systemic') break;
         // A handle the server will not take is worse than none: drop it and replay the transcript.
         handle = undefined;
         if (attempt + 1 < this.t.liveConnectAttempts) await sleep(this.t.liveRetryDelayMs * (attempt + 1));
@@ -316,6 +334,7 @@ export class CallSession {
       return;
     }
     this.live = session;
+    this.liveReady = true;
     if (!resume) session.sendText(openingCue(this.name));
     else if (!handle) session.sendText(resumeCue(this.name));
     // A resumed session picks up mid-sentence, so there is nothing to apologize for and nothing to
@@ -355,7 +374,13 @@ export class CallSession {
         if (!current()) return;
         this.deps.log.warn({ ...this.ids, reason }, 'Gemini Live session closed unexpectedly');
         this.live = undefined;
+        this.liveFailure = reason;
         if (this.endReason) return void this.finish(this.endReason);
+        // Vertex AI refusing the project closes the socket the same way a network blip does, and the
+        // reason is the only thing that tells them apart. Reconnecting into the former spends every
+        // session the call is allowed proving the same thing over again, in silence, to somebody
+        // holding a phone to their ear.
+        if (classifyGatewayFailure(reason) === 'systemic') return void this.finish('gateway_error');
         void this.connectLive(true);
       },
     };
@@ -523,6 +548,7 @@ export class CallSession {
     }
     this.socket.close();
     this.deps.log.info({ ...ids, reason, turns: transcript.length }, 'conversation ended');
+    await this.reportGateway(reason);
 
     try {
       const uri = await this.deps.recordings.save(`recordings/${ids.residentId}/${ids.callId}-s${this.streamNo}.wav`, this.recorder.toWav());
@@ -533,5 +559,30 @@ export class CallSession {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save recording');
     }
     this.state = 'done';
+  }
+
+  /**
+   * Tells the rest of the service whether the conversation half of a call is working, so that the
+   * next resident's phone is not rung into a fault this call already found. Only this process ever
+   * sees what Vertex AI said, and the reason is what decides whether a retry is worth a ring.
+   *
+   * A call that says nothing either way — the resident hung up before a session was established —
+   * is not reported at all. Guessing in either direction is worse than the silence: read as a
+   * failure it stops a working service, read as a success it reopens a broken one.
+   *
+   * Never allowed to throw. A call that reached an emergency has already raised it by this point,
+   * and the breaker is an optimization for tomorrow's calls, not a step in this one.
+   */
+  private async reportGateway(reason: ConversationEnd): Promise<void> {
+    const failed = reason === 'gateway_error' && this.liveFailure !== undefined;
+    if (!failed && !this.liveReady) return;
+    const now = new Date();
+    try {
+      await this.deps.store.mutateGatewayBreaker((b) =>
+        failed ? recordGatewayFailure(b, this.liveFailure, now) : recordGatewaySuccess(b, now),
+      );
+    } catch (err) {
+      this.deps.log.error({ ...this.ids, err: (err as Error).message }, 'failed to record gateway health');
+    }
   }
 }

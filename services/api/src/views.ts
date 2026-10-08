@@ -13,6 +13,11 @@ import {
   KIHON_DOMAIN_LABELS,
   LIFE_DOMAINS,
   localDate,
+  isOurFault,
+  MISSED_LABELS,
+  MISSED_MEANINGS,
+  missedCheckIn,
+  missedReason,
   nextCallAt,
   overallStatus,
   prioritize,
@@ -28,6 +33,7 @@ import {
   usualRange,
   visibleToFamily,
   wellbeingTag,
+  type CheckInAttempt,
   type DomainState,
   type LifeDomain,
   type Locale,
@@ -101,6 +107,121 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       notifications: c.notifications,
     };
   });
+}
+
+/**
+ * Days back a missed check-in stays on the queue. Two, not one: an outage in the evening would
+ * otherwise roll off the screen before the morning on which anybody reads it.
+ */
+export const UNREACHED_DAYS = 2;
+/** How far back "we last spoke to them on" is looked for. Beyond it the honest answer is nothing. */
+export const UNREACHED_LOOKBACK_DAYS = 14;
+
+export interface UnreachedResident {
+  residentId: string;
+  residentName: string;
+  /** The resident's own date, so an evening in Tokyo is not filed as the previous day. */
+  localDate: string;
+  reason: string;
+  reasonLabel: string;
+  /** What the missing call asks of staff. */
+  meaning: string;
+  attempts: number;
+  at: string;
+  /** True for the three faults that are ours; false only when the resident did not pick up. */
+  ourFault: boolean;
+  /** Null when no call has connected within the lookback, which is worse news than a date. */
+  lastReachedAt: string | null;
+  /**
+   * How many times we tried and when they were last heard from, as a sentence. Built here rather
+   * than in the app because it is a statement about a resident, and those are the strings that go
+   * untranslated and then drift when they live in the client.
+   */
+  tried: string;
+}
+
+export interface UnreachedView {
+  items: UnreachedResident[];
+  /** One sentence for the top of the queue; null when everybody has been reached. */
+  note: string | null;
+}
+
+const attemptOf = (c: CallRecord): CheckInAttempt => ({
+  status: c.status,
+  ...(c.conversation ? { endedBy: c.conversation.endedBy } : {}),
+  ...(c.failure?.code ? { failureCode: c.failure.code } : {}),
+});
+
+function triedSentence(attempts: number, lastReached: string | null, locale: Locale): string {
+  if (locale === 'ja') {
+    const n = `${attempts} 回かけました。`;
+    return lastReached ? `${n}最後に話せたのは ${lastReached}。` : `${n}この ${UNREACHED_LOOKBACK_DAYS} 日間、通話がつながっていません。`;
+  }
+  const n = attempts === 1 ? 'Rang once.' : `Rang ${attempts} times.`;
+  return lastReached ? `${n} Last talked on ${lastReached}.` : `${n} No call has connected in ${UNREACHED_LOOKBACK_DAYS} days.`;
+}
+
+function unreachedNote(items: readonly UnreachedResident[], locale: Locale): string | null {
+  if (!items.length) return null;
+  const ours = items.filter((i) => i.ourFault).length;
+  if (locale === 'ja') {
+    const head = `${items.length} 人の見守り通話ができていません。`;
+    return ours ? `${head}うち ${ours} 人は Hachi 側の問題で、本人の状態は分かっていません。` : head;
+  }
+  const head = `No check-in call has happened for ${items.length} ${items.length === 1 ? 'resident' : 'residents'}.`;
+  return ours ? `${head} For ${ours} of them the fault is ours, so nobody has heard from them at all.` : head;
+}
+
+/**
+ * Residents nobody has spoken to. Built from the calls that are missing rather than the ones that
+ * happened, which is why it cannot come from the detection rules: a resident whose call never
+ * connected produces no detections, so produces no case, so disappears from the queue entirely.
+ * That is the failure mode a check-in service is supposed to be incapable of.
+ *
+ * Only the most recent unreached day is reported per resident. Two rows for the same person say
+ * nothing the one row does not, and the action — ring them — does not become more urgent for being
+ * listed twice.
+ *
+ * `entries` is one store read per active resident. Acceptable at this service's size and not at
+ * every size; the alternative is an index of calls by date across residents, which is worth having
+ * before this list is long enough to need paging.
+ */
+export function buildUnreached(
+  entries: readonly { resident: Resident; calls: readonly CallRecord[] }[],
+  now: Date,
+  locale: Locale,
+): UnreachedView {
+  const items: UnreachedResident[] = [];
+  for (const { resident: r, calls } of entries) {
+    if (!r.active) continue;
+    const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
+    const today = localDate(now, r.timeZone);
+    const reached = calls.filter((c) => missedReason(attemptOf(c)) === null && c.status === 'completed');
+    const lastReachedAt = reached.map((c) => c.startedAt).sort().at(-1) ?? null;
+    for (let back = 0; back < UNREACHED_DAYS; back++) {
+      const date = shiftDate(today, -back);
+      const onDay = calls.filter((c) => dateOf(c) === date).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      const missed = missedCheckIn(onDay.map((c) => ({ ...attemptOf(c), at: c.startedAt })));
+      if (!missed) continue;
+      items.push({
+        residentId: r.id,
+        residentName: r.name,
+        localDate: date,
+        reason: missed.reason,
+        reasonLabel: MISSED_LABELS[locale][missed.reason],
+        meaning: MISSED_MEANINGS[locale][missed.reason],
+        attempts: missed.attempts,
+        at: missed.at,
+        ourFault: isOurFault(missed.reason),
+        lastReachedAt,
+        tried: triedSentence(missed.attempts, lastReachedAt && localDate(new Date(lastReachedAt), r.timeZone), locale),
+      });
+      break;
+    }
+  }
+  // Our own faults first: they are the ones where nothing at all is known about the resident.
+  items.sort((a, b) => Number(b.ourFault) - Number(a.ourFault) || b.at.localeCompare(a.at));
+  return { items, note: unreachedNote(items, locale) };
 }
 
 /** Calls listed on the case page; the speech baseline may come from older ones. */

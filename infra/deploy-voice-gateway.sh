@@ -72,10 +72,13 @@ fi
 # Twilio cannot send Google credentials, so ingress is public; each stream must present the
 # per-call token stored in Firestore. CPU stays allocated because audio flows over an open
 # WebSocket between requests; the timeout bounds a single call.
+# The Gemini region and model are set explicitly rather than left to the code's defaults, so that
+# which model is being called in which region is answerable from `gcloud run services describe`.
+# They are not the same for every service: the analyzer calls flash on "global".
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 1Gi \
   --concurrency 20 --timeout 3600 --no-cpu-throttling --cpu-boost \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}"
 
 GATEWAY_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
 echo "==> Health check"

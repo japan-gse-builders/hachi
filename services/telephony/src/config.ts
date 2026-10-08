@@ -1,4 +1,4 @@
-import { parseSpendSettings, type SpendSettings } from '@hachi/core';
+import { parseGatewayPolicy, parseSpendSettings, type GatewayPolicy, type SpendSettings } from '@hachi/core';
 
 export interface TelephonyConfig {
   port: number;
@@ -39,6 +39,11 @@ export interface TelephonyConfig {
    */
   maxConversationSec: number;
   spend: SpendSettings;
+  /**
+   * When a known-broken Voice Gateway stops new check-in calls going out. Read here rather than in
+   * the gateway because this is the service that decides whether a phone rings.
+   */
+  gateway: GatewayPolicy;
 }
 
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -111,5 +116,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): TelephonyConfig {
     dispatchLookbackMin: int(env, 'DISPATCH_LOOKBACK_MIN', 10, 1, 50),
     maxConversationSec: int(env, 'MAX_CONVERSATION_SEC', 480, 90, 900),
     spend: parseSpendSettings(env),
+    gateway: parseGatewayPolicy(env),
   };
 }

@@ -1,6 +1,7 @@
-import { committedMicros, liveCallMicros, spendMonth } from '@hachi/core';
+import { committedMicros, liveCallMicros, recordGatewayFailure, recordGatewaySuccess, spendMonth } from '@hachi/core';
 import { MemoryStore, NotFoundError } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
+import { emergencyTransfer } from '../src/bridge.js';
 import {
   applyCallStatus,
   callIdFor,
@@ -156,6 +157,96 @@ describe('the monthly AI budget', () => {
     expect(placed).toBeGreaterThan(0);
     expect(results.filter((r) => r.outcome === 'skipped')).not.toHaveLength(0);
     expect(await committed(store)).toBeLessThanOrEqual(Math.floor(deps.config.spend.policy.capMicros * 0.9));
+  });
+});
+
+/** The production fault this exists for: Vertex AI refusing the project, with Twilio working fine. */
+const SPEND_CAP = 'closed: 1008 Spend cap breached for project: projects/871712096742 for service: aiplatform.googleapis.com';
+
+describe('a Voice Gateway that is known to be broken', () => {
+  const broken = async (reason = SPEND_CAP) => {
+    const ctx = makeDeps();
+    await ctx.store.createResident(resident('res-1'));
+    await ctx.store.mutateGatewayBreaker((b) => recordGatewayFailure(b, reason, NOW));
+    return ctx;
+  };
+
+  it('does not make the phone ring', async () => {
+    const { deps, telephony } = await broken();
+    expect(await placeCall(deps, INPUT, 0)).toEqual({ outcome: 'skipped', reason: 'gateway_unavailable' });
+    expect(telephony.calls).toHaveLength(0);
+  });
+
+  it('records why the call did not happen, the way the budget does', async () => {
+    const { deps, store } = await broken();
+    await placeCall(deps, INPUT, 0);
+    const call = (await store.getCall('res-1', callIdFor('2026-10-02', 0)))!;
+    expect(call).toMatchObject({ status: 'failed', failure: { code: 'gateway_unavailable', retryable: false } });
+    expect(call.endedAt).toBeDefined();
+  });
+
+  it('is decided before the budget, so no money is reserved for a call that will not happen', async () => {
+    const { deps, store } = await broken();
+    await placeCall(deps, INPUT, 0);
+    expect(await store.getSpendLedger(spendMonth(NOW))).toBeNull();
+  });
+
+  it('still rings for a transient fault, because one dropped socket is ordinary', async () => {
+    const { deps, telephony } = await broken('closed: 1006');
+    expect(await placeCall(deps, INPUT, 0)).toMatchObject({ outcome: 'placed' });
+    expect(telephony.calls).toHaveLength(1);
+  });
+
+  it('does not ring the rest of the day\u2019s residents either', async () => {
+    const { deps, store, telephony } = await broken();
+    for (const id of ['res-2', 'res-3', 'res-4']) await store.createResident(resident(id));
+    const results = await Promise.all(
+      ['res-1', 'res-2', 'res-3', 'res-4'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),
+    );
+    expect(results.every((r) => r.outcome === 'skipped')).toBe(true);
+    expect(telephony.calls).toHaveLength(0);
+  });
+
+  it('lets exactly one resident through after the cooldown to find out whether it is fixed', async () => {
+    const { deps, store, telephony, clock } = await broken();
+    for (const id of ['res-2', 'res-3']) await store.createResident(resident(id));
+    clock.now = new Date(NOW.getTime() + deps.config.gateway.cooldownMs);
+    const results = await Promise.all(
+      ['res-1', 'res-2', 'res-3'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),
+    );
+    expect(results.filter((r) => r.outcome === 'placed')).toHaveLength(1);
+    expect(telephony.calls).toHaveLength(1);
+  });
+
+  it('goes back to normal once a call has held a conversation', async () => {
+    const { deps, store, telephony, clock } = await broken();
+    await store.createResident(resident('res-2'));
+    clock.now = new Date(NOW.getTime() + 1000);
+    await store.mutateGatewayBreaker((b) => recordGatewaySuccess(b, clock.now));
+    expect(await placeCall(deps, INPUT, 0)).toMatchObject({ outcome: 'placed' });
+    expect(await placeCall(deps, { ...INPUT, residentId: 'res-2' }, 0)).toMatchObject({ outcome: 'placed' });
+    expect(telephony.calls).toHaveLength(2);
+  });
+
+  it('does not stop the emergency calls to family and staff', async () => {
+    // The ceiling next door makes the same promise and for the same reason: what is broken is the
+    // conversation, and telling somebody their mother has collapsed does not need one.
+    const { deps, store, telephony } = await broken();
+    const callId = callIdFor('2026-10-02', 0);
+    await store.createCallIfAbsent({
+      id: callId,
+      residentId: 'res-1',
+      source: 'live',
+      status: 'in_progress',
+      channel: 'pstn',
+      startedAt: NOW.toISOString(),
+      analysisPending: false,
+      createdAt: NOW.toISOString(),
+      emergency: { at: NOW.toISOString(), caseId: 'case-1', quote: 'My chest hurts' },
+    });
+    const outcome = await emergencyTransfer(deps, { residentId: 'res-1', callId });
+    expect(outcome.outcome).toBe('placed');
+    expect(telephony.calls.map((c) => c.to)).toEqual(['+81300000000']);
   });
 });
 

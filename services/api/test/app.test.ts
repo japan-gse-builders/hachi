@@ -454,6 +454,103 @@ describe('triage queue and cases (QUE-01..03)', () => {
   });
 });
 
+describe('residents nobody reached (QUE-01)', () => {
+  /** Resident-local 2026-10-01, which is the day `NOW` falls on in Tokyo. */
+  const TODAY = '2026-10-01';
+  const attempt = (residentId: string, n: number, overrides: Partial<ReturnType<typeof call>> = {}) =>
+    call({
+      id: `${TODAY}-${n}`,
+      residentId,
+      localDate: TODAY,
+      startedAt: `2026-10-01T0${n}:00:00.000Z`,
+      status: 'failed',
+      transcript: [],
+      summary: undefined,
+      ...overrides,
+    });
+
+  const unreached = async (url = '/api/queue') => {
+    const ctx = setup();
+    await ctx.store.createResident(makeResident('res-1'));
+    await ctx.store.createResident(makeResident('res-2', { name: 'Bob Brown' }));
+    return { ...ctx, get: async () => (await ctx.app.inject({ method: 'GET', url, ...ctx.as('staff') })).json().unreached };
+  };
+
+  it('reports a resident whose calls were never placed, with what to do about it', async () => {
+    const ctx = await unreached();
+    await ctx.store.addCalls([
+      attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'not placed', retryable: false } }),
+      attempt('res-1', 2, { failure: { code: 'gateway_unavailable', message: 'not placed', retryable: false } }),
+    ]);
+    const { items, note } = await ctx.get();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      residentId: 'res-1',
+      residentName: 'Margaret Smith',
+      localDate: TODAY,
+      reason: 'service_fault',
+      reasonLabel: 'システム障害',
+      attempts: 2,
+      ourFault: true,
+      lastReachedAt: null,
+    });
+    expect(items[0].meaning).toContain('電話で確かめる');
+    expect(items[0].tried).toContain('2 回かけました');
+    expect(note).toContain('1 人');
+  });
+
+  it('localizes server-side, so the app never has to know these words', async () => {
+    const ctx = await unreached('/api/queue?locale=en');
+    await ctx.store.addCalls([attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } })]);
+    const { items, note } = await ctx.get();
+    expect(items[0]).toMatchObject({ reasonLabel: 'System fault' });
+    expect(items[0].meaning).toContain('A fault on our side');
+    expect(items[0].tried).toBe('Rang once. No call has connected in 14 days.');
+    expect(note).toContain('the fault is ours');
+  });
+
+  it('says nothing about a resident who was reached, or whose call has not been tried yet', async () => {
+    const ctx = await unreached();
+    await ctx.store.addCalls([
+      attempt('res-1', 1, { status: 'no_answer' }),
+      attempt('res-1', 2, { status: 'completed', conversation: { endedBy: 'agent', at: NOW.toISOString() } }),
+      attempt('res-2', 1, { status: 'scheduled' }),
+    ]);
+    expect(await ctx.get()).toEqual({ items: [], note: null });
+  });
+
+  it('keeps a gateway outage apart from a resident who did not pick up, and puts ours first', async () => {
+    const ctx = await unreached();
+    await ctx.store.addCalls([
+      attempt('res-1', 1, { status: 'no_answer' }),
+      attempt('res-2', 2, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } }),
+    ]);
+    const { items, note } = await ctx.get();
+    // Ours first: it is the one where nothing at all is known about the resident.
+    expect(items.map((i: { residentId: string }) => i.residentId)).toEqual(['res-2', 'res-1']);
+    expect(items[1]).toMatchObject({ reason: 'no_answer', ourFault: false, reasonLabel: '応答なし' });
+    expect(note).toContain('うち 1 人');
+  });
+
+  it('names the date they were last heard from when there is one', async () => {
+    const ctx = await unreached();
+    await ctx.store.addCalls([
+      call({ id: 'older', residentId: 'res-1', localDate: '2026-09-28', startedAt: '2026-09-28T01:00:00.000Z' }),
+      attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } }),
+    ]);
+    const items = (await ctx.get()).items;
+    expect(items[0]).toMatchObject({ lastReachedAt: '2026-09-28T01:00:00.000Z' });
+    expect(items[0].tried).toContain('2026-09-28');
+  });
+
+  it('leaves a paused resident out, because nobody is expecting a call', async () => {
+    const ctx = await unreached();
+    await ctx.store.updateResident('res-1', (r) => ({ ...r, active: false }));
+    await ctx.store.addCalls([attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } })]);
+    expect((await ctx.get()).items).toEqual([]);
+  });
+});
+
 describe('family dashboard (FAM-01..04)', () => {
   async function seeded() {
     const ctx = setup();

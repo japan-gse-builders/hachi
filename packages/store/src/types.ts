@@ -1,4 +1,4 @@
-import type { SpendLedger } from '@hachi/core';
+import type { GatewayBreaker, SpendLedger } from '@hachi/core';
 import type { CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
 
 export class NotFoundError extends Error {
@@ -61,4 +61,11 @@ export interface Store {
    * Returning null from `fn` means the reservation was refused and nothing is written.
    */
   mutateSpendLedger(month: string, fn: (l: SpendLedger) => SpendLedger | null): Promise<SpendLedger | null>;
+
+  getGatewayBreaker(): Promise<GatewayBreaker | null>;
+  /**
+   * Atomic read-modify-write of what is known about the Voice Gateway. Returning null from `fn`
+   * means the call must not be placed and nothing is written.
+   */
+  mutateGatewayBreaker(fn: (b: GatewayBreaker) => GatewayBreaker | null): Promise<GatewayBreaker | null>;
 }

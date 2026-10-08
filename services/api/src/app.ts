@@ -7,7 +7,17 @@ import { decideContactRequest, NotFoundError, type Resident, type Store } from '
 import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
 import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
-import { buildCaseDetail, buildFamilyDashboard, buildQueue, buildSpendView, FAMILY_WINDOW_DAYS, urgencyLegend, type MediaSigner } from './views.js';
+import {
+  buildCaseDetail,
+  buildFamilyDashboard,
+  buildQueue,
+  buildSpendView,
+  buildUnreached,
+  FAMILY_WINDOW_DAYS,
+  UNREACHED_LOOKBACK_DAYS,
+  urgencyLegend,
+  type MediaSigner,
+} from './views.js';
 
 export interface AppDeps {
   store: Store;
@@ -148,11 +158,26 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   // ---- Staff: triage queue and cases (QUE-01..03) ----
 
+  /**
+   * The queue carries the residents nobody reached as well as the cases, because the two answer the
+   * same question and only one of them can be built from what a call found. A resident whose call
+   * never connected raises no detection and so has no case; without this they are simply absent
+   * from the screen, which is indistinguishable from a day on which they were fine.
+   */
   app.get('/api/queue', async (req) => {
     requireStaff(req);
     const [cases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
     const locale = localeOf(req);
-    return { items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), now(), locale), legend: urgencyLegend(locale) };
+    const t = now();
+    const since = new Date(t.getTime() - UNREACHED_LOOKBACK_DAYS * 86_400_000).toISOString();
+    const entries = await Promise.all(
+      residents.filter((r) => r.active).map(async (r) => ({ resident: r, calls: await store.listCalls(r.id, { since }) })),
+    );
+    return {
+      items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), t, locale),
+      legend: urgencyLegend(locale),
+      unreached: buildUnreached(entries, t, locale),
+    };
   });
 
   /**
