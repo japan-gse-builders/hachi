@@ -1,3 +1,4 @@
+import { emptyLedger, type SpendLedger } from '@hachi/core';
 import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
 
@@ -10,6 +11,7 @@ export class MemoryStore implements Store {
   private cases = new Map<string, StoredCase>();
   private events = new Map<string, CaseEvent>();
   private outbox = new Map<string, OutboxEntry>();
+  private ledgers = new Map<string, SpendLedger>();
 
   async createResident(r: Resident): Promise<void> {
     if (this.residents.has(r.id)) throw new Error(`Resident ${r.id} already exists`);
@@ -142,5 +144,18 @@ export class MemoryStore implements Store {
 
   private outboxByStatus(status: OutboxStatus, limit: number): OutboxEntry[] {
     return [...this.outbox.values()].filter((e) => e.status === status).slice(0, limit).map(clone);
+  }
+
+  async getSpendLedger(month: string): Promise<SpendLedger | null> {
+    const l = this.ledgers.get(month);
+    return l ? clone(l) : null;
+  }
+
+  async mutateSpendLedger(month: string, fn: (l: SpendLedger) => SpendLedger | null): Promise<SpendLedger | null> {
+    const current = this.ledgers.get(month) ?? emptyLedger(month, new Date(0).toISOString());
+    const next = fn(clone(current));
+    if (!next) return null;
+    this.ledgers.set(month, clone(next));
+    return clone(next);
   }
 }

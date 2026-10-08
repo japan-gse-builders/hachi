@@ -1,3 +1,5 @@
+import { parseSpendSettings, type SpendSettings } from '@hachi/core';
+
 export interface TelephonyConfig {
   port: number;
   /** Public HTTPS origin of this service; used for webhook URLs and signature checks. */
@@ -31,6 +33,12 @@ export interface TelephonyConfig {
   maxAttempts: number;
   retryDelaySec: number;
   dispatchLookbackMin: number;
+  /**
+   * The conversation length the Voice Gateway enforces. Mirrored here only to reserve the right
+   * amount of budget before dialing; the gateway remains the one that acts on it.
+   */
+  maxConversationSec: number;
+  spend: SpendSettings;
 }
 
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -101,5 +109,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): TelephonyConfig {
     maxAttempts: int(env, 'MAX_CALL_ATTEMPTS', 3, 1, 5),
     retryDelaySec: int(env, 'RETRY_DELAY_SEC', 180, 30, 3600),
     dispatchLookbackMin: int(env, 'DISPATCH_LOOKBACK_MIN', 10, 1, 50),
+    maxConversationSec: int(env, 'MAX_CONVERSATION_SEC', 480, 90, 900),
+    spend: parseSpendSettings(env),
   };
 }

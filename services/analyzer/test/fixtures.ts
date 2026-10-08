@@ -1,5 +1,5 @@
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
-import type { Turn } from '@hachi/core';
+import { parseSpendSettings, type Turn } from '@hachi/core';
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
 import { ReviewError, type CallReviewer, type ModelReview, type ReviewInput } from '../src/model.js';
 import type { ListeningReview, RecordingSource, SpeechListener } from '../src/voice.js';
@@ -201,7 +201,7 @@ export async function setup(opts: { calls?: CallRecord[]; resident?: Resident | 
     ...(opts.notifications === false ? {} : { notifications }),
     now: () => new Date(clock),
     newId: () => `case-${++n}`,
-    config: { leaseSec: 300, settleSec: 60, modelAttempts: 3, staffLocale: 'en', appBaseUrl: 'https://app.example' },
+    config: { leaseSec: 300, settleSec: 60, modelAttempts: 3, staffLocale: 'en', appBaseUrl: 'https://app.example', spend: parseSpendSettings({}) },
   };
   const advance = (sec: number) => {
     clock += sec * 1000;

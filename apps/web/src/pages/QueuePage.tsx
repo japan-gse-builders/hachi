@@ -4,20 +4,23 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { ContactRequests } from '../components/ContactRequests';
 import { deliveryLabel, formatWhen, urgencyTone } from '../format';
-import type { Queue } from '../types';
+import type { Queue, Spend } from '../types';
 
 export function QueuePage() {
   const { token } = useAuth();
   const [queue, setQueue] = useState<Queue | null>(null);
+  const [spend, setSpend] = useState<Spend | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let stop = false;
     const load = async () => {
       try {
-        const data = await api<Queue>('/api/queue?locale=en', await token());
+        const t = await token();
+        const [data, money] = await Promise.all([api<Queue>('/api/queue?locale=en', t), api<Spend | null>('/api/spend?locale=en', t)]);
         if (!stop) {
           setQueue(data);
+          setSpend(money);
           setError('');
         }
       } catch (err) {
@@ -35,6 +38,12 @@ export function QueuePage() {
   return (
     <div className="stack tiles">
       <ContactRequests />
+      {/* Staff are the ones who get asked why nobody was called today, so they can see the answer. */}
+      {spend?.paused && (
+        <p className="card card-emergency">
+          <strong>Check-in calls have stopped.</strong> {spend.note}
+        </p>
+      )}
       <h2>Needs attention</h2>
       {/* A card shows only its own level, so the whole scale is spelled out once, in reading order. */}
       {queue && queue.legend.length > 0 && (
@@ -65,6 +74,11 @@ export function QueuePage() {
           )}
         </Link>
       ))}
+      {spend && !spend.paused && (
+        <p className="meta">
+          {spend.note} {spend.inFlight !== '$0.00' && `${spend.inFlight} is held by calls in progress.`}
+        </p>
+      )}
     </div>
   );
 }

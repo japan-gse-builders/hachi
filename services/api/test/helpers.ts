@@ -1,4 +1,4 @@
-import { domainStates, type CallTag, type Case, type Detection } from '@hachi/core';
+import { domainStates, type CallTag, type Case, type Detection, type SpendSettings } from '@hachi/core';
 import { buildApp } from '../src/app.js';
 import type { TokenVerifier, VerifiedToken } from '../src/auth.js';
 import { MemoryStore, type CallRecord, type CallWellbeing, type Resident, type StoredCase } from '@hachi/store';
@@ -112,9 +112,9 @@ export function idGen(prefix = 'id'): () => string {
   return () => `${prefix}-${++n}`;
 }
 
-export function setup() {
+export function setup(opts: { spend?: SpendSettings } = {}) {
   const store = new MemoryStore();
-  const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, now: () => NOW, newId: idGen() });
+  const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, now: () => NOW, newId: idGen(), ...opts });
   const as = (token: keyof typeof TOKENS | null) => ({ headers: token ? { authorization: `Bearer ${token}` } : {} });
   return { store, app, as };
 }

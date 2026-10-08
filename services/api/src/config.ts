@@ -1,9 +1,13 @@
+import { parseSpendSettings, type SpendSettings } from '@hachi/core';
+
 export interface ApiConfig {
   port: number;
   /** Bucket holding call recordings; the only bucket the API will sign URLs for. */
   recordingsBucket: string;
   /** Browser origins allowed to call the API, from WEB_ORIGINS. */
   corsOrigins: string[];
+  /** Read-only here: the API reports the month, the services that spend money enforce it. */
+  spend: SpendSettings;
 }
 
 const BUCKET_NAME = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
@@ -28,5 +32,5 @@ export function loadConfig(env: NodeJS.ProcessEnv): ApiConfig {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`WEB_ORIGINS must be http(s) origins: ${origin}`);
     if (url.origin !== origin) throw new Error(`WEB_ORIGINS entries must be origins without a path: ${origin}`);
   }
-  return { port, recordingsBucket, corsOrigins };
+  return { port, recordingsBucket, corsOrigins, spend: parseSpendSettings(env) };
 }

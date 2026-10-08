@@ -26,6 +26,18 @@ export interface Queue {
   legend: UrgencyLegendItem[];
 }
 
+/** This month's AI spend. Null when the API was started without a budget configured. */
+export interface Spend {
+  month: string;
+  paused: boolean;
+  usedPercent: number;
+  cap: string;
+  committed: string;
+  inFlight: string;
+  remaining: string;
+  note: string;
+}
+
 export interface NotificationItem {
   recipient: string;
   channel: string;

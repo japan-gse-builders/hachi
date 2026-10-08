@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { GoogleGenAI } from '@google/genai';
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
-import { detectR1, type Detection } from '@hachi/core';
+import { detectR1, parseSpendSettings, type Detection } from '@hachi/core';
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
 import { groundEmergencies } from '../src/analysis.js';
 import { formatTranscript, GeminiReviewer, ReviewError, reviewInstruction, type CallReviewer, type ModelReview, type ReviewInput } from '../src/model.js';
@@ -189,7 +189,7 @@ async function runCase(seed: number, repeat: number, c: ScriptedCase): Promise<C
       queue: noQueue,
       now: () => now,
       newId: () => `${c.residentId}-${++ids}`,
-      config: { leaseSec: 300, settleSec: 0, modelAttempts: 1, staffLocale: 'en', appBaseUrl: 'https://hachi.invalid' },
+      config: { leaseSec: 300, settleSec: 0, modelAttempts: 1, staffLocale: 'en', appBaseUrl: 'https://hachi.invalid', spend: parseSpendSettings(process.env) },
     };
     const outcome = await analyzeCall(deps, { residentId: resident.id, callId: call.id });
     if (outcome.outcome !== 'analyzed') throw new Error(`${call.id}: ${JSON.stringify(outcome)}`);

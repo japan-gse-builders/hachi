@@ -1,6 +1,16 @@
-import { NotFoundError } from '@hachi/store';
+import { committedMicros, liveCallMicros, spendMonth } from '@hachi/core';
+import { MemoryStore, NotFoundError } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
-import { applyCallStatus, callIdFor, DIAL_LEASE_MS, dispatchDueCalls, parsePlaceCallInput, placeCall, PLACEMENT_RETRIES } from '../src/calls.js';
+import {
+  applyCallStatus,
+  callIdFor,
+  DIAL_LEASE_MS,
+  dispatchDueCalls,
+  parsePlaceCallInput,
+  placeCall,
+  PLACEMENT_RETRIES,
+  spendLeaseId,
+} from '../src/calls.js';
 import { BASE_URL, makeDeps, NOW, resident, retryable, unverified } from './fixtures.js';
 
 const INPUT = { residentId: 'res-1', localDate: '2026-10-02', attempt: 0 };
@@ -76,6 +86,76 @@ describe('parsePlaceCallInput', () => {
     ]) {
       expect(parsePlaceCallInput(bad, 3)).toBeNull();
     }
+  });
+});
+
+describe('the monthly AI budget', () => {
+  const month = spendMonth(NOW);
+  const committed = async (store: MemoryStore) => committedMicros((await store.getSpendLedger(month))!);
+
+  it('holds the call cost against the month before the phone rings', async () => {
+    const { deps, store } = makeDeps();
+    await store.createResident(resident('res-1'));
+    await placeCall(deps, INPUT, 0);
+    const ledger = (await store.getSpendLedger(month))!;
+    expect(ledger.leases.map((l) => l.id)).toEqual([spendLeaseId('res-1', '2026-10-02-0')]);
+    // Reserved, not spent: the call is still happening.
+    expect(ledger.spentMicros).toBe(0);
+    expect(ledger.leases[0]!.micros).toBeGreaterThan(0);
+  });
+
+  it('does not place the call when the month cannot afford it', async () => {
+    const { deps, store, telephony } = makeDeps({ monthlyCapUsd: 0 });
+    await store.createResident(resident('res-1'));
+    expect(await placeCall(deps, INPUT, 0)).toEqual({ outcome: 'skipped', reason: 'budget_exhausted' });
+    expect(telephony.calls).toHaveLength(0);
+    // Recorded against the attempt, so it reads as a reason rather than a call that vanished.
+    const call = (await store.getCall('res-1', callIdFor('2026-10-02', 0)))!;
+    expect(call).toMatchObject({ status: 'failed', failure: { code: 'budget_exhausted', retryable: false } });
+  });
+
+  it('settles the reservation with the seconds Twilio reports', async () => {
+    const { deps, store } = makeDeps();
+    await store.createResident(resident('res-1'));
+    const placed = await placeCall(deps, INPUT, 0);
+    const sid = placed.outcome === 'placed' ? placed.providerCallId : '';
+    const ids = { residentId: 'res-1', callId: callIdFor('2026-10-02', 0) };
+    await applyCallStatus(deps, ids, { CallStatus: 'completed', CallSid: sid, CallDuration: '120' });
+    const ledger = (await store.getSpendLedger(month))!;
+    expect(ledger.leases).toHaveLength(0);
+    expect(ledger.spentMicros).toBe(liveCallMicros(120, deps.config.spend.prices));
+  });
+
+  it('charges nothing for a call nobody answered, and ignores a repeated callback', async () => {
+    const { deps, store } = makeDeps();
+    await store.createResident(resident('res-1'));
+    const placed = await placeCall(deps, INPUT, 0);
+    const sid = placed.outcome === 'placed' ? placed.providerCallId : '';
+    const ids = { residentId: 'res-1', callId: callIdFor('2026-10-02', 0) };
+    await applyCallStatus(deps, ids, { CallStatus: 'no-answer', CallSid: sid });
+    await applyCallStatus(deps, ids, { CallStatus: 'no-answer', CallSid: sid });
+    expect(await committed(store)).toBe(0);
+  });
+
+  it('releases the reservation when the provider would not take the call', async () => {
+    const { deps, store, telephony } = makeDeps();
+    await store.createResident(resident('res-1'));
+    telephony.failWith(retryable());
+    expect(await placeCall(deps, INPUT, 0)).toMatchObject({ outcome: 'retry_later' });
+    // No call happened, so the next attempt should find the budget where it was.
+    expect(await committed(store)).toBe(0);
+  });
+
+  it('lets several calls run at once without any of them crossing the line', async () => {
+    const { deps, store } = makeDeps({ monthlyCapUsd: 1 });
+    for (const id of ['res-1', 'res-2', 'res-3', 'res-4']) await store.createResident(resident(id));
+    const results = await Promise.all(
+      ['res-1', 'res-2', 'res-3', 'res-4'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),
+    );
+    const placed = results.filter((r) => r.outcome === 'placed').length;
+    expect(placed).toBeGreaterThan(0);
+    expect(results.filter((r) => r.outcome === 'skipped')).not.toHaveLength(0);
+    expect(await committed(store)).toBeLessThanOrEqual(Math.floor(deps.config.spend.policy.capMicros * 0.9));
   });
 });
 

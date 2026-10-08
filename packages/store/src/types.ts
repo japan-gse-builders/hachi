@@ -1,3 +1,4 @@
+import type { SpendLedger } from '@hachi/core';
 import type { CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
 
 export class NotFoundError extends Error {
@@ -53,4 +54,11 @@ export interface Store {
   listPendingOutbox(limit: number): Promise<OutboxEntry[]>;
   /** Entries held for a person's decision, in no particular order. */
   listOutboxAwaitingApproval(limit: number): Promise<OutboxEntry[]>;
+
+  getSpendLedger(month: string): Promise<SpendLedger | null>;
+  /**
+   * Atomic read-modify-write of one month's AI spend, creating an empty month on first use.
+   * Returning null from `fn` means the reservation was refused and nothing is written.
+   */
+  mutateSpendLedger(month: string, fn: (l: SpendLedger) => SpendLedger | null): Promise<SpendLedger | null>;
 }

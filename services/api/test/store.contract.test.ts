@@ -170,6 +170,17 @@ function contract(name: string, make: () => Promise<Store>) {
       r.name = 'changed';
       expect((await s.getResident('r-1'))?.name).toBe('Margaret Smith');
     });
+
+    it('starts a spend month empty and writes nothing when a reservation is refused', async () => {
+      const s = await make();
+      expect(await s.getSpendLedger('2026-10')).toBeNull();
+      const taken = await s.mutateSpendLedger('2026-10', (l) => ({ ...l, spentMicros: l.spentMicros + 500 }));
+      expect(taken).toMatchObject({ month: '2026-10', spentMicros: 500 });
+      // A refusal has to leave no trace, or a refused call would still move the month.
+      expect(await s.mutateSpendLedger('2026-10', () => null)).toBeNull();
+      expect((await s.getSpendLedger('2026-10'))?.spentMicros).toBe(500);
+      expect(await s.getSpendLedger('2026-11')).toBeNull();
+    });
   });
 }
 

@@ -1,4 +1,4 @@
-import { callTaskId, isDue, localDate, nextCallAt } from '@hachi/core';
+import { callReservationMicros, callTaskId, isDue, liveCallMicros, localDate, nextCallAt, reserve, settle, spendMonth } from '@hachi/core';
 import type { CallRecord, CallStatus, Resident, Store } from '@hachi/store';
 import type { TelephonyConfig } from './config.js';
 import type { TaskQueue } from '@hachi/cloud';
@@ -10,7 +10,16 @@ export interface CallDeps {
   telephony: TelephonyProvider;
   config: Pick<
     TelephonyConfig,
-    'publicBaseUrl' | 'voiceStreamUrl' | 'sayVoice' | 'ringTimeoutSec' | 'maxCallSec' | 'maxAttempts' | 'retryDelaySec' | 'dispatchLookbackMin'
+    | 'publicBaseUrl'
+    | 'voiceStreamUrl'
+    | 'sayVoice'
+    | 'ringTimeoutSec'
+    | 'maxCallSec'
+    | 'maxConversationSec'
+    | 'maxAttempts'
+    | 'retryDelaySec'
+    | 'dispatchLookbackMin'
+    | 'spend'
   > & { twilio: Pick<TelephonyConfig['twilio'], 'voiceFrom'> };
   now: () => Date;
   newToken: () => string;
@@ -82,9 +91,36 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
 export type PlaceCallOutcome =
   | { outcome: 'placed'; providerCallId: string }
-  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' }
+  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' | 'budget_exhausted' }
   | { outcome: 'retry_later'; reason: 'dial_in_progress' | 'provider_unavailable' }
   | { outcome: 'failed'; retryScheduled: boolean; code?: string };
+
+/** Identifies one call's reservation, so a redelivered task settles the same one it reserved. */
+export const spendLeaseId = (residentId: string, callId: string) => `call:${residentId}/${callId}`;
+
+/**
+ * Holds this call's worst-case cost against the month before the phone rings, and refuses the call
+ * if the month cannot afford it. The check and the reservation are the same transaction, so two
+ * workers dialing at once cannot both take the last of the budget.
+ *
+ * Only the daily check-in goes through here. Reaching family and staff about an emergency does not:
+ * a ceiling that stops somebody being told their mother has collapsed is not a ceiling worth having.
+ */
+async function reserveForCall(deps: CallDeps, residentId: string, callId: string): Promise<boolean> {
+  const now = deps.now();
+  const { prices, policy } = deps.config.spend;
+  const micros = callReservationMicros(deps.config.maxConversationSec, prices);
+  const lease = { id: spendLeaseId(residentId, callId), micros, at: now.toISOString() };
+  const after = await deps.store.mutateSpendLedger(spendMonth(now), (l) => reserve(l, lease, policy, now));
+  return after !== null;
+}
+
+/** Replaces the reservation with what the call actually cost, once Twilio says how long it ran. */
+export async function settleCallSpend(deps: CallDeps, residentId: string, callId: string, durationSec: number | undefined): Promise<void> {
+  const now = deps.now();
+  const actual = durationSec === undefined ? undefined : liveCallMicros(durationSec, deps.config.spend.prices);
+  await deps.store.mutateSpendLedger(spendMonth(now), (l) => settle(l, spendLeaseId(residentId, callId), actual, now));
+}
 
 export async function scheduleRetry(deps: CallDeps, input: PlaceCallInput): Promise<boolean> {
   const next = input.attempt + 1;
@@ -141,6 +177,17 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     streamToken = current.streamToken!;
   }
 
+  // After the lease, so a refused call is recorded against this attempt rather than retried forever.
+  if (!(await reserveForCall(deps, r.id, callId))) {
+    await deps.store.updateCall(r.id, callId, (c) => ({
+      ...withoutLease(c),
+      status: 'failed',
+      endedAt: deps.now().toISOString(),
+      failure: { code: 'budget_exhausted', message: 'The monthly AI budget is used up; no new calls are being placed', retryable: false },
+    }));
+    return { outcome: 'skipped', reason: 'budget_exhausted' };
+  }
+
   const query = `residentId=${encodeURIComponent(r.id)}&callId=${encodeURIComponent(callId)}`;
 
   try {
@@ -164,6 +211,9 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     return { outcome: 'placed', providerCallId };
   } catch (err) {
     const e = err instanceof TelephonyError ? err : new TelephonyError((err as Error).message, true);
+    // No call was made, so the reservation is released rather than written off; the next attempt
+    // takes its own.
+    await settleCallSpend(deps, r.id, callId, 0);
     if (e.retryable && taskRetryCount < PLACEMENT_RETRIES) {
       await deps.store.updateCall(r.id, callId, (c) => (c.dialLease?.token === token ? withoutLease(c) : null));
       return { outcome: 'retry_later', reason: 'provider_unavailable' };
@@ -232,6 +282,12 @@ export async function applyCallStatus(
     }
     return next === c ? null : next;
   });
+  // The call is over, so its reservation is replaced by what it really cost. A call that never
+  // connected cost nothing; one that did is billed for the seconds Twilio reports. `settle` ignores
+  // a reservation that is already gone, which is what makes a repeated callback harmless.
+  if (TERMINAL.has(updated.status)) {
+    await settleCallSpend(deps, ids.residentId, ids.callId, updated.status === 'completed' ? updated.durationSec : 0);
+  }
   let retryScheduled = false;
   if (becameFailed && updated.status === 'failed' && updated.attempt !== undefined && updated.localDate) {
     retryScheduled = await scheduleRetry(deps, { residentId: ids.residentId, localDate: updated.localDate, attempt: updated.attempt });

@@ -1,3 +1,4 @@
+import { emptyLedger, type SpendLedger } from '@hachi/core';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
@@ -13,6 +14,7 @@ const ALREADY_EXISTS = 6;
  *   cases/{id}
  *   cases/{id}/events/{eventId}
  *   outbox/{sha256(idempotencyKey)}
+ *   spend/{YYYY-MM}
  * The Firestore instance must be created with `ignoreUndefinedProperties: true`.
  */
 export class FirestoreStore implements Store {
@@ -195,5 +197,27 @@ export class FirestoreStore implements Store {
   private async outboxByStatus(status: OutboxStatus, limit: number): Promise<OutboxEntry[]> {
     const snap = await this.db.collection('outbox').where('status', '==', status).limit(limit).get();
     return snap.docs.map((d) => d.data() as OutboxEntry);
+  }
+
+  async getSpendLedger(month: string): Promise<SpendLedger | null> {
+    const snap = await this.db.collection('spend').doc(month).get();
+    return snap.exists ? (snap.data() as SpendLedger) : null;
+  }
+
+  /**
+   * One document per month, so the read that decides whether a call may be placed and the write
+   * that reserves its cost are the same transaction. Two workers dialing at once therefore cannot
+   * both see room for the last call.
+   */
+  async mutateSpendLedger(month: string, fn: (l: SpendLedger) => SpendLedger | null): Promise<SpendLedger | null> {
+    const ref = this.db.collection('spend').doc(month);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const current = snap.exists ? (snap.data() as SpendLedger) : emptyLedger(month, new Date(0).toISOString());
+      const next = fn(current);
+      if (!next) return null;
+      tx.set(ref, next);
+      return next;
+    });
   }
 }

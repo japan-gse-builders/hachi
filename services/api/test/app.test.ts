@@ -1,3 +1,4 @@
+import { charge, parseSpendSettings, spendMonth, USD } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { CASE_CALLS } from '../src/views.js';
@@ -243,6 +244,35 @@ describe('triage queue and cases (QUE-01..03)', () => {
     const working = items.find((i: { caseId: string }) => i.caseId === 'watch');
     expect(working).toMatchObject({ status: 'in_progress', statusLabel: 'In progress' });
     expect(items[0]).toMatchObject({ status: 'open', statusLabel: 'Not started' });
+  });
+
+  it('tells staff where the month stands, and says so plainly when calls have stopped', async () => {
+    const spend = parseSpendSettings({ AI_MONTHLY_CAP_USD: '100' });
+    const { app, as, store } = setup({ spend });
+    const month = spendMonth(NOW);
+    const quiet = await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') });
+    expect(quiet.json()).toMatchObject({ month, paused: false, cap: '$100.00', committed: '$0.00', usedPercent: 0 });
+
+    await store.mutateSpendLedger(month, (l) => charge(l, 95 * USD, NOW));
+    const used = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') })).json();
+    expect(used).toMatchObject({ paused: true, usedPercent: 95, remaining: '$0.00' });
+    // The sentence has to say that an emergency still gets through, or staff will assume it does not.
+    expect(used.note).toContain('Emergency contact is unaffected');
+    const ja = (await app.inject({ method: 'GET', url: '/api/spend', ...as('staff') })).json();
+    expect(ja.note).toContain('緊急時の連絡は止まりません');
+  });
+
+  it('keeps the month away from family and from anyone not signed in', async () => {
+    const { app, as } = setup({ spend: parseSpendSettings({}) });
+    expect((await app.inject({ method: 'GET', url: '/api/spend', ...as('familyPhone') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/spend', ...as(null) })).statusCode).toBe(401);
+  });
+
+  it('reports nothing rather than guessing when no budget is configured', async () => {
+    const { app, as } = setup();
+    const res = await app.inject({ method: 'GET', url: '/api/spend', ...as('staff') });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toBeNull();
   });
 
   it('skips cases whose resident no longer exists', async () => {

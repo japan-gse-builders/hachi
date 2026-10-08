@@ -1,3 +1,4 @@
+import { parseSpendSettings } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
@@ -21,6 +22,7 @@ describe('loadConfig', () => {
       leaseSec: 300,
       settleSec: 60,
       modelAttempts: 4,
+      spend: parseSpendSettings({}),
     });
   });
 

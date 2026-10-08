@@ -3,6 +3,10 @@ import {
   buildBaseline,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
+  formatUsd,
+  spendStatus,
+  type SpendLedger,
+  type SpendPolicy,
   combineStates,
   domainStatus,
   effectiveUrgency,
@@ -347,5 +351,32 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
       }))
       .sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
     staff: { name: r.staff.name, phone: r.staff.phone, email: r.staff.email ?? null },
+  };
+}
+
+/**
+ * This month's AI spend, as a sentence rather than a row of numbers. Staff are not accountants:
+ * what they need to know is whether calls are still going out, and if not, why not.
+ */
+export function buildSpendView(ledger: SpendLedger, policy: SpendPolicy, locale: Locale) {
+  const s = spendStatus(ledger, policy);
+  const pct = Math.round(s.usedFraction * 100);
+  const note = s.paused
+    ? locale === 'ja'
+      ? `今月の AI 予算（${formatUsd(s.capMicros)}）を使い切ったため、新しい見守り通話を止めています。緊急時の連絡は止まりません。`
+      : `This month's AI budget (${formatUsd(s.capMicros)}) is used up, so new check-in calls have stopped. Emergency contact is unaffected.`
+    : locale === 'ja'
+      ? `今月の AI 費用は ${formatUsd(s.committedMicros)}（上限 ${formatUsd(s.capMicros)} の ${pct}%）。通話は通常どおり。`
+      : `${formatUsd(s.committedMicros)} of AI spend this month, ${pct}% of the ${formatUsd(s.capMicros)} cap. Calls are going out as usual.`;
+  return {
+    month: s.month,
+    paused: s.paused,
+    usedPercent: pct,
+    cap: formatUsd(s.capMicros),
+    committed: formatUsd(s.committedMicros),
+    // Reserved money belongs to calls happening right now, which is why it is not yet "spent".
+    inFlight: formatUsd(s.reservedMicros),
+    remaining: formatUsd(s.availableMicros),
+    note,
   };
 }

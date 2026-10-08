@@ -4,6 +4,7 @@ export * from './r1.js';
 export * from './r2.js';
 export * from './r3.js';
 export * from './r4.js';
+export * from './spend.js';
 export * from './voice.js';
 export * from './cases.js';
 export * from './priority.js';

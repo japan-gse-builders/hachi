@@ -22,6 +22,7 @@ import { parseArgs } from 'node:util';
 import { GoogleGenAI } from '@google/genai';
 import type { TaskQueue } from '@hachi/cloud';
 import { FirestoreStore, type CallRecord, type Resident } from '@hachi/store';
+import { parseSpendSettings } from '@hachi/core';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
@@ -123,7 +124,7 @@ const deps: WorkerDeps = {
   queue: noQueue,
   now: () => new Date(),
   newId: randomUUID,
-  config: { leaseSec: 300, settleSec: 0, modelAttempts: 3, staffLocale: 'en', appBaseUrl },
+  config: { leaseSec: 300, settleSec: 0, modelAttempts: 3, staffLocale: 'en', appBaseUrl, spend: parseSpendSettings(process.env) },
 };
 
 const wanted = args.people.split(',').map((s) => s.trim());

@@ -1,4 +1,4 @@
-import type { Locale } from '@hachi/core';
+import { parseSpendSettings, type Locale, type SpendSettings } from '@hachi/core';
 
 export interface AnalyzerConfig {
   port: number;
@@ -25,6 +25,7 @@ export interface AnalyzerConfig {
   settleSec: number;
   /** After this many failed model attempts the call is analysed with the rule-based checks only. */
   modelAttempts: number;
+  spend: SpendSettings;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -78,5 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): AnalyzerConfig {
     leaseSec: int(env, 'ANALYSIS_LEASE_SEC', 300, 60, 1800),
     settleSec: int(env, 'ANALYSIS_SETTLE_SEC', 60, 0, 600),
     modelAttempts: int(env, 'MODEL_ATTEMPTS', 4, 1, 10),
+    spend: parseSpendSettings(env),
   };
 }

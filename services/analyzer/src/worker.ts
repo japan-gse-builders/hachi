@@ -1,5 +1,17 @@
 import { analysisTask, requestDelivery, type TaskQueue } from '@hachi/cloud';
-import { HISTORY_CALLS, itemsForCall, localDate, type Detection, type Locale, type RuleId, type TimingSource } from '@hachi/core';
+import {
+  analysisMicros,
+  charge,
+  HISTORY_CALLS,
+  itemsForCall,
+  localDate,
+  spendMonth,
+  type Detection,
+  type Locale,
+  type RuleId,
+  type SpendSettings,
+  type TimingSource,
+} from '@hachi/core';
 import { NotFoundError, recordContactRequest, recordDetections, recordLonelinessNotice, type CallRecord, type Store } from '@hachi/store';
 import { analyse } from './analysis.js';
 import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
@@ -17,12 +29,23 @@ export interface WorkerDeps {
   notifications?: TaskQueue;
   now: () => Date;
   newId: () => string;
-  config: { leaseSec: number; settleSec: number; modelAttempts: number; staffLocale: Locale; appBaseUrl: string };
+  config: { leaseSec: number; settleSec: number; modelAttempts: number; staffLocale: Locale; appBaseUrl: string; spend: SpendSettings };
 }
 
 export interface CallRef {
   residentId: string;
   callId: string;
+}
+
+/** Records what one post-call review cost. Failing to record it must not fail the analysis. */
+async function chargeReview(deps: WorkerDeps, tokens: { in: number; out: number }): Promise<void> {
+  const now = deps.now();
+  const micros = analysisMicros(tokens.in, tokens.out, deps.config.spend.prices);
+  try {
+    await deps.store.mutateSpendLedger(spendMonth(now), (l) => charge(l, micros, now));
+  } catch {
+    // The month's total will be short by one review; the call itself is more important.
+  }
 }
 
 export type AnalyzeOutcome =
@@ -108,6 +131,9 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
               resident.serviceStartedAt.slice(0, 10),
               call.localDate ?? localDate(new Date(call.startedAt), resident.timeZone),
             ),
+            // Charged, not reserved. The call has already happened; reviewing it is not something
+            // the budget is allowed to refuse, only something it has to know about.
+            onUsage: (t) => void chargeReview(deps, t),
           })
         : Promise.resolve(null),
       audioUri

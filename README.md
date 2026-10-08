@@ -94,6 +94,19 @@ Urgency levels:
 See [docs/CONSENT_AND_PRIVACY.md](docs/CONSENT_AND_PRIVACY.md) for consent, retention and what is
 enforced in code versus handled operationally.
 
+## Running cost, and the ceiling on it
+
+Every resident costs money every day: a Live session billed by the second and a review billed by the
+token. Nothing about that is self-limiting, so the service holds each call's worst-case cost against
+a monthly budget **before the phone rings**, and refuses the call if the month cannot afford it. The
+check and the reservation are one Firestore transaction, so calls placed at the same moment cannot
+both take the last of it.
+
+New check-in calls stop at 90% of the cap, and staff see why on their queue. **Reaching family and
+staff about an emergency is never stopped** — a ceiling that silences that is not worth having.
+Prices and the cap are environment variables, and a Google Cloud budget alert sits above the
+application's own limit as a second line. See [docs/COST_CONTROL.md](docs/COST_CONTROL.md).
+
 ## Google Cloud services
 
 | Service | Used for |
@@ -198,6 +211,9 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 - **A phone that never rings through is not followed up yet**: there is no automatic retry for
   no-answer (technical failures are retried). Picking up and not speaking is now R4.
 - **Consent and retention are operational**, not managed in the app yet (see the privacy doc).
+- **The monthly AI budget has never actually been reached** in production. The ceiling and the
+  degradation are covered by tests, and the numbers it counts are our estimate, not Google's
+  invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
 - **Web push is implemented but not configured** in the current deployment; alerts go by SMS, email
   and voice.
 - Development uses a Twilio trial account with US numbers; production needs a Japanese 050 number.

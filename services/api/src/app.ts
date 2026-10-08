@@ -1,4 +1,4 @@
-import { HISTORY_CALLS, type Locale } from '@hachi/core';
+import { emptyLedger, HISTORY_CALLS, spendMonth, type Locale, type SpendSettings } from '@hachi/core';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError, type ZodType } from 'zod';
 import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
@@ -7,7 +7,7 @@ import { decideContactRequest, NotFoundError, type Resident, type Store } from '
 import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
 import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
-import { buildCaseDetail, buildFamilyDashboard, buildQueue, FAMILY_WINDOW_DAYS, urgencyLegend, type MediaSigner } from './views.js';
+import { buildCaseDetail, buildFamilyDashboard, buildQueue, buildSpendView, FAMILY_WINDOW_DAYS, urgencyLegend, type MediaSigner } from './views.js';
 
 export interface AppDeps {
   store: Store;
@@ -18,6 +18,8 @@ export interface AppDeps {
   logger?: boolean;
   /** Browser origins allowed to call this API. Empty means same-origin only. */
   corsOrigins?: string[];
+  /** Without it the spend route reports nothing, which is what local development wants. */
+  spend?: SpendSettings;
 }
 
 export class HttpError extends Error {
@@ -151,6 +153,18 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const [cases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
     const locale = localeOf(req);
     return { items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), now(), locale), legend: urgencyLegend(locale) };
+  });
+
+  /**
+   * This month's AI spend. Staff see it because when calls stop going out they are the ones who
+   * will be asked why, and "the budget is used up" is an answer they can act on.
+   */
+  app.get('/api/spend', async (req) => {
+    requireStaff(req);
+    if (!deps.spend) return null;
+    const month = spendMonth(now());
+    const ledger = (await store.getSpendLedger(month)) ?? emptyLedger(month, now().toISOString());
+    return buildSpendView(ledger, deps.spend.policy, localeOf(req));
   });
 
   app.get<{ Params: { id: string } }>('/api/cases/:id', async (req) => {

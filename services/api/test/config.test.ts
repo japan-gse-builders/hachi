@@ -1,3 +1,4 @@
+import { parseSpendSettings } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
@@ -7,6 +8,7 @@ describe('loadConfig', () => {
       port: 8080,
       recordingsBucket: 'oct1-hachi-recordings',
       corsOrigins: [],
+      spend: parseSpendSettings({}),
     });
     expect(loadConfig({ RECORDINGS_BUCKET: 'ok-bucket', WEB_ORIGINS: 'https://hachi.web.app, http://localhost:5173' }).corsOrigins).toEqual([
       'https://hachi.web.app',

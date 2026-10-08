@@ -1,3 +1,4 @@
+import { parseSpendSettings } from '@hachi/core';
 import { MemoryStore, type Resident } from '@hachi/store';
 import type { CallDeps } from '../src/calls.js';
 import type { EnqueueRequest, TaskCallerVerifier, TaskQueue } from '@hachi/cloud';
@@ -64,7 +65,7 @@ export class FakeVerifier implements TaskCallerVerifier {
   }
 }
 
-export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string } = {}) {
+export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string; monthlyCapUsd?: number } = {}) {
   const store = new MemoryStore();
   const queue = new FakeQueue();
   const telephony = new FakeTelephony();
@@ -83,7 +84,10 @@ export function makeDeps(overrides: { now?: () => Date; voiceStreamUrl?: string 
       maxAttempts: 3,
       retryDelaySec: 180,
       dispatchLookbackMin: 10,
+      maxConversationSec: 480,
       twilio: { voiceFrom: '+15005550006' },
+      // A cap no test reaches by accident; the tests about the ceiling set their own.
+      spend: parseSpendSettings({ AI_MONTHLY_CAP_USD: String(overrides.monthlyCapUsd ?? 1000) }),
     },
     now: overrides.now ?? (() => clock.now),
     newToken: () => `token-${++tokens}`,

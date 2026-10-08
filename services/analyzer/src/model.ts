@@ -34,6 +34,12 @@ export interface ReviewInput {
   staffLocale: Locale;
   /** The set questions this call was told to ask; nothing else can be answered. */
   items?: readonly ScreenItem[];
+  /**
+   * What the request cost, as the provider reported it, for the monthly spend ledger. Passed in
+   * rather than returned so that a reviewer which cannot report usage — the caches and replayers
+   * the evaluation scripts use — simply does not call it.
+   */
+  onUsage?(tokens: { in: number; out: number }): void;
 }
 
 export interface CallReviewer {
@@ -257,6 +263,8 @@ export class GeminiReviewer implements CallReviewer {
         },
       });
       raw = res.text;
+      const u = res.usageMetadata;
+      if (u) input.onUsage?.({ in: u.promptTokenCount ?? 0, out: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0) });
     } catch (err) {
       const status = (err as { status?: number }).status;
       throw new ReviewError(`Gemini request failed: ${(err as Error).message}`, isRetryableStatus(status));
