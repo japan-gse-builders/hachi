@@ -523,6 +523,117 @@ describe('CallSession: reconnects', () => {
   });
 });
 
+describe('CallSession: what the logs can be asked afterwards', () => {
+  const summaryOf = (ctx: Awaited<ReturnType<typeof started>>) =>
+    ctx.logged.find((l) => l.msg === 'Gemini Live session summary')!.obj;
+
+  it('counts the handles the server offered and the ones it could not resume from', async () => {
+    const ctx = await started();
+    ctx.gemini.h.resumable('handle-1');
+    ctx.gemini.h.resumable('handle-2');
+    ctx.gemini.h.notResumable();
+    await ctx.session.finish('resident');
+    // Only the first handle is announced as it arrives; they come every few seconds.
+    const offered = ctx.logged.filter((l) => l.msg === 'Gemini Live offered a resumption handle');
+    expect(offered).toHaveLength(1);
+    expect(offered[0]!.obj).toMatchObject({ residentId: IDS.residentId, handleChars: 8 });
+    expect(summaryOf(ctx)).toMatchObject({ handles: 2, unusableHandles: 1, sessions: 1 });
+  });
+
+  it('never writes a handle down, only how long it was', async () => {
+    const ctx = await started();
+    ctx.gemini.h.resumable('a-very-secret-looking-handle');
+    await ctx.session.finish('resident');
+    expect(JSON.stringify(ctx.logged)).not.toContain('a-very-secret-looking-handle');
+  });
+
+  it('says which of the two reconnect paths a call took', async () => {
+    const resumed = await started();
+    resumed.gemini.h.resumable('handle-1');
+    resumed.gemini.h.closed('closed: 1006');
+    await vi.waitFor(() => expect(resumed.live.sessions).toHaveLength(2));
+    await resumed.session.finish('resident');
+    expect(resumed.logged.map((l) => l.msg)).toContain('reconnected from a Gemini Live resumption handle');
+    expect(summaryOf(resumed)).toMatchObject({ resumedFromHandle: 1, replayedTranscript: 0 });
+
+    const replayed = await started();
+    replayed.gemini.h.resumable('handle-1');
+    replayed.live.rejectHandles = true;
+    replayed.gemini.h.closed('closed: 1006');
+    await vi.waitFor(() => expect(replayed.live.sessions).toHaveLength(2));
+    await replayed.session.finish('resident');
+    const fell = replayed.logged.find((l) => l.msg === 'reconnected by replaying the conversation, not from a handle')!;
+    expect(fell.level).toBe('warn');
+    expect(fell.obj).toMatchObject({ session: 2, offered: 1 });
+    expect(summaryOf(replayed)).toMatchObject({ resumedFromHandle: 0, replayedTranscript: 1 });
+  });
+
+  it('reports the warning that the server is about to disconnect', async () => {
+    const ctx = await started();
+    ctx.gemini.h.goingAway('8s');
+    await ctx.session.finish('resident');
+    expect(ctx.logged.find((l) => l.msg === 'Gemini Live says it is about to close the session')!.obj).toMatchObject({ timeLeft: '8s' });
+    expect(summaryOf(ctx)).toMatchObject({ goAways: 1 });
+  });
+
+  it('records how large the context grew, and when it got smaller instead', async () => {
+    const ctx = await started();
+    for (const promptTokens of [4_000, 11_000, 16_400, 8_300, 9_100]) ctx.gemini.h.usage({ promptTokens, totalTokens: promptTokens + 700 });
+    // A turn the server counted nothing for is not a context that shrank to zero.
+    ctx.gemini.h.usage({ promptTokens: 0, totalTokens: 0 });
+    await ctx.session.finish('resident');
+    expect(summaryOf(ctx)).toMatchObject({ peakPromptTokens: 16_400, contextShrinks: 1 });
+  });
+
+  it('still summarises a call that never got a conversation at all', async () => {
+    const ctx = await setup();
+    ctx.live.failures = 3;
+    await ctx.session.onMessage(startMessage());
+    expect(ctx.logged.find((l) => l.msg === 'Gemini Live session summary')!.obj).toMatchObject({ handles: 0, sessions: 1 });
+  });
+});
+
+describe('CallSession: the forced drop', () => {
+  const DROP = { residentId: IDS.residentId, afterSec: 0.15 } as const;
+
+  it('is off unless it is configured', async () => {
+    const ctx = await started();
+    await wait(100);
+    expect(ctx.gemini.dropped).toBe(false);
+    expect(ctx.live.sessions).toHaveLength(1);
+    expect(ctx.logged.some((l) => String(l.msg).includes('FORCE_LIVE_DROP'))).toBe(false);
+  });
+
+  it('drops the socket once and reconnects from the handle', async () => {
+    const ctx = await started({ forcedLiveDrop: DROP });
+    expect(ctx.logged.find((l) => String(l.msg).includes('FORCE_LIVE_DROP'))!.level).toBe('warn');
+    ctx.gemini.h.resumable('handle-1');
+    await vi.waitFor(() => expect(ctx.live.sessions).toHaveLength(2), { timeout: 2000 });
+    expect(ctx.gemini.dropped).toBe(true);
+    expect(ctx.live.last.setup.resumeHandle).toBe('handle-1');
+    // Once per call: a drop on every session would spend all three and end the call as a fault.
+    await wait(200);
+    expect(ctx.live.sessions).toHaveLength(2);
+    expect(ctx.live.last.dropped).toBe(false);
+  });
+
+  it('leaves every other resident alone', async () => {
+    const ctx = await started({ forcedLiveDrop: { residentId: 'someone-else', afterSec: 0.05 } });
+    await wait(100);
+    expect(ctx.gemini.dropped).toBe(false);
+    expect(ctx.live.sessions).toHaveLength(1);
+  });
+
+  it('does not interrupt a call that is arranging help', async () => {
+    const ctx = await started({ forcedLiveDrop: { residentId: IDS.residentId, afterSec: 0.08 } });
+    ctx.gemini.h.inputTranscript('I have terrible chest pain');
+    await vi.waitFor(() => expect(ctx.emergency.raised).toHaveLength(1), { timeout: 2000 });
+    await wait(80);
+    expect(ctx.gemini.dropped).toBe(false);
+    expect(ctx.live.sessions).toHaveLength(1);
+  });
+});
+
 describe('CallSession: memory and analysis', () => {
   it('brings up plans from earlier calls and follows up a poor meal', async () => {
     const ctx = await setup();

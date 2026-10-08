@@ -12,6 +12,9 @@ function handlers() {
     turnComplete: vi.fn(),
     toolCalls: vi.fn(),
     resumable: vi.fn(),
+    notResumable: vi.fn(),
+    usage: vi.fn(),
+    goingAway: vi.fn(),
     closed: vi.fn(),
   } satisfies LiveHandlers;
 }
@@ -104,6 +107,17 @@ describe('GeminiLiveConnector', () => {
     cb.onerror({ message: 'late' });
     expect(h.closed).not.toHaveBeenCalled();
   });
+
+  it('drops the socket without claiming the close as ours', async () => {
+    const { ai, session, params } = fakeAi();
+    const h = handlers();
+    const live = await new GeminiLiveConnector(ai, 'm', 'v').connect({ systemInstruction: '' }, h);
+    live.drop();
+    expect(session.close).toHaveBeenCalled();
+    // The whole point: the gateway has to learn about this close and reconnect from it.
+    params().callbacks.onclose({ code: 1000, reason: '' });
+    expect(h.closed).toHaveBeenCalledWith('closed: 1000');
+  });
 });
 
 describe('dispatch', () => {
@@ -145,13 +159,26 @@ describe('dispatch', () => {
     ]);
   });
 
-  it('keeps only the handles the server calls resumable', () => {
+  it('keeps only the handles the server calls resumable, and says when it kept none', () => {
     const h = handlers();
     dispatch({ sessionResumptionUpdate: { newHandle: 'h1', resumable: true } } as LiveServerMessage, h);
     // Mid-generation the server offers a handle that would lose part of the conversation.
     dispatch({ sessionResumptionUpdate: { newHandle: 'h2', resumable: false } } as LiveServerMessage, h);
     dispatch({ sessionResumptionUpdate: { resumable: true } } as LiveServerMessage, h);
     expect(h.resumable.mock.calls).toEqual([['h1']]);
+    expect(h.notResumable).toHaveBeenCalledTimes(2);
+  });
+
+  it('forwards the token counts and the warning that the server is about to disconnect', () => {
+    const h = handlers();
+    dispatch({ usageMetadata: { promptTokenCount: 17_200, totalTokenCount: 17_900 } } as LiveServerMessage, h);
+    // Missing counts are reported as zero rather than dropped, so one quiet turn cannot look like a
+    // context that shrank.
+    dispatch({ usageMetadata: {} } as LiveServerMessage, h);
+    dispatch({ goAway: { timeLeft: '10s' } } as LiveServerMessage, h);
+    dispatch({ goAway: {} } as LiveServerMessage, h);
+    expect(h.usage.mock.calls).toEqual([[{ promptTokens: 17_200, totalTokens: 17_900 }], [{ promptTokens: 0, totalTokens: 0 }]]);
+    expect(h.goingAway.mock.calls).toEqual([['10s'], [undefined]]);
   });
 
   it('ignores empty messages', () => {
