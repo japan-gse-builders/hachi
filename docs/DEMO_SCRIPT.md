@@ -2,21 +2,24 @@
 
 Google Cloud AI Builder Cup 2026 提出用。本番環境 <https://hachicall-nao.web.app> をそのまま画面収録する。
 
-ナレーションは英語（製品も README も英語、利用者も英語話者）。合計 **383 語 / 約 2 分 46 秒**（3 分まで 14 秒の余裕）。読み上げ速度は 1 分あたり 150 語を想定。
+ナレーションは英語（製品も README も英語、利用者も英語話者）。合計 **397 語 / 約 2 分 51 秒**（3 分まで 9 秒の余裕）。読み上げ速度は 1 分あたり 150 語を想定。
 
 収録前の準備は「[収録前のチェックリスト](#収録前のチェックリスト)」を参照。
 
 ---
 
-## 1. 問題提起（0:00–0:18 / 44 語）
+## 1. 問題提起（0:00–0:23 / 58 語）
 
 **画面**：日本の団地や住宅街の静かな映像、またはタイトルカード「Hachi — a daily AI check-in call」。
 
 > Japan has a growing number of older people living alone. Among them are long-term residents who
 > came from abroad and are most comfortable in English. Check-in services here are mostly in
 > Japanese. Their families are often overseas. Care staff cannot phone everyone, every day.
+>
+> And a check-in app never reaches them. The device by the chair is a landline. So Hachi needs
+> nothing but a telephone.
 
-## 2. 電話の様子（0:18–0:53 / 57 語 + 音声 12 秒）
+## 2. 電話の様子（0:23–0:58 / 57 語 + 音声 12 秒）
 
 **画面**：Edith のケース画面「What was said」の音声プレイヤーを開き、つまみを先頭（0:00）に戻して再生する。プレイヤーの音源は通話全体の録音なので、Hachi の自己紹介から聞かせられる。音声が主役なので、ナレーションは音声の前後に分けて入れる。再生中はプレイヤーの下にある会話の文字起こしも映る。
 
@@ -29,7 +32,7 @@ Google Cloud AI Builder Cup 2026 提出用。本番環境 <https://hachicall-nao
 > Health and meals come up inside the small talk, and Hachi picks up topics from earlier calls. It
 > listens for two things: **what** they say, and **how** they say it.
 
-## 3. 緊急（R1）（0:53–1:13 / 49 語）
+## 3. 緊急（R1）（0:58–1:18 / 49 語）
 
 **画面**：緊急ケースのケース画面。上部の「Immediate action」バッジ → 「What was said」の該当発言と音声
 → 「Notifications」で職員と家族への通知が届いた記録。
@@ -42,7 +45,7 @@ Google Cloud AI Builder Cup 2026 提出用。本番環境 <https://hachicall-nao
 
 **字幕で補う**：Hedged wording counts. Past events, other people and denials do not.
 
-## 4. 話し方の変化（R3）（1:13–1:41 / 70 語）
+## 4. 話し方の変化（R3）（1:18–1:46 / 70 語）
 
 **画面**：Edith のケース画面。まず「What was said」の中にある言い直しの証拠（1:15 付近の
 「from the from the bakery」）を再生し、言い直しを耳で聞かせる。続いて「Speech over time」のグラフを
@@ -58,7 +61,7 @@ Edith のケース画面では「Notifications」が「No notifications were sen
 > herself mid-sentence, and her answers have moved outside her usual range. No diagnosis — a sign
 > of change, with the recording as evidence.
 
-## 5. 家族の画面（1:41–2:05 / 60 語）
+## 5. 家族の画面（1:46–2:10 / 60 語）
 
 **画面**：家族ダッシュボード。一言まとめ → 6 つの領域タイル → 「The last two weeks at a glance」の 14 日グリッド → 「What keeps coming up」。
 
@@ -69,7 +72,7 @@ Edith のケース画面では「Notifications」が「No notifications were sen
 > What they do not see: the recordings, the transcript, and anything about how she speaks. That
 > boundary is enforced in the API.
 
-## 6. 仕組み（2:05–2:25 / 51 語）
+## 6. 仕組み（2:10–2:30 / 51 語）
 
 **画面**：`architecture.png`。サービス名を順に軽くハイライト。
 
@@ -78,7 +81,7 @@ Edith のケース画面では「Notifications」が「No notifications were sen
 > output, while the speech measures come from the recording itself. Cloud Tasks and Scheduler drive
 > the dialling, analysis and alerts.
 
-## 7. 評価と限界（2:25–2:46 / 52 語）
+## 7. 評価と限界（2:30–2:51 / 52 語）
 
 **画面**：`docs/eval/r3-synthetic.md` の結果表、または結果を書いたカード。最後にタイトルカードと URL。
 

@@ -5,6 +5,9 @@ something is wrong, both in **what** they say and in **how** they say it, and tu
 prioritised queue for care staff. When something looks urgent, staff (and, for emergencies, family)
 are notified straight away.
 
+**The resident needs a telephone and nothing else.** No app, no smartphone, no account, no Wi-Fi, no
+permission prompt, no update. A landline is enough. They answer the phone and talk.
+
 Built for the Google Cloud AI Builder Cup 2026 (Sustainability & Social Impact).
 
 ## The problem
@@ -17,6 +20,39 @@ change in speech that can come with cognitive decline are easy to miss until the
 
 Hachi does not replace people. It makes a daily conversation possible at scale and tells staff
 **who to look at first, and why**.
+
+## Why a phone call
+
+The people this is for are the ones a check-in app never reaches. Many are in their eighties, living
+alone, and the device by their chair is a landline or a feature phone. Even where there is a
+smartphone, installing an app, granting it a microphone, keeping it signed in and updating it are
+four separate places to lose somebody — and the family who would normally help with that is in
+another country, which is the reason the person is alone in the first place.
+
+So the phone is not a fallback for users without the app. It is the whole channel, chosen because it
+is the one that reaches this group, and everything else was built around that choice:
+
+| | What the resident needs |
+|---|---|
+| **Hachi** | A telephone. Any telephone. |
+| A typical app-based check-in service | A smartphone, the app installed, an account, notifications allowed, and the habit of opening it |
+
+A phone call is also harder to build against than a web page, and that work is the substance of this
+project rather than a detail of it:
+
+- **Two-way audio bridging in real time** between Twilio Media Streams and the Gemini Live API,
+  converting μ-law 8 kHz ↔ PCM 16 kHz in and PCM 24 kHz ↔ μ-law 8 kHz out, in 40 ms chunks, with
+  barge-in handled so the resident can interrupt.
+- **Stereo recording** (left = resident, right = Hachi) written to Cloud Storage, which is what makes
+  response latency and self-repairs measurable afterwards; a mixed mono recording would not.
+- **Emergency detection during the call**, not after it, so help is arranged while the person is
+  still on the line.
+- **A three-way bridge** that phones family and staff and joins whoever presses 1 into the resident's
+  own call.
+- **Silence as a signal** (R4): on a phone there is no "last seen" and no read receipt, so answering
+  and not speaking is the only thing left to notice, and it is noticed.
+- **Reconnection that the resident does not hear**, from a Gemini Live resumption handle, because a
+  dropped websocket must not become a dropped conversation.
 
 ## How it works
 
@@ -216,7 +252,9 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
   invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
 - **Web push is implemented but not configured** in the current deployment; alerts go by SMS, email
   and voice.
-- Development uses a Twilio trial account with US numbers; production needs a Japanese 050 number.
+- **The development environment uses a Twilio trial account with US numbers**, so calls today come
+  from a US number and only reach verified numbers. Production needs a Japanese 050 number. This is
+  an account to buy, not a design decision: the phone channel itself is the point of the service.
 - Roadmap: more rules (medication, sleep, mood, falls, heat-stroke alerts), escalation and
   acknowledgement of notifications, WhatsApp calling, consent and retention management in the app,
   Japanese conversations, and evaluation on consented real-world calls.
