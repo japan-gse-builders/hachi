@@ -1,4 +1,4 @@
-import { committedMicros, liveCallMicros, recordGatewayFailure, recordGatewaySuccess, spendMonth } from '@hachi/core';
+import { callReservationMicros, committedMicros, liveCallMicros, parseSpendSettings, recordGatewayFailure, recordGatewaySuccess, spendMonth, USD } from '@hachi/core';
 import { MemoryStore, NotFoundError } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { emergencyTransfer } from '../src/bridge.js';
@@ -148,7 +148,10 @@ describe('the monthly AI budget', () => {
   });
 
   it('lets several calls run at once without any of them crossing the line', async () => {
-    const { deps, store } = makeDeps({ monthlyCapUsd: 1 });
+    // A cap with room for two of the four, derived from the reservation rather than written down,
+    // so that changing a price cannot quietly turn this into a test of nothing being placed.
+    const room = 2 * callReservationMicros(480, parseSpendSettings({}).prices);
+    const { deps, store } = makeDeps({ monthlyCapUsd: room / USD / 0.9 });
     for (const id of ['res-1', 'res-2', 'res-3', 'res-4']) await store.createResident(resident(id));
     const results = await Promise.all(
       ['res-1', 'res-2', 'res-3', 'res-4'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),

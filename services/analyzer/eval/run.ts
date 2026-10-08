@@ -1,16 +1,18 @@
 /**
  * SYNTHETIC R3 evaluation: synthesises calls, runs them through the production analysis path
- * (measureRecording + GeminiReviewer + analyse) and writes a report. Nothing is written to
- * Firestore or Cloud Storage; Gemini and TTS results are cached under eval/.cache/.
+ * (measureRecording + GeminiReviewer + analyse) and writes a report. No resident, call or case is
+ * written to Firestore and nothing is written to Cloud Storage; Gemini and TTS results are cached
+ * under eval/.cache/. What this run spends *is* written to the monthly spend ledger — see
+ * eval/spend.ts for why that is not optional.
  *
- *   npm run eval:r3 -w @hachi/analyzer -- [--seed 2026] [--people N] [--calls N] [--fresh] [--concurrency 6]
+ *   npm run eval:r3 -w @hachi/analyzer -- [--seed 2026] [--people N] [--calls N] [--fresh] [--concurrency 6] [--ignore-budget]
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { GoogleGenAI } from '@google/genai';
-import { assessSpeechChange, buildBaseline, measureVoiceTiming, median, parseWav, tokenize, type CallSpeechSample, type Turn } from '@hachi/core';
+import { assessSpeechChange, buildBaseline, measureVoiceTiming, median, parseWav, tokenize, USD, type CallSpeechSample, type Turn } from '@hachi/core';
 import type { CallRecord, Resident } from '@hachi/store';
 import { analyse } from '../src/analysis.js';
 import { formatTranscript, GeminiReviewer, ReviewError, reviewInstruction, type CallReviewer, type ModelReview, type ReviewInput } from '../src/model.js';
@@ -18,6 +20,7 @@ import { GeminiListener, LISTENING_INSTRUCTION, measureRecording, type Listening
 import { mixCall, trimSilence, type Clip } from './mix.js';
 import { renderReport, summarise, type CallResult } from './metrics.js';
 import { CHANGE_START_DAY, countByKind, generateScenario, HACHI_VOICE, hashSeed, type PersonProfile, type ScriptedCall } from './scenario.js';
+import { BudgetRefused, openEvalSpend, spendBanner, type EvalSpend } from './spend.js';
 import { CloudTts, TTS_SAMPLE_RATE } from './tts.js';
 
 const { values: args } = parseArgs({
@@ -28,6 +31,7 @@ const { values: args } = parseArgs({
     fresh: { type: 'boolean', default: false },
     concurrency: { type: 'string', default: '6' },
     out: { type: 'string' },
+    'ignore-budget': { type: 'boolean', default: false },
   },
 });
 
@@ -97,11 +101,11 @@ class CachedListener implements SpeechListener {
   get model() {
     return this.inner.model;
   }
-  async listen(residentWav: Buffer): Promise<ListeningReview> {
+  async listen(residentWav: Buffer, onUsage?: (tokens: { in: number; out: number }) => void): Promise<ListeningReview> {
     const key = sha(this.inner.model, LISTENING_INSTRUCTION, residentWav);
     this.heard = await cached(join(CACHE, 'gemini', `listen-${key}.json`), () => {
       geminiRequests++;
-      return this.inner.listen(residentWav);
+      return this.inner.listen(residentWav, onUsage);
     });
     return this.heard;
   }
@@ -149,6 +153,19 @@ async function render(call: ScriptedCall, profile: PersonProfile): Promise<Rende
 // ---------------------------------------------------------------- main
 
 const started = Date.now();
+
+// Before the first byte of TTS, because the cheapest moment to refuse is the one before anything
+// has been spent.
+let spend: EvalSpend;
+try {
+  spend = await openEvalSpend({ project, ignoreBudget: args['ignore-budget'] });
+} catch (err) {
+  if (!(err instanceof BudgetRefused)) throw err;
+  console.error(`eval:r3 refused: ${err.message}`);
+  process.exit(1);
+}
+console.log(spendBanner(spend));
+
 const scenario = generateScenario(seed, {
   ...(args.people ? { people: Number(args.people) } : {}),
   ...(args.calls ? { calls: Number(args.calls) } : {}),
@@ -164,9 +181,10 @@ const reviewer = new CachedReviewer(new GeminiReviewer(ai, model));
 let done = 0;
 const heardAll = await pool(rendered, concurrency, async (r) => {
   const listener = new CachedListener(new GeminiListener(ai, model));
+  const onUsage = (t: { in: number; out: number }) => spend.record(t);
   const [measured, review] = await Promise.allSettled([
-    withRetry(() => measureRecording(r.wav, r.transcript, listener)),
-    withRetry(() => reviewer.review({ preferredName: r.profile.name, transcript: r.transcript, staffLocale: 'en' })),
+    withRetry(() => measureRecording(r.wav, r.transcript, listener, onUsage)),
+    withRetry(() => reviewer.review({ preferredName: r.profile.name, transcript: r.transcript, staffLocale: 'en', onUsage })),
   ]);
   if (++done % 10 === 0 || done === rendered.length) console.log(`  analysed audio/transcript ${done}/${rendered.length}`);
   return { measured, review, heard: listener.heard };
@@ -281,6 +299,7 @@ const summary = summarise(
   results,
   CHANGE_START_DAY,
 );
+await spend.flush();
 const run = {
   synthetic: true,
   seed,
@@ -291,6 +310,7 @@ const run = {
   durationSec: (Date.now() - started) / 1000,
   geminiRequests,
   ttsRequests: tts.requests,
+  spentUsd: spend.spentMicros / USD,
 };
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, 'r3-synthetic.json'), `${JSON.stringify({ run, summary, calls: results }, null, 2)}\n`);
@@ -302,6 +322,7 @@ console.log(
     `sensitivity ${d.changedDetected}/${d.changed}, stable flagged ${d.stableFlagged}/${d.stable}, FP calls ${d.stableFlaggedCalls}/${d.stableAssessedCalls}`,
     `timing MAE ${Math.round(summary.timing.maeMs)} ms, disfluency recall ${Math.round(summary.disfluency.recall * 100)}% precision ${Math.round(summary.disfluency.precision * 100)}%`,
     `errors: listening ${summary.errors.listening}, review ${summary.errors.review}; Gemini requests ${geminiRequests}; ${Math.round(run.durationSec)} s`,
+    spend.describe(),
     `report: ${join(outDir, 'r3-synthetic.md')}`,
   ].join('\n'),
 );

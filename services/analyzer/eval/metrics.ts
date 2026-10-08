@@ -243,6 +243,8 @@ export interface RunInfo {
   durationSec: number;
   geminiRequests: number;
   ttsRequests: number;
+  /** What this run charged the monthly ledger, at the configured prices. */
+  spentUsd: number;
 }
 
 export function renderReport(s: Summary, run: RunInfo): string {
@@ -331,7 +333,7 @@ export function renderReport(s: Summary, run: RunInfo): string {
     '',
     'Recall/precision are count-based per call and kind (min(heard, inserted) counted as matched), not position-matched.',
     '',
-    `Cost drivers: ${run.geminiRequests} Gemini requests (listening + review) and ${run.ttsRequests} new TTS requests in this run (cached results are reused).`,
+    `Cost drivers: ${run.geminiRequests} Gemini requests (listening + review) and ${run.ttsRequests} new TTS requests in this run (cached results are reused). Charged $${run.spentUsd.toFixed(2)} to the monthly AI spend ledger.`,
     '',
     '## Limitations',
     '',

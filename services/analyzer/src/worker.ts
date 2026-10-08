@@ -37,14 +37,14 @@ export interface CallRef {
   callId: string;
 }
 
-/** Records what one post-call review cost. Failing to record it must not fail the analysis. */
-async function chargeReview(deps: WorkerDeps, tokens: { in: number; out: number }): Promise<void> {
+/** Records what one Gemini request cost. Failing to record it must not fail the analysis. */
+async function chargeTokens(deps: WorkerDeps, tokens: { in: number; out: number }): Promise<void> {
   const now = deps.now();
   const micros = analysisMicros(tokens.in, tokens.out, deps.config.spend.prices);
   try {
     await deps.store.mutateSpendLedger(spendMonth(now), (l) => charge(l, micros, now));
   } catch {
-    // The month's total will be short by one review; the call itself is more important.
+    // The month's total will be short by one request; the call itself is more important.
   }
 }
 
@@ -133,13 +133,15 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
             ),
             // Charged, not reserved. The call has already happened; reviewing it is not something
             // the budget is allowed to refuse, only something it has to know about.
-            onUsage: (t) => void chargeReview(deps, t),
+            onUsage: (t) => void chargeTokens(deps, t),
           })
         : Promise.resolve(null),
       audioUri
         ? recordings!.read(audioUri).then((wav) => {
             stored = true;
-            return measureRecording(wav, transcript, listener!);
+            // Listening is a second Gemini request, with a minute of audio as its prompt. Left
+            // uncharged it was the largest thing the ledger could not see in normal operation.
+            return measureRecording(wav, transcript, listener!, (t) => void chargeTokens(deps, t));
           })
         : Promise.resolve(null),
     ]);

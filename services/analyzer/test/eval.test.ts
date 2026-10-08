@@ -226,7 +226,7 @@ describe('evaluation metrics', () => {
   });
 
   it('renders a report marked as synthetic', () => {
-    const md = renderReport(s, { seed: 1, generatedAt: '2026-10-04T00:00:00.000Z', model: 'm', calls: 8, people: 4, durationSec: 12, geminiRequests: 16, ttsRequests: 3 });
+    const md = renderReport(s, { seed: 1, generatedAt: '2026-10-04T00:00:00.000Z', model: 'm', calls: 8, people: 4, durationSec: 12, geminiRequests: 16, ttsRequests: 3, spentUsd: 0.42 });
     expect(md).toMatch(/SYNTHETIC/);
     expect(md).toMatch(/\| Changed people detected \(sensitivity\) \| 1\/2 \(50%\) \|/);
     expect(md).toMatch(/flagged ✗ \(1×\)/);
@@ -244,7 +244,7 @@ describe('evaluation metrics', () => {
       detection: { urgency: 'action', summary: 's', magnitude: 2 },
       assessment: { status: 'assessed', urgency: 'action', magnitude: 2, trend: 'stable', contributors: [{ feature: 'responseLatencyMs', adverseZ: 3.4 }] },
     });
-    const run = { seed: 1, generatedAt: '2026-10-04T00:00:00.000Z', model: 'm', calls: 1, people: 1, durationSec: 1, geminiRequests: 0, ttsRequests: 0 };
+    const run = { seed: 1, generatedAt: '2026-10-04T00:00:00.000Z', model: 'm', calls: 1, people: 1, durationSec: 1, geminiRequests: 0, ttsRequests: 0, spentUsd: 0 };
     const md = renderReport(summarise([mild], [flaggedAction], 28), run);
     expect(md).toMatch(/\*\*Urgency differs:\*\* m expected Monitor \(watch\), got Review soon \(action\)/);
     expect(md).toMatch(/\*\*Wrong feature:\*\* m was flagged for responseLatencyMs, expected repairRate/);

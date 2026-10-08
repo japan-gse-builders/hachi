@@ -1,9 +1,9 @@
 /**
  * The monthly ceiling on AI spend, and what happens at it.
  *
- * Every resident costs money every day: a Live session billed by the second and a post-call review
- * billed by the token. Nothing about that is self-limiting, so a misconfiguration or a run of calls
- * that nobody answers bills until somebody notices the invoice. This is the part that notices.
+ * Every resident costs money every day: a Live session and a post-call review, both billed by the
+ * token. Nothing about that is self-limiting, so a misconfiguration or a run of calls that nobody
+ * answers bills until somebody notices the invoice. This is the part that notices.
  *
  * Amounts are integer micro-dollars throughout. Money in floating point accumulates error exactly
  * where it must not, and the comparison that decides whether to place a call is one of those places.
@@ -42,12 +42,27 @@ export interface SpendPolicy {
 
 export interface SpendPrices {
   /**
-   * One minute of a Live call. Conservative on purpose: both directions are counted for the whole
-   * duration at the audio rate, although the model is not speaking the whole time and some of what
-   * it sends is cheaper. Under-reporting here would defeat the point of having a ceiling.
+   * One minute of a Live call.
+   *
+   * Vertex does not bill Live by the minute. It bills audio by the token and re-bills the entire
+   * session context on every turn, so a call's true cost grows with the square of its length and
+   * is not known until it ends. A per-minute figure is kept regardless, because
+   * `callReservationMicros` has to answer before the phone rings and the only thing known then is
+   * how long the gateway will let the call run. What the figure therefore has to be is an upper
+   * bound at that length, not an average: priced as a bound, every call shorter than the limit is
+   * over-counted, which is the direction a ceiling can survive being wrong in.
    */
   liveMicrosPerMin: number;
-  /** Post-call review, per million tokens, matching the names the eval scripts already use. */
+  /**
+   * Post-call review, per million tokens, matching the names the eval scripts already use.
+   *
+   * List prices, not the prices on our invoice. Google's introductory discount on Flash arrives as
+   * a credit against list, and a Cloud Billing spend cap — the setting that actually stops the API
+   * rather than emailing about it — is forced to exclude credits and counts list. Billing what we
+   * pay would put our ceiling below Google's in our own arithmetic and above it in Google's, which
+   * is the one arrangement that cannot work: Google would stop the API first, and it stops it by
+   * cutting off a call that is already ringing.
+   */
   analysisInMicrosPerMillion: number;
   analysisOutMicrosPerMillion: number;
 }
@@ -84,9 +99,13 @@ export function analysisMicros(inTokens: number, outTokens: number, p: SpendPric
  * lets it be, and the review that follows is bounded by the transcript of a call that long, so the
  * worst case is knowable in advance. Reserving the worst case means a month can never go over
  * because several calls happened to run long at once.
+ *
+ * The review's output is estimated at half its input because Gemini's reasoning tokens are billed
+ * as output and there are a lot of them: October's reviews came back with output at 53% of prompt,
+ * against the tenth that a JSON verdict of a few hundred words would suggest.
  */
 export function callReservationMicros(maxConversationSec: number, p: SpendPrices, estimatedAnalysisTokens = 20_000): number {
-  return liveCallMicros(maxConversationSec, p) + analysisMicros(estimatedAnalysisTokens, 2_000, p);
+  return liveCallMicros(maxConversationSec, p) + analysisMicros(estimatedAnalysisTokens, estimatedAnalysisTokens / 2, p);
 }
 
 /**
@@ -205,7 +224,11 @@ function usd(env: Record<string, string | undefined>, name: string, fallback: nu
  * differs between them makes the month's total mean nothing, so the parsing lives here rather than
  * in each service's own config.
  *
- * The two token prices keep the names and defaults the evaluation scripts already use.
+ * Every default is Vertex AI's list price for the model actually called, because the only job this
+ * ceiling has that nothing else does is to fire before Google's own spend cap, and that cap is
+ * measured in list prices. `docs/COST_CONTROL.md` carries the arithmetic and the sources.
+ *
+ * The two token prices keep the names the evaluation scripts already use.
  */
 export function parseSpendSettings(env: Record<string, string | undefined>): SpendSettings {
   const stopRaw = env.AI_SPEND_STOP_FRACTION;
@@ -215,10 +238,20 @@ export function parseSpendSettings(env: Record<string, string | undefined>): Spe
   }
   return {
     prices: {
-      liveMicrosPerMin: usd(env, 'GEMINI_LIVE_PRICE_PER_MIN', 0.03),
-      analysisInMicrosPerMillion: usd(env, 'GEMINI_PRICE_IN_PER_M', 0.5),
-      analysisOutMicrosPerMillion: usd(env, 'GEMINI_PRICE_OUT_PER_M', 3),
+      // Audio is 25 tokens a second, so a minute is 1,500 of them, at $3 in and $12 out per
+      // million. A minute of talk each way is therefore $0.0225 — but Live re-bills the whole
+      // session context every turn, so each of those tokens is charged again as input on every
+      // later turn of the call. At the 480 s the gateway allows and the ~15 s turns October's
+      // calls actually ran, that is about sixteen re-billings, or $0.09 a minute. $0.15 covers
+      // shorter turns and covers MAX_CONVERSATION_SEC being raised to the 900 s it permits.
+      liveMicrosPerMin: usd(env, 'GEMINI_LIVE_PRICE_PER_MIN', 0.15),
+      // Flash's $0.75/$3.75 is an introductory rate granted as a credit against a $1.50/$7.50
+      // list, so list is both what a spend cap counts today and what we pay from 2027-01-01.
+      analysisInMicrosPerMillion: usd(env, 'GEMINI_PRICE_IN_PER_M', 1.5),
+      analysisOutMicrosPerMillion: usd(env, 'GEMINI_PRICE_OUT_PER_M', 7.5),
     },
-    policy: { ...DEFAULT_SPEND_POLICY, capMicros: usd(env, 'AI_MONTHLY_CAP_USD', 200), stopAtFraction },
+    // ¥15,000 of Google gross is $100 at 150 JPY/USD, and stopping at 0.9 of $70 puts us there at
+    // $63. The ¥5,550 left over is for the yen moving and for Vertex spend no ledger can see.
+    policy: { ...DEFAULT_SPEND_POLICY, capMicros: usd(env, 'AI_MONTHLY_CAP_USD', 70), stopAtFraction },
   };
 }

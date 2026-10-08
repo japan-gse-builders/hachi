@@ -1,10 +1,12 @@
 /**
  * SYNTHETIC R1/R2 evaluation: runs synthetic call transcripts through the production worker
  * (`analyzeCall` → GeminiReviewer + analyse + recordDetections) against an in-memory store and
- * writes a report. Nothing is written to Firestore or Cloud Storage and no calls or texts are
- * placed; Gemini results are cached under eval/.cache/.
+ * writes a report. No resident, call or case is written to Firestore, nothing is written to Cloud
+ * Storage, and no calls or texts are placed; Gemini results are cached under eval/.cache/. What
+ * this run spends *is* written to the monthly spend ledger — see eval/spend.ts for why the
+ * in-memory store is not good enough for that one thing.
  *
- *   npm run eval:r12 -w @hachi/analyzer -- [--seed 2026 --seed 7] [--repeats 2] [--case r1p-stroke] [--fresh] [--concurrency 16]
+ *   npm run eval:r12 -w @hachi/analyzer -- [--seed 2026 --seed 7] [--repeats 2] [--case r1p-stroke] [--fresh] [--concurrency 16] [--ignore-budget]
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -12,13 +14,14 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { GoogleGenAI } from '@google/genai';
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
-import { detectR1, parseSpendSettings, type Detection } from '@hachi/core';
+import { detectR1, parseSpendSettings, USD, type Detection } from '@hachi/core';
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
 import { groundEmergencies } from '../src/analysis.js';
 import { formatTranscript, GeminiReviewer, ReviewError, reviewInstruction, type CallReviewer, type ModelReview, type ReviewInput } from '../src/model.js';
 import { analyzeCall, type WorkerDeps } from '../src/worker.js';
 import { renderReport, summarise, type CaseResult } from './r12-metrics.js';
 import { generateR12Scenario, type ScriptedCase } from './r12-scenario.js';
+import { BudgetRefused, openEvalSpend, spendBanner, type EvalSpend } from './spend.js';
 
 const { values: args } = parseArgs({
   options: {
@@ -28,6 +31,7 @@ const { values: args } = parseArgs({
     fresh: { type: 'boolean', default: false },
     concurrency: { type: 'string', default: '16' },
     out: { type: 'string' },
+    'ignore-budget': { type: 'boolean', default: false },
   },
 });
 
@@ -41,9 +45,6 @@ const concurrency = Number(args.concurrency);
 const project = process.env.GOOGLE_CLOUD_PROJECT?.trim() || 'hachicall-nao';
 const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 const location = process.env.GEMINI_LOCATION?.trim() || 'global';
-/** USD per million tokens, for the cost estimate only. */
-const PRICE_IN = Number(process.env.GEMINI_PRICE_IN_PER_M ?? 0.5);
-const PRICE_OUT = Number(process.env.GEMINI_PRICE_OUT_PER_M ?? 3);
 
 const sha = (...parts: string[]) => {
   const h = createHash('sha256');
@@ -84,15 +85,34 @@ let geminiRequests = 0;
 let promptTokens = 0;
 let outputTokens = 0;
 
+// Before the first request, because the cheapest moment to refuse is the one before anything has
+// been spent.
+let spend: EvalSpend;
+try {
+  spend = await openEvalSpend({ project, ignoreBudget: args['ignore-budget'] });
+} catch (err) {
+  if (!(err instanceof BudgetRefused)) throw err;
+  console.error(`eval:r12 refused: ${err.message}`);
+  process.exit(1);
+}
+
 const ai = new GoogleGenAI({ enterprise: true, project, location });
-/** Counts tokens for the cost estimate; the request itself is unchanged. */
+/**
+ * Counts tokens and charges the ledger; the request itself is unchanged.
+ *
+ * The charge belongs here rather than in the worker's own `onUsage`, which does fire: each case
+ * gets a fresh `MemoryStore`, so what the worker records is thrown away with the case. This is the
+ * one place in the run that sees every request and can write somewhere that outlives it.
+ */
 const metered = {
   models: {
     generateContent: async (req: Parameters<GoogleGenAI['models']['generateContent']>[0]) => {
       const res = await ai.models.generateContent(req);
       const u = res.usageMetadata;
-      promptTokens += u?.promptTokenCount ?? 0;
-      outputTokens += (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0);
+      const used = { in: u?.promptTokenCount ?? 0, out: (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0) };
+      promptTokens += used.in;
+      outputTokens += used.out;
+      spend.record(used);
       return res;
     },
   },
@@ -236,6 +256,7 @@ async function runCase(seed: number, repeat: number, c: ScriptedCase): Promise<C
 // ---------------------------------------------------------------- main
 
 const started = Date.now();
+console.log(spendBanner(spend));
 const scenarios = seeds.map((seed) => generateR12Scenario(seed, args.case ? { cases: args.case } : {}));
 const jobs = scenarios.flatMap((s) => Array.from({ length: repeats }, (_, repeat) => s.cases.map((c) => ({ seed: s.seed, repeat, c }))).flat());
 const calls = jobs.reduce((a, j) => a + j.c.calls.length, 0);
@@ -249,8 +270,9 @@ const results = await pool(jobs, concurrency, async (j) => {
   return r;
 });
 
+await spend.flush();
 const summary = summarise(results);
-const cost = promptTokens || outputTokens ? (promptTokens * PRICE_IN + outputTokens * PRICE_OUT) / 1e6 : null;
+const cost = spend.spentMicros > 0 ? spend.spentMicros / USD : null;
 const run = {
   synthetic: true,
   seeds,
@@ -283,6 +305,7 @@ console.log(
     `R1 sensitivity ${f(p.r1.sensitivity)}, specificity ${f(p.r1.specificity)} (rules ${f(p.r1.rulesOnly.sensitivity)}/${f(p.r1.rulesOnly.specificity)}, Gemini ${f(p.r1.modelOnly.sensitivity)}/${f(p.r1.modelOnly.specificity)})`,
     `R2 sensitivity ${f(p.r2.sensitivity)}, specificity ${f(p.r2.specificity)}, urgency match ${f(p.r2.urgencyMatch)}`,
     `misses ${summary.misses.length}, unstable ${summary.unstable.length}; Gemini requests ${geminiRequests}, tokens ${promptTokens}/${outputTokens}${cost !== null ? ` ≈ $${cost.toFixed(3)}` : ''}; ${Math.round(run.durationSec)} s`,
+    spend.describe(),
     `report: ${join(outDir, 'r12-synthetic.md')}`,
   ].join('\n'),
 );

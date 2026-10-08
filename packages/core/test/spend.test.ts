@@ -37,7 +37,7 @@ describe('spend arithmetic', () => {
     expect(liveCallMicros(1, prices)).toBeGreaterThanOrEqual(prices.liveMicrosPerMin / 60);
     expect(Number.isInteger(liveCallMicros(37, prices))).toBe(true);
     // A fraction of a micro-dollar still costs something, so it is never rounded away.
-    expect(analysisMicros(1, 1, prices)).toBe(4);
+    expect(analysisMicros(1, 1, prices)).toBe(9);
     expect(analysisMicros(0, 0, prices)).toBe(0);
   });
 
@@ -47,17 +47,43 @@ describe('spend arithmetic', () => {
     expect(callReservationMicros(480, prices)).toBeGreaterThan(callReservationMicros(240, prices));
   });
 
-  it('reads prices and the cap from the environment, keeping the eval script defaults', () => {
+  it('reads prices and the cap from the environment', () => {
     const d = parseSpendSettings({});
-    expect(d.prices.analysisInMicrosPerMillion).toBe(0.5 * USD);
-    expect(d.prices.analysisOutMicrosPerMillion).toBe(3 * USD);
-    expect(d.policy).toEqual({ capMicros: 200 * USD, stopAtFraction: 0.9, leaseMaxAgeMs: 6 * 3_600_000 });
+    expect(d.prices.analysisInMicrosPerMillion).toBe(1.5 * USD);
+    expect(d.prices.analysisOutMicrosPerMillion).toBe(7.5 * USD);
+    expect(d.policy).toEqual({ capMicros: 70 * USD, stopAtFraction: 0.9, leaseMaxAgeMs: 6 * 3_600_000 });
     const custom = parseSpendSettings({ AI_MONTHLY_CAP_USD: '12.5', GEMINI_PRICE_IN_PER_M: '1', AI_SPEND_STOP_FRACTION: '0.5' });
     expect(custom.policy.capMicros).toBe(12_500_000);
     expect(custom.prices.analysisInMicrosPerMillion).toBe(USD);
     expect(custom.policy.stopAtFraction).toBe(0.5);
     expect(() => parseSpendSettings({ AI_MONTHLY_CAP_USD: '-1' })).toThrow(/non-negative/);
     expect(() => parseSpendSettings({ AI_SPEND_STOP_FRACTION: '1.5' })).toThrow(/at most 1/);
+  });
+
+  /**
+   * The ordering these guard is the whole point of the ceiling: ours has to fire before Google's
+   * spend cap, which counts Vertex list prices and no credits. Prices below list would put us
+   * second, and being second means a resident's phone rings and is then cut off mid-call.
+   */
+  it('prices Gemini at Vertex list, not at what the invoice says', () => {
+    const p = parseSpendSettings({}).prices;
+    // Flash's $0.75/$3.75 through 2026-12-31 is a credit against this list, and a spend cap
+    // excludes credits. These are also the prices everyone pays from 2027-01-01.
+    expect(p.analysisInMicrosPerMillion).toBe(1.5 * USD);
+    expect(p.analysisOutMicrosPerMillion).toBe(7.5 * USD);
+    // Live audio is 25 tokens a second at $3 in / $12 out per million, so a minute of talk in both
+    // directions is $0.0225 before Live re-bills the session context on every turn. The default
+    // has to be above that, or the re-billing alone defeats the ceiling.
+    expect(p.liveMicrosPerMin).toBeGreaterThan(1_500 * (3 + 12));
+  });
+
+  it('keeps the app-side stop below ¥15,000 of Google gross spend', () => {
+    const { policy } = parseSpendSettings({});
+    // ¥15,000 is the October Vertex AI spend cap; 150 JPY/USD is the rate the ¥45,000 ≈ $300 trial
+    // credit implies. A third of it is left over for the yen moving and for spend we cannot see.
+    const googleCapUsd = 15_000 / 150;
+    const stopsAt = policy.capMicros * policy.stopAtFraction;
+    expect(stopsAt).toBeLessThan(googleCapUsd * USD * 0.7);
   });
 
   it('names the month in UTC', () => {

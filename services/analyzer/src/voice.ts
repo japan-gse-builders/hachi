@@ -40,7 +40,12 @@ export interface ListeningReview {
 
 export interface SpeechListener {
   readonly model: string;
-  listen(residentWav: Buffer): Promise<ListeningReview>;
+  /**
+   * `onUsage` reports what the request cost for the monthly spend ledger, in the same shape and for
+   * the same reason as the reviewer's: passed in rather than returned so that the caches the
+   * evaluation scripts wrap this in simply do not call it when they answer from disk.
+   */
+  listen(residentWav: Buffer, onUsage?: (tokens: { in: number; out: number }) => void): Promise<ListeningReview>;
 }
 
 export const listeningSchema = z.object({
@@ -87,7 +92,7 @@ export class GeminiListener implements SpeechListener {
     readonly model: string,
   ) {}
 
-  async listen(residentWav: Buffer): Promise<ListeningReview> {
+  async listen(residentWav: Buffer, onUsage?: (tokens: { in: number; out: number }) => void): Promise<ListeningReview> {
     let raw: string | undefined;
     try {
       const res = await this.ai.models.generateContent({
@@ -101,6 +106,8 @@ export class GeminiListener implements SpeechListener {
         },
       });
       raw = res.text;
+      const u = res.usageMetadata;
+      if (u) onUsage?.({ in: u.promptTokenCount ?? 0, out: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0) });
     } catch (err) {
       const status = (err as { status?: number }).status;
       throw new ReviewError(`Gemini listening failed: ${(err as Error).message}`, status === undefined || status === 429 || status >= 500);
@@ -131,7 +138,12 @@ function turnAt(transcript: Turn[], ms: number): Turn | undefined {
  * self-repairs from what the model hears. Returns the slowest answers and clearest repairs as
  * examples staff can play.
  */
-export async function measureRecording(wav: Buffer, transcript: Turn[], listener: SpeechListener): Promise<VoiceMeasures & { audioQuality: number | null }> {
+export async function measureRecording(
+  wav: Buffer,
+  transcript: Turn[],
+  listener: SpeechListener,
+  onUsage?: (tokens: { in: number; out: number }) => void,
+): Promise<VoiceMeasures & { audioQuality: number | null }> {
   const audio = parseWav(wav);
   const timing = measureVoiceTiming(audio);
   const slow: SpeechExample[] = [...timing.gaps]
@@ -144,7 +156,7 @@ export async function measureRecording(wav: Buffer, transcript: Turn[], listener
   if (timing.residentSpeechMs < MIN_RESIDENT_SPEECH_MS) {
     return { responseLatencyMs: timing.responseLatencyMs, repairRate: null, examples: slow, audioQuality: null };
   }
-  const heard = await listener.listen(monoWav(audio.channels[0]!, audio.sampleRate));
+  const heard = await listener.listen(monoWav(audio.channels[0]!, audio.sampleRate), onUsage);
   const words = tokenize(heard.verbatim).length;
   const repairs: SpeechExample[] = heard.disfluencies
     .filter((d) => d.kind !== 'filler')
