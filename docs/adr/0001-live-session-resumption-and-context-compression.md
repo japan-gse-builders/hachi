@@ -58,12 +58,46 @@ This distinction matters more than the decision itself.
 |---|---|
 | `sessionResumption` and `contextWindowCompression` accepted by `@google/genai` 2.26.0 | Verified — present in the SDK's `LiveConnectConfig`, typechecks |
 | Handle kept, sent back on reconnect, stale handles ignored, fallback on rejection | Verified — unit tests in `services/voice-gateway/test/` |
-| The server actually restores a conversation from the handle | **Not verified.** Needs a real call with a forced disconnect |
-| Compression actually triggers at 16,000 tokens and keeps the call alive | **Not verified.** No call has run long enough |
+| The server actually restores a conversation from the handle | **Not verified.** Needs a real call with a forced disconnect; `docs/VERIFY_LIVE_AND_LEDGER.md` is the procedure |
+| Compression actually triggers at 16,000 tokens and keeps the call alive | **Not verified, and not verifiable before 2026-10-18.** See below |
 
 Accepting a parameter and honouring it are different things. Both rows above are worth having
 anyway: the fallback means a handle the server will not take costs nothing, and the compression
 settings only come into play in a case that previously had no handling at all.
+
+### What a real call can now be asked
+
+Until the logging went in, neither of the unverified rows could have been settled even by a call
+that had already happened: the handle was stored silently and the reconnect paths were
+indistinguishable afterwards. One line per call now carries the counts, and each reconnect says
+which path it took. `docs/VERIFY_LIVE_AND_LEDGER.md` §5 has the queries.
+
+| Question | Answerable from logs |
+|---|---|
+| Did the server issue a resumable handle, and how often | Yes — `handles`, plus a line on the first one |
+| Were handles offered that it could not resume from | Yes — `unusableHandles` |
+| Did a reconnect use a handle, or replay the transcript | Yes — `resumedFromHandle` / `replayedTranscript`, one line each |
+| Did the server announce a disconnect first | Yes — `goAways`, from the `GoAway` message, which was previously discarded |
+| How close did the context get to the compression trigger | Yes — `peakPromptTokens` |
+| Did compression fire | **No.** Inference only |
+
+### Compression cannot be reported, and probably cannot be reached
+
+Every field of `LiveServerMessage` in 2.26.0 was checked. There are nine, and none of them says the
+context window was compressed; `contextWindowCompression` exists only in the connect config. What
+does arrive is `usageMetadata`, and because Live re-sends the whole session context on every turn,
+its `promptTokenCount` is the size of that context. So the honest signals are the peak context size,
+which is a fact, and the number of times it went down, which is a guess.
+
+The arithmetic says it will not be reached either. Live audio is 25 tokens per second per direction,
+so 16,000 tokens is 640 seconds of one side talking, or 320 seconds if both directions are counted
+at once as this ADR originally assumed. `MAX_CONVERSATION_SEC` is 480 seconds and `loadConfig` will
+not accept more than 900. A check-in call with an older adult is not 640 seconds of unbroken speech,
+and raising the limit also raises what telephony reserves per call, since both services read the
+same variable.
+
+Submission material should therefore say that compression is configured and deliberately set above
+what an ordinary call reaches, not that it has been seen to work.
 
 ## Alternatives considered
 
@@ -82,3 +116,6 @@ we would have to either buffer everything or accept an unknown gap.
   with an apology.
 - The gateway has two reconnect paths to keep working. The fallback is covered by tests.
 - The two "not verified" rows above need a real call before either can be claimed in a submission.
+- A websocket that never drops cannot be observed reconnecting, so `FORCE_LIVE_DROP` closes one on
+  purpose. It names the single resident it may interrupt, which is what makes a variable left behind
+  after a test harmless, and `--set-env-vars` means the next ordinary deploy removes it.

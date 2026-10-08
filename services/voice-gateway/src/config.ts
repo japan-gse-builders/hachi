@@ -31,6 +31,17 @@ export interface GatewayConfig {
     /** How many times it checks before accepting that nobody is answering. */
     prompts: number;
   };
+  /**
+   * Set only to find out whether session resumption works, by closing the Live socket mid-call the
+   * way the network would. A healthy websocket does not drop, so there is otherwise no way to
+   * exercise the reconnect against the server that has to honour the handle.
+   *
+   * The resident it applies to and the delay are one value rather than two variables, because the
+   * danger here is not the feature, it is the variable outliving the test. Carried together, the
+   * worst a forgotten setting can do is interrupt the one id written into it, and that id is chosen
+   * by whoever runs the test, not by whoever is on the phone.
+   */
+  forcedLiveDrop?: { residentId: string; afterSec: number };
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -57,11 +68,26 @@ function httpsOrigin(name: string, value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+function forcedLiveDrop(env: NodeJS.ProcessEnv): GatewayConfig['forcedLiveDrop'] {
+  const raw = env.FORCE_LIVE_DROP?.trim();
+  if (!raw) return undefined;
+  const m = /^([A-Za-z0-9_-]{1,128}):(\d{1,3})$/.exec(raw);
+  const sec = m ? Number(m[2]) : NaN;
+  // Refusing to start is the right way to fail. A typo that quietly disabled the hook would be read
+  // as the server never dropping the connection, which is indistinguishable from the thing the test
+  // was run to look for.
+  if (!m || sec < 5 || sec > 120) {
+    throw new Error('FORCE_LIVE_DROP must be residentId:seconds, with seconds between 5 and 120');
+  }
+  return { residentId: m[1]!, afterSec: sec };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
   const project = required(env, 'GOOGLE_CLOUD_PROJECT');
   const bucket = required(env, 'RECORDINGS_BUCKET');
   const notifier = env.NOTIFIER_BASE_URL?.trim();
   const analyzer = env.ANALYZER_BASE_URL?.trim();
+  const drop = forcedLiveDrop(env);
   if (!/^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/.test(bucket)) throw new Error('RECORDINGS_BUCKET is not a valid bucket name');
   return {
     port: int(env, 'PORT', 8080, 1, 65535),
@@ -90,5 +116,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
       promptSec: int(env, 'SILENCE_PROMPT_SEC', 12, 5, 120),
       prompts: int(env, 'SILENCE_PROMPTS', 2, 1, 5),
     },
+    ...(drop ? { forcedLiveDrop: drop } : {}),
   };
 }
