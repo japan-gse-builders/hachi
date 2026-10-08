@@ -26,6 +26,11 @@ export interface LiveHandlers {
   interrupted(): void;
   turnComplete(): void;
   toolCalls(calls: ToolCall[]): void;
+  /**
+   * A point the server can restore the conversation from. Sent repeatedly during a call; the most
+   * recent resumable one is the only one worth keeping.
+   */
+  resumable(handle: string): void;
   /** The session ended; not called after `close()`. */
   closed(reason: string): void;
 }
@@ -40,7 +45,19 @@ export interface LiveSession {
 
 export interface LiveSetup {
   systemInstruction: string;
+  /** From a previous session of the same call; the server restores the conversation from it. */
+  resumeHandle?: string;
 }
+
+/**
+ * When to start dropping the oldest turns. A check-in call is three to five minutes and is cut off
+ * at eight, and Live audio costs roughly fifty tokens a second across both directions, so a call
+ * that runs to its limit lands near thirty thousand. The window is set below that: compression will
+ * not touch an ordinary call, and a long one is shortened at a turn boundary instead of being
+ * dropped when the context fills. The system instruction is never part of the window, so the
+ * persona and the safety rules survive it.
+ */
+const COMPRESSION = { triggerTokens: '16000', slidingWindow: { targetTokens: '8000' } };
 
 export interface LiveConnector {
   connect(setup: LiveSetup, handlers: LiveHandlers): Promise<LiveSession>;
@@ -96,6 +113,10 @@ export class GeminiLiveConnector implements LiveConnector {
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         tools: [{ functionDeclarations: TOOLS }],
+        // Transparent, so the server reports how much of what we sent it actually kept. A dropped
+        // websocket mid-call is then a gap of a second or two rather than a restarted conversation.
+        sessionResumption: { transparent: true, ...(setup.resumeHandle ? { handle: setup.resumeHandle } : {}) },
+        contextWindowCompression: COMPRESSION,
       },
       callbacks: {
         onmessage: (m) => dispatch(m, handlers),
@@ -134,6 +155,10 @@ export function dispatch(m: LiveServerMessage, h: LiveHandlers): void {
     if (c.outputTranscription?.text) h.outputTranscript(c.outputTranscription.text);
     if (c.turnComplete) h.turnComplete();
   }
+  const r = m.sessionResumptionUpdate;
+  // A handle offered while the model is mid-generation comes back as not resumable, and using one
+  // loses part of the conversation, so only the resumable ones are kept.
+  if (r?.resumable && r.newHandle) h.resumable(r.newHandle);
   const calls = m.toolCall?.functionCalls ?? [];
   if (calls.length) {
     h.toolCalls(calls.map((f) => ({ id: f.id ?? '', name: f.name ?? '', args: (f.args ?? {}) as Record<string, unknown> })));

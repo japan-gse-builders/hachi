@@ -11,6 +11,7 @@ function handlers() {
     interrupted: vi.fn(),
     turnComplete: vi.fn(),
     toolCalls: vi.fn(),
+    resumable: vi.fn(),
     closed: vi.fn(),
   } satisfies LiveHandlers;
 }
@@ -51,6 +52,21 @@ describe('GeminiLiveConnector', () => {
       outputAudioTranscription: {},
       tools: [{ functionDeclarations: TOOLS }],
     });
+  });
+
+  it('asks for transparent resumption and a sliding context window', async () => {
+    const { ai, params } = fakeAi();
+    await new GeminiLiveConnector(ai, 'm', 'v').connect({ systemInstruction: '' }, handlers());
+    expect(params().config.sessionResumption).toEqual({ transparent: true });
+    const w = params().config.contextWindowCompression;
+    // Shortening has to leave room to keep talking afterwards, so the target is well under the trigger.
+    expect(Number(w.slidingWindow.targetTokens)).toBeLessThan(Number(w.triggerTokens));
+  });
+
+  it('passes a previous handle back to the server', async () => {
+    const { ai, params } = fakeAi();
+    await new GeminiLiveConnector(ai, 'm', 'v').connect({ systemInstruction: '', resumeHandle: 'h1' }, handlers());
+    expect(params().config.sessionResumption).toEqual({ transparent: true, handle: 'h1' });
   });
 
   it('sends 16 kHz PCM audio, text and tool responses', async () => {
@@ -127,6 +143,15 @@ describe('dispatch', () => {
       { id: 'a', name: 'end_call', args: { reason: 'completed' } },
       { id: '', name: '', args: {} },
     ]);
+  });
+
+  it('keeps only the handles the server calls resumable', () => {
+    const h = handlers();
+    dispatch({ sessionResumptionUpdate: { newHandle: 'h1', resumable: true } } as LiveServerMessage, h);
+    // Mid-generation the server offers a handle that would lose part of the conversation.
+    dispatch({ sessionResumptionUpdate: { newHandle: 'h2', resumable: false } } as LiveServerMessage, h);
+    dispatch({ sessionResumptionUpdate: { resumable: true } } as LiveServerMessage, h);
+    expect(h.resumable.mock.calls).toEqual([['h1']]);
   });
 
   it('ignores empty messages', () => {

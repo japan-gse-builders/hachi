@@ -120,6 +120,8 @@ export class CallSession {
   private live?: LiveSession;
   private liveGeneration = 0;
   private liveSessions = 0;
+  /** Latest point the Live API said it could restore this conversation from. */
+  private resumeHandle?: string;
   private pending: Int16Array[] = [];
   private pendingSamples = 0;
   private outgoing: Int16Array[] = [];
@@ -285,16 +287,26 @@ export class CallSession {
     this.liveSessions++;
     const generation = ++this.liveGeneration;
     const handlers = this.handlers(generation);
-    const history = [...this.previousTurns, ...this.transcript()];
+    // With a handle the server still holds the conversation, so pasting the transcript back into the
+    // prompt would say everything twice; without one the transcript is all that is left of it.
+    const setupFor = (handle?: string) => ({
+      systemInstruction: buildSystemInstruction(
+        this.name,
+        handle ? [] : [...this.previousTurns, ...this.transcript()],
+        this.prior,
+        this.items,
+      ),
+      ...(handle ? { resumeHandle: handle } : {}),
+    });
+    let handle = resume ? this.resumeHandle : undefined;
     let session: LiveSession | undefined;
     for (let attempt = 0; attempt < this.t.liveConnectAttempts && !session; attempt++) {
       try {
-        session = await this.deps.live.connect(
-          { systemInstruction: buildSystemInstruction(this.name, history, this.prior, this.items) },
-          handlers,
-        );
+        session = await this.deps.live.connect(setupFor(handle), handlers);
       } catch (err) {
-        this.deps.log.warn({ ...this.ids, attempt, err: (err as Error).message }, 'Gemini Live connect failed');
+        this.deps.log.warn({ ...this.ids, attempt, resumed: Boolean(handle), err: (err as Error).message }, 'Gemini Live connect failed');
+        // A handle the server will not take is worse than none: drop it and replay the transcript.
+        handle = undefined;
         if (attempt + 1 < this.t.liveConnectAttempts) await sleep(this.t.liveRetryDelayMs * (attempt + 1));
       }
     }
@@ -304,7 +316,11 @@ export class CallSession {
       return;
     }
     this.live = session;
-    session.sendText(resume ? resumeCue(this.name) : openingCue(this.name));
+    if (!resume) session.sendText(openingCue(this.name));
+    else if (!handle) session.sendText(resumeCue(this.name));
+    // A resumed session picks up mid-sentence, so there is nothing to apologize for and nothing to
+    // say. Nothing will speak either, so the silence clock is started here instead of on a turn end.
+    else this.armSilence();
     if (this.pending.length) {
       session.sendAudio(concatPcm(this.pending));
       this.pending = [];
@@ -332,6 +348,9 @@ export class CallSession {
         else this.armSilence();
       },
       toolCalls: (calls) => current() && calls.forEach((c) => this.onToolCall(c)),
+      resumable: (handle) => {
+        if (current()) this.resumeHandle = handle;
+      },
       closed: (reason) => {
         if (!current()) return;
         this.deps.log.warn({ ...this.ids, reason }, 'Gemini Live session closed unexpectedly');

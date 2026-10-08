@@ -72,8 +72,11 @@ export class FakeLiveSession implements LiveSession {
 export class FakeLive implements LiveConnector {
   readonly sessions: FakeLiveSession[] = [];
   failures = 0;
+  /** The server refusing a resumption handle, which is the case the fallback exists for. */
+  rejectHandles = false;
 
   async connect(setup: LiveSetup, handlers: LiveHandlers): Promise<LiveSession> {
+    if (this.rejectHandles && setup.resumeHandle) throw new Error('resumption handle expired');
     if (this.failures > 0) {
       this.failures--;
       throw new Error('Live API unavailable');

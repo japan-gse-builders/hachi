@@ -408,6 +408,47 @@ describe('CallSession: reconnects', () => {
     expect(ctx.socket.ofType('media')).toHaveLength(1);
   });
 
+  it('resumes from the server handle instead of replaying the conversation', async () => {
+    const ctx = await started();
+    ctx.gemini.h.outputTranscript('How did you sleep?');
+    ctx.gemini.h.inputTranscript('Very well.');
+    ctx.gemini.h.resumable('handle-1');
+    ctx.gemini.h.resumable('handle-2');
+    ctx.gemini.h.closed('error: 1011');
+    await vi.waitFor(() => expect(ctx.live.sessions).toHaveLength(2));
+    const next = ctx.live.last;
+    expect(next.setup.resumeHandle).toBe('handle-2');
+    // The server still holds the conversation, so it is not pasted into the prompt a second time.
+    expect(next.setup.systemInstruction).not.toContain('Maggie: Very well.');
+    // Nothing is said either: a resumed session picks up mid-sentence, so there is no interruption
+    // for Hachi to apologize for.
+    expect(next.texts).toEqual([]);
+  });
+
+  it('replays the conversation when the server will not take the handle', async () => {
+    const ctx = await started();
+    ctx.gemini.h.inputTranscript('Very well.');
+    ctx.gemini.h.resumable('handle-1');
+    ctx.live.rejectHandles = true;
+    ctx.gemini.h.closed('error: 1011');
+    await vi.waitFor(() => expect(ctx.live.sessions).toHaveLength(2));
+    const next = ctx.live.last;
+    expect(next.setup.resumeHandle).toBeUndefined();
+    expect(next.setup.systemInstruction).toContain('Maggie: Very well.');
+    expect(next.texts).toEqual([resumeCue('Maggie')]);
+  });
+
+  it('ignores a handle offered by a session that has already been replaced', async () => {
+    const ctx = await started();
+    const dead = ctx.gemini;
+    dead.h.closed('x');
+    await vi.waitFor(() => expect(ctx.live.sessions).toHaveLength(2));
+    dead.h.resumable('stale');
+    ctx.live.last.h.closed('y');
+    await vi.waitFor(() => expect(ctx.live.sessions).toHaveLength(3));
+    expect(ctx.live.last.setup.resumeHandle).toBeUndefined();
+  });
+
   it('gives up after too many Gemini sessions', async () => {
     const ctx = await started({ timing: { maxLiveSessions: 2 } });
     ctx.gemini.h.closed('x');
