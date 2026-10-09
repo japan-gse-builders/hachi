@@ -63,7 +63,7 @@ export function QueuePage() {
           </ul>
         </div>
       )}
-      <h2>Needs attention</h2>
+      <h1>Needs attention</h1>
       {/* A card shows only its own level, so the whole scale is spelled out once, in reading order. */}
       {queue && queue.legend.length > 0 && (
         <ul className="legend" aria-label="What each urgency level asks of you">

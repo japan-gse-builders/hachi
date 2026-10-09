@@ -26,7 +26,7 @@ export function FamilyHomePage() {
   if (unverified) {
     return (
       <section className="card stack narrow">
-        <h2>Confirm your email address</h2>
+        <h1>Confirm your email address</h1>
         {sent ? (
           <p>We sent a link to {user?.email}. Open it, and you will come straight back here. Your password still works.</p>
         ) : (
@@ -44,14 +44,14 @@ export function FamilyHomePage() {
   if (residents.length === 0) {
     return (
       <section className="card stack">
-        <h2>No one is linked to this email yet</h2>
+        <h1>No one is linked to this email yet</h1>
         <p>You are signed in as {user?.email}. Ask the care team to add this address as the family contact.</p>
       </section>
     );
   }
   return (
     <div className="stack narrow">
-      <h2>Who would you like to check on?</h2>
+      <h1>Who would you like to check on?</h1>
       {residents.map((r) => (
         <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
           <h2>{r.name}</h2>
