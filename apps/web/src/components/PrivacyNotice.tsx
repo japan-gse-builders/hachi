@@ -1,6 +1,6 @@
 import { PRIVACY_NOTICE } from '../privacy';
 
-/** The exact same notice is read at enrollment and available without signing in. */
+/** Full details are available at enrollment and publicly, without a spoken recital. */
 export function PrivacyNotice() {
   return (
     <div className="stack privacy-notice">

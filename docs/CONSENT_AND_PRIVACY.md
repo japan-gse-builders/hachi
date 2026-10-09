@@ -14,11 +14,14 @@ Each point is marked:
 
 - **[Code]** `/privacy` is public, needs no sign-in or Firebase configuration, and includes support
   instructions. The footer links to it from both staff and family screens. The page, the staff
-  enrollment notice and the unauthenticated API endpoint `GET /privacy-notice` use the same text in
-  `packages/core/src/privacy.ts`. The version identifies the notice read; it does not expire an
-  existing approval when the text changes.
-- **[Operational]** Residents use a telephone, so staff read the notice to them, answer questions,
-  and ask for explicit approval. The notice explains Google Gemini processing, recordings and
+  enrollment notice and the unauthenticated API endpoint `GET /privacy-notice` use shared text in
+  `packages/core/src/privacy.ts`, including the short first-use explanation. The version identifies
+  the information shown; it does not expire an existing approval when the text changes.
+- **[Operational]** Residents use a telephone, so staff read the **short first-use explanation**, answer
+  questions, and ask for explicit approval. A reply such as **“Yes, I agree.”** is sufficient; the resident
+  does not need to recite a script or read the full page aloud. The full notice remains available on
+  `/privacy` and in an expandable section of the form for questions and further explanation.
+  The notice explains Google Gemini processing, recordings and
   analysis, what staff and family can see, emergency alerts, locations, retention and stopping.
   The software records staff's attestation; it cannot verify that this conversation took place.
 - **[Code]** Staff can record approval while adding a resident, or later on the Residents screen.

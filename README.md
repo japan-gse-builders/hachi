@@ -131,7 +131,9 @@ See [docs/CONSENT_AND_PRIVACY.md](docs/CONSENT_AND_PRIVACY.md) for consent, rete
 enforced in code versus handled operationally.
 
 The public `/privacy` page explains AI processing, recordings, sharing, retention and support without
-requiring sign-in. Before a resident's first call, staff read the same notice and record their explicit
+requiring sign-in. Before a resident's first call, staff read a short explanation and answer questions;
+the resident can simply say **“Yes, I agree.”** or give another clear affirmative reply. The full notice
+is available on the page and in an expandable section of the form. Staff record the explicit
 approval on **Add resident** or **Residents**. Details can be saved while approval is pending, but daily
 calls cannot start. Existing residents need this record too; no approvals are inferred or backfilled.
 Once recorded, approval is reused on later calls. **Pause calls** stops future check-ins; retention and

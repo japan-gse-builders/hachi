@@ -1,8 +1,8 @@
 /** Shared by the public page, staff enrollment and the API. Keep this module browser-safe. */
 export const PRIVACY_NOTICE = {
-  version: '2026-10-09',
+  version: '2026-10-09.1',
   title: 'Privacy and your choice',
-  introduction: 'Hachi makes daily telephone check-ins to help your care team notice when you may need support. Please read this notice, or ask your care team to read it to you, before deciding whether to take part.',
+  introduction: 'Hachi makes daily telephone check-ins to help your care team notice when you may need support. Your care team can explain the key points and answer questions before you decide whether to take part.',
   sections: [
     {
       title: 'Talking with an AI',
@@ -53,7 +53,8 @@ export const PRIVACY_NOTICE = {
       ],
     },
   ],
-  agreement: 'I agree to Hachi’s AI check-in calls, Google Gemini processing the conversations, and the recording, analysis and sharing described in this notice.',
+  firstUsePrompt: 'Hachi is an AI that calls daily. Calls are recorded and analysed with Google Gemini to help your care team. Staff can review them; your family gets short summaries and alerts, including in emergencies. Taking part is optional. Ask your care team to stop calls at any time. Is that OK?',
+  agreement: 'Yes, I agree.',
 } as const;
 
 /** The resident's first-use approval, recorded by the staff member who heard it. */
