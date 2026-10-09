@@ -23,48 +23,50 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
         Kihon Checklist score and not an assessment.
       </p>
 
-      <table className="screening">
-        <thead>
-          <tr>
-            <th scope="col">Domain</th>
-            <th scope="col">Answered</th>
-            <th scope="col">Flagged</th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {screening.domains.map((d) => (
-            <tr key={d.domain}>
-              <th scope="row">
-                {d.label}
-                {d.missing.length > 0 && <span className="meta"> · {itemList(d.missing)} cannot be asked by phone</span>}
-              </th>
+      <div className="table-scroll" role="region" aria-label="Screening question results" tabIndex={0}>
+        <table className="screening">
+          <thead>
+            <tr>
+              <th scope="col">Domain</th>
+              <th scope="col">Answered</th>
+              <th scope="col">Flagged</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {screening.domains.map((d) => (
+              <tr key={d.domain}>
+                <th scope="row">
+                  {d.label}
+                  {d.missing.length > 0 && <span className="meta"> · {itemList(d.missing)} cannot be asked by phone</span>}
+                </th>
+                <td>
+                  {d.answered} of {d.of}
+                </td>
+                <td>{d.flagged}</td>
+                <td>
+                  {/* A domain the checklist gives no rule to will never settle, so it is not called pending. */}
+                  {d.criterion === 0 ? (
+                    <span className="meta">No criterion of its own</span>
+                  ) : (
+                    <span className={tone(d.meets)}>{verdict(d.meets)}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">Items 1–20 together</th>
               <td>
-                {d.answered} of {d.of}
+                {screening.overall.answered} of {screening.overall.of}
               </td>
-              <td>{d.flagged}</td>
+              <td>{screening.overall.flagged}</td>
               <td>
-                {/* A domain the checklist gives no rule to will never settle, so it is not called pending. */}
-                {d.criterion === 0 ? (
-                  <span className="meta">No criterion of its own</span>
-                ) : (
-                  <span className={tone(d.meets)}>{verdict(d.meets)}</span>
-                )}
+                <span className={tone(screening.overall.meets)}>{verdict(screening.overall.meets)}</span>
               </td>
             </tr>
-          ))}
-          <tr>
-            <th scope="row">Items 1–20 together</th>
-            <td>
-              {screening.overall.answered} of {screening.overall.of}
-            </td>
-            <td>{screening.overall.flagged}</td>
-            <td>
-              <span className={tone(screening.overall.meets)}>{verdict(screening.overall.meets)}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       <div>
         <h3>The instruments' own results</h3>

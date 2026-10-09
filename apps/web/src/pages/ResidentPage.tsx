@@ -53,7 +53,7 @@ export function ResidentPage() {
   };
 
   return (
-    <form className="card stack" onSubmit={(e) => void submit(e)}>
+    <form className="card stack narrow" onSubmit={(e) => void submit(e)}>
       <h2>Add a resident</h2>
       <p className="meta">Phone numbers include the country code, such as +81 90 1234 5678.</p>
       {error && <p className="error">{error}</p>}

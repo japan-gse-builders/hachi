@@ -54,28 +54,32 @@ export function ResidentsPage() {
   };
 
   return (
-    <div className="stack tiles">
+    <div className="stack">
       <div className="row">
         <h2>Residents</h2>
         <Link className="button" to="/staff/residents/new">Add resident</Link>
       </div>
       {error && <p className="error">{error}</p>}
-      {residents?.map((r) => (
-        <article className="card" key={r.id}>
-          <h2>{r.name}</h2>
-          <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
-          <p className="meta">Resident {r.id}</p>
-          <label className="check">
-            <input type="checkbox" checked={Boolean(r.consent?.shareMood)} onChange={(e) => void setConsent(r.id, e.target.checked)} />
-            Agreed their family may be told how they are in themselves
-          </label>
-          <label className="file">Import past calls (JSON)
-            <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
-            <span className="button ghost">Choose a file</span>
-          </label>
-          {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
-        </article>
-      ))}
+      {residents && residents.length > 0 && (
+        <div className="tiles">
+          {residents.map((r) => (
+            <article className="card" key={r.id}>
+              <h2>{r.name}</h2>
+              <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
+              <p className="meta">Resident {r.id}</p>
+              <label className="check">
+                <input type="checkbox" checked={Boolean(r.consent?.shareMood)} onChange={(e) => void setConsent(r.id, e.target.checked)} />
+                Agreed their family may be told how they are in themselves
+              </label>
+              <label className="file">Import past calls (JSON)
+                <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
+                <span className="button ghost">Choose a file</span>
+              </label>
+              {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

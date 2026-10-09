@@ -16,14 +16,18 @@ a { color: #1f4d3a; }
 @media (min-width: 900px) { .app { padding: 24px 24px 64px; } }
 /* Phone-first reading width, kept for family and for single forms. */
 .narrow { max-width: 760px; }
-/* Independent cards tile across the window instead of stacking in one column. */
+/* Only cards belong in a collection grid; titles, legends and notices sit above it. */
+.tiles { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); align-items: stretch; }
 @media (min-width: 900px) {
-  .tiles { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); align-items: start; }
-  .tiles > h2, .tiles > p, .tiles > .row { grid-column: 1 / -1; }
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-width, 380px)), 1fr)); grid-auto-rows: 1fr; }
+  .tiles-compact { --tile-width: 300px; }
+  /* An expanded resident approval is a full-width detail panel, not another list tile. */
+  .tiles:has(> .card form) { grid-auto-rows: auto; }
+  .tiles > .card:has(form) { grid-column: 1 / -1; }
 }
 /* Evidence and the decision on the left, the case's own records on the right. */
 @media (min-width: 1000px) {
-  .case { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: start; }
+  .case { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .case > section:first-child { grid-column: 1 / -1; }
 }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -32,8 +36,17 @@ a { color: #1f4d3a; }
 .nav a, .button, button { min-height: 48px; border-radius: 12px; padding: 10px 14px; text-decoration: none; }
 .button, button { border: 0; background: #1f4d3a; color: white; cursor: pointer; }
 .ghost { background: transparent; color: #1f4d3a; border: 2px solid #1f4d3a; }
-.stack { display: grid; gap: 12px; }
-.card { background: white; border-radius: 16px; padding: 16px; box-shadow: 0 1px 0 rgba(28, 25, 21, 0.08); }
+.stack { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.stack > * { min-width: 0; }
+.card { min-width: 0; background: white; border-radius: 16px; padding: 16px; box-shadow: 0 1px 0 rgba(28, 25, 21, 0.08); overflow-wrap: anywhere; }
+.tiles > .card { display: flex; flex-direction: column; }
+.tiles > .card > .badge { align-self: flex-start; }
+.tiles > .card > .file { margin-top: auto; padding-top: 12px; }
+.tiles > .card > .row:last-child, .tiles > .card-link > .meta:last-child { margin-top: auto; padding-top: 12px; }
+.tiles > .card form { width: 100%; max-width: 760px; }
+/* A case has two equally sized panels, with readable sections within each one. */
+.case-column > .card { padding: 0; background: transparent; border-radius: 0; box-shadow: none; }
+.case-column > .card + .card { border-top: 1px solid #ece7dc; padding-top: 16px; }
 .card h2 { margin: 0 0 8px; font-size: 22px; }
 .card h3 { margin: 0 0 4px; font-size: 18px; }
 .card-link { display: block; color: inherit; text-decoration: none; border: 2px solid transparent; }
@@ -46,7 +59,7 @@ a { color: #1f4d3a; }
 .calls { display: grid; gap: 12px; }
 .calls article { border-top: 1px solid #ece7dc; padding-top: 12px; }
 .calls article p { margin: 4px 0; }
-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; }
+fieldset { min-width: 0; border: 0; padding: 0; margin: 0; display: grid; gap: 12px; }
 legend { font-weight: 700; margin-bottom: 4px; }
 .meta { color: #5c564c; font-size: 16px; }
 label { display: grid; gap: 6px; font-weight: 600; }
@@ -82,6 +95,8 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .agent { color: #5c564c; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .check input { width: auto; }
+.table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+.table-scroll:focus-visible { outline: 3px solid #1f4d3a; outline-offset: 2px; }
 .speech-charts { display: grid; gap: 16px; }
 @media (min-width: 640px) { .speech-charts { grid-template-columns: 1fr 1fr; } }
 .speech-chart { margin: 0; }
@@ -109,13 +124,12 @@ details summary { cursor: pointer; min-height: 48px; display: flex; align-items:
 .glance-latest { gap: 8px; margin-bottom: 12px; }
 .glance-latest p { margin: 0; }
 .glance-headline { font-size: 20px; font-weight: 600; line-height: 1.35; }
-.glance-today { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.glance-today { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
 @media (min-width: 640px) { .glance-today { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .glance-today li { border: 1px solid #ece7dc; border-radius: 12px; padding: 10px 4px; display: grid; justify-items: center; gap: 4px; text-align: center; }
 .glance-today .glance-cell { width: 34px; border-radius: 8px; font-size: 18px; }
 .glance-domain { font-weight: 700; font-size: 16px; }
 .glance-word { font-size: 14px; line-height: 1.2; color: #5c564c; }
-.glance-scroll { overflow-x: auto; }
 .glance-grid { width: 100%; min-width: 300px; max-width: 560px; table-layout: fixed; border-collapse: separate; border-spacing: 2px; }
 .glance-grid th { padding: 0; font-size: 12px; font-weight: 600; color: #5c564c; text-align: center; }
 .glance-grid th[scope="row"] { font-size: 14px; color: #1c1915; text-align: left; }
