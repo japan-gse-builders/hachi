@@ -37,7 +37,7 @@ export function FamilyFinishPage() {
   if (!valid) {
     return (
       <section className="card stack narrow">
-        <h2>This link does not work</h2>
+        <h1>This link does not work</h1>
         <p><Link to="/family/login">Ask for a new sign-in link</Link>.</p>
       </section>
     );
@@ -52,7 +52,7 @@ export function FamilyFinishPage() {
 
   return (
     <form className="card stack narrow" onSubmit={submit}>
-      <h2>Confirm your email</h2>
+      <h1>Confirm your email</h1>
       <p className="meta">You opened the link on a different device. Enter the same email address to finish signing in.</p>
       {error && <p className="error">{error}</p>}
       <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>

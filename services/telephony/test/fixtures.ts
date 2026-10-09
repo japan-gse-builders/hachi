@@ -1,4 +1,4 @@
-import { DEFAULT_GATEWAY_POLICY, parseSpendSettings, type GatewayPolicy } from '@hachi/core';
+import { DEFAULT_GATEWAY_POLICY, parseSpendSettings, PRIVACY_NOTICE, type GatewayPolicy } from '@hachi/core';
 import { MemoryStore, type Resident } from '@hachi/store';
 import type { CallDeps } from '../src/calls.js';
 import type { EnqueueRequest, TaskCallerVerifier, TaskQueue } from '@hachi/cloud';
@@ -23,6 +23,7 @@ export function resident(id: string, overrides: Partial<Resident> = {}): Residen
     familyLookup: [],
     serviceStartedAt: '2026-09-01T00:00:00.000Z',
     active: true,
+    callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version, recordedAt: '2026-09-01T00:00:00.000Z', recordedBy: 'staff-1' },
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,

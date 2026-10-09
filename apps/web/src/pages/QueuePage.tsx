@@ -37,7 +37,7 @@ export function QueuePage() {
 
   return (
     <div className="stack">
-      <h2>Needs attention</h2>
+      <h1>Needs attention</h1>
       {/* The scale stays above every panel, separate from the case-card grid. */}
       {queue && queue.legend.length > 0 && (
         <ul className="legend" aria-label="What each urgency level asks of you">

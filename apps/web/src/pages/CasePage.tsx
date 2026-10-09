@@ -66,7 +66,7 @@ export function CasePage() {
           {/* One case on the screen, so what the level asks for is written out rather than hidden in a tooltip. */}
           <span className="meta">{detail.case.urgencyMeaning}</span>
         </p>
-        <h2>{detail.resident.name}</h2>
+        <h1>{detail.resident.name}</h1>
         <p className="reason">{detail.case.reason}</p>
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
@@ -75,7 +75,7 @@ export function CasePage() {
       {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
       <div className="card stack case-column case-evidence">
         <section className="card">
-          <h2>What was said</h2>
+          <h2 className="eyebrow">What was said</h2>
           {evidence.map((e, i) => (
             <blockquote className="quote" key={`${e.callId}-${i}`}>
               {/* The quote is what makes the case checkable, so it reads before the rule that found it. */}
@@ -139,7 +139,7 @@ export function CasePage() {
 
       <div className="card stack case-column case-records">
         <section className="card">
-          <h2>Notifications</h2>
+          <h2 className="eyebrow">Notifications</h2>
           {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}
           {detail.case.notifications.map((n, i) => (
             <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address} · {deliveryLabel(n.delivery)}</p>
@@ -147,7 +147,7 @@ export function CasePage() {
         </section>
   
         <section className="card">
-          <h2>Calls</h2>
+          <h2 className="eyebrow">Calls</h2>
           <div className="calls">
             {detail.calls.map((c) => (
               <article key={c.id}>
@@ -173,7 +173,7 @@ export function CasePage() {
   
         {detail.events.length > 0 && (
           <section className="card">
-            <h2>History</h2>
+            <h2 className="eyebrow">History</h2>
             {detail.events.map((event, i) => (
               <p key={i} className="meta">
                 {formatWhen(event.at)} · {eventLabel(event.type)}

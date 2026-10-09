@@ -10,13 +10,16 @@ import { LoginPage } from './pages/LoginPage';
 import { QueuePage } from './pages/QueuePage';
 import { ResidentPage } from './pages/ResidentPage';
 import { ResidentsPage } from './pages/ResidentsPage';
+import { PrivacyPage } from './pages/PrivacyPage';
 
 function Shell({ children }: { children: ReactNode }) {
   const { user, role, signOut } = useAuth();
   return (
     <div className="app">
       <header className="top">
-        <Link className="brand" to="/">Hachi</Link>
+        <Link className="brand" to="/">
+          <img src="/branding/hachi-logo.png" alt="Hachi" width={1991} height={790} />
+        </Link>
         {user && (
           <nav className="nav">
             {role === 'staff' && (
@@ -30,6 +33,7 @@ function Shell({ children }: { children: ReactNode }) {
         )}
       </header>
       {children}
+      <footer className="footer"><Link to="/privacy">Privacy and support</Link></footer>
     </div>
   );
 }
@@ -65,30 +69,37 @@ function OldCaseLink() {
   return <Navigate to={`/staff/cases/${id}`} replace />;
 }
 
-export function App() {
+function AppRoutes() {
   if (!authReady) {
     return (
-      <div className="app">
-        <p className="error">Sign-in is not configured. Set the VITE_FIREBASE_* values and restart.</p>
-      </div>
+      <p className="error">Sign-in is not configured. Set the VITE_FIREBASE_* values and restart.</p>
     );
   }
   return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/staff/login" element={<LoginPage />} />
+      <Route path="/staff" element={<Guard role="staff"><QueuePage /></Guard>} />
+      <Route path="/staff/cases/:id" element={<Guard role="staff"><CasePage /></Guard>} />
+      <Route path="/staff/residents" element={<Guard role="staff"><ResidentsPage /></Guard>} />
+      <Route path="/staff/residents/new" element={<Guard role="staff"><ResidentPage /></Guard>} />
+      <Route path="/family/login" element={<FamilyLoginPage />} />
+      <Route path="/family/finish" element={<FamilyFinishPage />} />
+      <Route path="/family" element={<Guard role="family"><FamilyHomePage /></Guard>} />
+      <Route path="/family/residents/:id" element={<Guard role="family"><FamilyDashboardPage /></Guard>} />
+      <Route path="/login" element={<Navigate to="/staff/login" replace />} />
+      <Route path="/cases/:id" element={<OldCaseLink />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export function App() {
+  return (
     <Shell>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/staff/login" element={<LoginPage />} />
-        <Route path="/staff" element={<Guard role="staff"><QueuePage /></Guard>} />
-        <Route path="/staff/cases/:id" element={<Guard role="staff"><CasePage /></Guard>} />
-        <Route path="/staff/residents" element={<Guard role="staff"><ResidentsPage /></Guard>} />
-        <Route path="/staff/residents/new" element={<Guard role="staff"><ResidentPage /></Guard>} />
-        <Route path="/family/login" element={<FamilyLoginPage />} />
-        <Route path="/family/finish" element={<FamilyFinishPage />} />
-        <Route path="/family" element={<Guard role="family"><FamilyHomePage /></Guard>} />
-        <Route path="/family/residents/:id" element={<Guard role="family"><FamilyDashboardPage /></Guard>} />
-        <Route path="/login" element={<Navigate to="/staff/login" replace />} />
-        <Route path="/cases/:id" element={<OldCaseLink />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="*" element={<AppRoutes />} />
       </Routes>
     </Shell>
   );
