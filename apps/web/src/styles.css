@@ -27,7 +27,9 @@ a { color: #1f4d3a; }
   .case > section:first-child { grid-column: 1 / -1; }
 }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
-.brand { font-weight: 700; color: #1f4d3a; text-decoration: none; font-size: 22px; }
+.brand { display: inline-flex; flex: 0 0 auto; text-decoration: none; }
+/* Match the reference app's framing: crop transparent side margins, keeping the artwork intact. */
+.brand img { display: block; width: 110px; height: 64px; object-fit: cover; }
 .nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .nav a, .button, button { min-height: 48px; border-radius: 12px; padding: 10px 14px; text-decoration: none; }
 .button, button { border: 0; background: #1f4d3a; color: white; cursor: pointer; }

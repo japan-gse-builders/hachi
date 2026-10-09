@@ -78,6 +78,10 @@ project rather than a detail of it:
 7. **Review.** Staff use the triage queue and case pages; family members see a read-only dashboard.
    Both are a React PWA on Firebase Hosting backed by the API on Cloud Run.
 
+The web header, browser tab, installed app and push notifications use the original Hachi artwork
+from [`japan-gse-builders/shutas-playground`](https://github.com/japan-gse-builders/shutas-playground).
+See the [branding asset sources](apps/web/public/branding/README.md) for the exact files and hashes.
+
 ## The four rules
 
 | Rule | What it looks for | Evidence | Urgency |
