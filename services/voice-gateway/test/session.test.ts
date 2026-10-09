@@ -16,6 +16,19 @@ async function endMark(ctx: Awaited<ReturnType<typeof started>>) {
 }
 
 describe('CallSession: stream start', () => {
+  it.each(['pending', 'paused'])('rejects a %s resident before Gemini, recording or analysis begins', async (state) => {
+    const ctx = await setup();
+    await ctx.store.updateResident(IDS.residentId, (r) => state === 'pending' ? { ...r, callConsent: undefined } : { ...r, active: false });
+    await ctx.session.onMessage(startMessage());
+    await ctx.session.onMessage(mediaMessage());
+    await ctx.session.onSocketClosed();
+    expect(ctx.socket.closed).toBe(true);
+    expect(ctx.live.sessions).toEqual([]);
+    expect(ctx.recordings.saved).toEqual([]);
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.analysisPending).toBe(false);
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.streams).toBeUndefined();
+  });
+
   it('rejects a stream with the wrong token without contacting Gemini', async () => {
     const ctx = await setup();
     await ctx.session.onMessage(startMessage({ streamToken: 'guess' }));

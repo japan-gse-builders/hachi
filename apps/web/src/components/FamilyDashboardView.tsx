@@ -9,7 +9,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
     <>
       <section className="card">
         <h2>Daily calls with {data.resident.name}</h2>
-        {glance && <LatestCall latest={glance.latest} now={now} />}
+        {glance && <LatestCall latest={glance.latest} now={now} shareMood={glance.shareMood} />}
         <p>{data.nextCallAt ? `Next call: ${formatWhen(data.nextCallAt)}` : 'Daily calls are paused.'}</p>
         <p className="meta">Times are Japan time. Hachi calls once a day for a short chat.</p>
       </section>
@@ -26,7 +26,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
         </section>
       )}
 
-      {glance && <TwoWeekGrid days={glance.days} />}
+      {glance && <TwoWeekGrid days={glance.days} shareMood={glance.shareMood} />}
       {glance && <TagTrends trends={glance.trends} />}
 
       <section className="card">

@@ -33,7 +33,9 @@ FS="https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/
 
 ## 2. デプロイ
 
-**自分でデプロイするのは Voice Gateway だけでよい。** 変更は `services/voice-gateway/` にしかない。telephony / analyzer / api は f3ecfe5 以降のビルドが既に動いている（`hachi-telephony-00019-rtc`、`hachi-analyzer-00012-fdh`、`hachi-api-00012-27t`）。
+**Live のログ追加だけを反映する場合は Voice Gateway のデプロイでよい。** ログ追加の変更は `services/voice-gateway/` にしかない。telephony / analyzer / api は f3ecfe5 以降のビルドが既に動いている（`hachi-telephony-00019-rtc`、`hachi-analyzer-00012-fdh`、`hachi-api-00012-27t`）。
+
+初回利用の許可確認（issue #3）も反映する場合は、**API・telephony・Voice Gateway・web を一緒にデプロイする**。既存の利用者に許可を自動で補完することはない。以下のテスト架電でも §3 の許可確認が必要になる（詳細は `docs/CONSENT_AND_PRIVACY.md`）。
 
 ### 2.1 ログだけ入れる（強制ドロップなし）
 
@@ -63,9 +65,13 @@ PROJECT_ID=hachicall-nao RECORDINGS_BUCKET=oct1-hachi-recordings \
 
 45 秒にしてあるのは、挨拶と 1〜2 往復が終わり、サーバがハンドルを出す余裕ができたあたりを狙うため。§5 で `handles: 0` だったら、ハンドルが来る前に落としたということなので `:90` でやり直す。
 
-## 3. テスト利用者を一時的に有効にする
+## 3. 初回利用の許可を確認し、テスト利用者を一時的に有効にする
 
 **現在 `active: false` である**（2026-10-09 に確認）。この状態では `placeCall` が `skipped / inactive` を返して通話記録すら作らないので、予約も走らない。台帳が現れない原因の第一候補はこれ。
+
+**`active: true` だけでは架電できない。** 電話を受けるテスト担当者にも `/privacy` の説明を提示し、AI 通話・録音・解析・共有について初回の明示的な許可を得る。スタッフ画面の Residents でその許可を記録する。既に記録済みなら、テストのたびに取り直す必要はない。テスト用 ID であることを許可の代わりにせず、Firestore に架空の `callConsent` を書いて通過させない。
+
+許可が未記録の場合は `skipped / consent_required` となり、通話記録も予約も作られない。許可を得てから、次の手順で一時的に有効にする。
 
 ```bash
 curl -s -X PATCH \
@@ -113,7 +119,7 @@ curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   "${FS}/residents/${RESIDENT}/calls/${LOCAL_DATE}-0"
 ```
 
-- ドキュメントが無い → `skipped / inactive`（§3 を飛ばした）か、タスクがまだ届いていない。
+- ドキュメントが無い → `skipped / inactive` または `skipped / consent_required`（§3 の有効化・許可確認が未完了）か、タスクがまだ届いていない。
 - `failure.code = gateway_unavailable` → ブレーカーが止めた。§8。
 - `failure.code = budget_exhausted` → 台帳が拒否した。§8。
 - `status: scheduled` → 発信済み。電話が鳴る。
@@ -299,15 +305,16 @@ gcloud run services describe hachi-voice-gateway --region us-central1 \
 
 ## 8. 台帳が現れないとき
 
-`spend/2026-10` が 404 のままなら、可能性は高い順に 3 つ。
+`spend/2026-10` が 404 のままなら、次の 4 つを確認する。
 
 1. **テスト利用者が `active: false` のまま。** `placeCall` は利用者を見た直後に `skipped / inactive` を返す。予約はその手前には無い。通話記録も作られないので、§4 の最後の REST 読みが 404 になるのが目印。→ §3。
-2. **ブレーカーが先に止めた。** `claimGatewayForCall()` は予約の**前**にある。`service/gateway` が存在して `fault: systemic` なら、発信そのものが行われず予約も走らない。通話記録に `failure.code = gateway_unavailable` が入る。
+2. **初回利用の許可が未記録。** `callConsent` が無い、または有効な許可記録でなければ `skipped / consent_required` を返す。通話記録も予約も作らない。→ §3 のスタッフ画面で、実際に得た許可を記録する。
+3. **ブレーカーが先に止めた。** `claimGatewayForCall()` は予約の**前**にある。`service/gateway` が存在して `fault: systemic` なら、発信そのものが行われず予約も走らない。通話記録に `failure.code = gateway_unavailable` が入る。
    ```bash
    curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" "${FS}/service/gateway"
    ```
    2026-10-09 時点ではこのドキュメントも存在しない（=「健全」扱い）。存在して止まっているなら、理由（`reason`）を読んで直すか、15 分の cooldown を待つ。
-3. **Firestore トランザクションが失敗している。** `mutateSpendLedger` が投げると `/tasks/place-call` は 500 を返し、Cloud Tasks が再試行する。telephony のエラーログに出る。
+4. **Firestore トランザクションが失敗している。** `mutateSpendLedger` が投げると `/tasks/place-call` は 500 を返し、Cloud Tasks が再試行する。telephony のエラーログに出る。
    ```bash
    gcloud logging read 'resource.labels.service_name="hachi-telephony" AND severity>=ERROR' \
      --freshness=2h --limit=10 --format='value(timestamp, jsonPayload.msg, jsonPayload.err)'
