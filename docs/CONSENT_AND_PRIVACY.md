@@ -37,8 +37,12 @@ Each point is marked:
   The Voice Gateway refuses to start an AI session or recording without approval. Family screens
   do not advertise a next call while approval is pending. Normal daily calls reuse the saved
   first-use approval; there is no repeated approval prompt or automatic re-consent on version changes.
-- **[Code]** Mood/loneliness sharing remains a separate, optional permission (`resident.consent`).
-  Agreeing to calls does not turn it on. Changing it does not alter first-use approval.
+- **[Code]** New first-use approvals include short family updates about mood and loneliness,
+  explained in the short prompt and full notice. The API records this sharing approval in
+  `resident.consent` with the same staff identity and time; there is no separate sharing checkbox.
+  Pending enrollment does not imply sharing approval. Existing sharing choices are preserved,
+  including opt-outs, and resubmitting an old call approval does not expand its scope. Staff can
+  still record a later sharing request through `shareMood` in the API without altering call approval.
 - **[Operational]** The family member agrees to receive alerts and access the dashboard, and the
   resident agrees to the chosen family contact (requirements §4). There is no separate family
   approval record in Hachi.
@@ -79,7 +83,8 @@ historical data.
 | Call recordings | Yes, on the case page (signed URL valid 15 minutes) | **No** | [Code] API |
 | Transcripts and quoted evidence | Yes | **No** | [Code] API |
 | Speech analysis (R3 features, baseline, trend) | Yes | **No** | [Code] API |
-| Short plain-language summary per call | Yes | Yes (last 14 days) | [Code] API |
+| Short plain-language summary per call | Yes | With mood-sharing approval (last 14 days) | [Code] API |
+| Mood status and loneliness updates | Yes | With mood-sharing approval | [Code] API / analyzer |
 | Call times, connected or not, duration | Yes | Yes (last 14 days) | [Code] API |
 | Alerts sent to the family member and case status | Yes | Yes | [Code] API |
 | Staff name and contact | Yes | Yes | [Code] API |
@@ -93,6 +98,10 @@ historical data.
   residents get the same response.
 - **[Code]** Family messages never include transcript quotes. SMS contains no link, phone number or
   quote.
+- **[Code]** Without mood-sharing approval, the family API withholds mood states, generated
+  headlines and free-text summaries, which can contain emotional information. The family view
+  hides the Mood area. Family-visible tags, call times, alerts and neutral emergency follow-up
+  messages remain available; transcripts and speech analysis remain staff-only in all cases.
 - **[Operational]** Deciding who is given a staff account, and removing it when they leave.
 
 ## 4. Data minimisation

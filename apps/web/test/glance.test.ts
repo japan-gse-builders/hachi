@@ -98,6 +98,7 @@ describe('family dashboard view', () => {
     resident: { id: 'res-1', name: 'Margaret Smith' },
     nextCallAt: '2026-10-06T01:00:00.000Z',
     glance: {
+      shareMood: true,
       latest: { startedAt: '2026-10-05T01:02:00.000Z', headline: 'Margaret ate little today but enjoyed a chat.', domains: today },
       days: [
         { date: '2026-10-03', tagged: false, domains: null },
@@ -163,5 +164,15 @@ describe('family dashboard view', () => {
     expect(plain).toContain('Daily calls with Margaret Smith');
     expect(plain).not.toContain('glance');
     expect(plain).not.toContain('tag-list');
+  });
+
+  it.each([false, undefined])('hides the Mood area without sharing approval: %j', (shareMood) => {
+    const privateView = renderToStaticMarkup(createElement(FamilyDashboardView, {
+      data: { ...data, glance: { ...data.glance!, shareMood } }, now,
+    }));
+    expect(html).toContain('>Mood<');
+    expect(privateView).not.toContain('>Mood<');
+    expect(privateView).toContain('>Food<');
+    expect(privateView).toContain('Care team');
   });
 });

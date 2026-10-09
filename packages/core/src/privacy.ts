@@ -1,6 +1,6 @@
 /** Shared by the public page, staff enrollment and the API. Keep this module browser-safe. */
 export const PRIVACY_NOTICE = {
-  version: '2026-10-09.1',
+  version: '2026-10-09.2',
   title: 'Privacy and your choice',
   introduction: 'Hachi makes daily telephone check-ins to help your care team notice when you may need support. Your care team can explain the key points and answer questions before you decide whether to take part.',
   sections: [
@@ -21,7 +21,7 @@ export const PRIVACY_NOTICE = {
       title: 'What staff and family can see',
       paragraphs: [
         'Authorised care staff can see recordings, transcripts, analysis and care cases. Your registered family contact can see short plain-language summaries, call times, alerts, case status and your care team’s contact details. Family cannot access recordings, transcripts, direct quotes or speech analysis.',
-        'Sharing how you feel emotionally or how alone you feel needs a separate permission. It is off unless staff record that you agreed to it.',
+        'Your first-use approval includes short family updates about your mood and loneliness. There is no separate approval question. Ask your care team if you want to change what is shared with your family.',
         'If Hachi notices a possible emergency, it may alert and phone your registered staff and family contacts without asking again during that call.',
       ],
     },
@@ -53,7 +53,7 @@ export const PRIVACY_NOTICE = {
       ],
     },
   ],
-  firstUsePrompt: 'Hachi is an AI that calls daily. Calls are recorded and analysed with Google Gemini to help your care team. Staff can review them; your family gets short summaries and alerts, including in emergencies. Taking part is optional. Ask your care team to stop calls at any time. Is that OK?',
+  firstUsePrompt: 'Hachi is an AI that calls daily. Calls are recorded and analysed with Google Gemini to help your care team. Staff can review them; your family gets short summaries, including mood and loneliness, and alerts, including in emergencies. Taking part is optional. Ask your care team to stop calls at any time. Is that OK?',
   agreement: 'Yes, I agree.',
 } as const;
 

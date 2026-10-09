@@ -28,7 +28,10 @@ export function buildResident(input: ResidentInput, id: string, now: Date, staff
     id,
     staff: { ...input.staff, voice: input.staff.phone },
     ...(family ? { family: toFamily(family) } : {}),
-    ...(callConsent ? { callConsent: { ...callConsent, recordedAt: at, recordedBy: staffUid } } : {}),
+    ...(callConsent ? {
+      callConsent: { ...callConsent, recordedAt: at, recordedBy: staffUid },
+      consent: { shareMood: true, recordedAt: at, recordedBy: staffUid },
+    } : {}),
     familyLookup: familyLookup(family),
     serviceStartedAt: serviceStartedAt ?? at,
     ...(!callConsent && !serviceStartedAt ? { serviceStartPending: true } : {}),
@@ -47,6 +50,11 @@ export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staf
   // Preserve the first approval, even when an old form is resubmitted or the notice has changed.
   if (callConsent && !hasCallConsent(r.callConsent)) {
     next.callConsent = { ...callConsent, recordedAt: now.toISOString(), recordedBy: staffUid };
+    // The current first-use explanation includes family mood/loneliness updates. Keep any
+    // previously recorded choice, including an opt-out, and any explicit sharing change.
+    if (shareMood === undefined && !r.consent) {
+      next.consent = { shareMood: true, recordedAt: now.toISOString(), recordedBy: staffUid };
+    }
     // A delayed enrollment must still get its full baseline and first screening rotation.
     // Legacy residents and explicitly backdated imports retain their existing service start.
     if (r.serviceStartPending) {

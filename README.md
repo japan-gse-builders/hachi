@@ -137,7 +137,9 @@ is available on the page and in an expandable section of the form. Staff record 
 approval on **Add resident** or **Residents**. Details can be saved while approval is pending, but daily
 calls cannot start. Existing residents need this record too; no approvals are inferred or backfilled.
 Once recorded, approval is reused on later calls. **Pause calls** stops future check-ins; retention and
-deletion requests are handled by the care organisation. Mood sharing remains a separate permission.
+deletion requests are handled by the care organisation. The short first-use explanation includes
+family updates about mood and loneliness, so there is no separate sharing checkbox. Previously
+recorded sharing choices remain unchanged.
 
 ## Running cost, and the ceiling on it
 

@@ -83,8 +83,8 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
         <p className="reason">{screening.loneliness.summary}</p>
         <p className="meta">
           {screening.shareMood
-            ? 'The resident agreed their family may be told how they are in themselves.'
-            : 'The resident has not agreed to their family being told how they are in themselves, so the family is told nothing about this.'}
+            ? 'Family updates about mood and loneliness are approved.'
+            : 'Family updates about mood and loneliness are not approved.'}
         </p>
       </div>
     </section>

@@ -225,6 +225,8 @@ export interface TagTrend extends TagLabel {
 }
 
 export interface FamilyGlance {
+  /** Missing on older servers; do not display mood without explicit approval. */
+  shareMood?: boolean;
   latest: { startedAt: string; headline: string | null; domains: DomainStates | null } | null;
   /** Oldest first, one per resident-local day; `domains` is null when no call connected that day. */
   days: { date: string; tagged: boolean; domains: DomainStates | null }[];

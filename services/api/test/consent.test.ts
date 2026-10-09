@@ -19,6 +19,7 @@ describe('privacy notice and first-use approval', () => {
     const response = await app.inject({ method: 'POST', url: '/api/residents', ...as('staff'), payload: residentInput() });
     expect(response.statusCode).toBe(201);
     expect(response.json().callConsent).toBeUndefined();
+    expect(response.json().consent).toBeUndefined();
     expect(hasCallConsent((await store.getResident(response.json().id))?.callConsent)).toBe(false);
   });
 
@@ -29,6 +30,7 @@ describe('privacy notice and first-use approval', () => {
     });
     expect(response.statusCode).toBe(201);
     expect(response.json().callConsent).toEqual({ ...answer, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
+    expect(response.json().consent).toEqual({ shareMood: true, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
     expect(hasCallConsent((await store.getResident(response.json().id))?.callConsent)).toBe(true);
   });
 
@@ -81,7 +83,44 @@ describe('privacy notice and first-use approval', () => {
     const saved = await app.inject({ ...request, ...as('staff') });
     expect(saved.statusCode).toBe(200);
     expect(saved.json().callConsent).toEqual({ ...answer, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
-    expect(saved.json().consent).toBeUndefined(); // Mood sharing was not agreed.
+    expect(saved.json().consent).toEqual({ shareMood: true, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
+  });
+
+  it.each([undefined, { shareMood: false, recordedAt: '2026-10-01T00:00:00.000Z', recordedBy: 'original-staff' }])(
+    'does not expand an existing call approval or its family sharing on resubmission: %j', async (consent) => {
+      const { app, as, store } = setup();
+      const original = { ...answer, noticeVersion: '2026-10-09.1', recordedAt: '2026-10-01T00:00:00.000Z', recordedBy: 'original-staff' };
+      await store.createResident({ ...makeResident('res-1'), callConsent: original, consent });
+      const saved = await app.inject({
+        method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload: { callConsent: answer },
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().callConsent).toEqual(original);
+      expect(saved.json().consent).toEqual(consent);
+    },
+  );
+
+  it('preserves an earlier sharing opt-out when first call approval is recorded', async () => {
+    const { app, as, store } = setup();
+    const consent = { shareMood: false, recordedAt: '2026-10-01T00:00:00.000Z', recordedBy: 'original-staff' };
+    await store.createResident({ ...makeResident('res-1', { callConsent: undefined }), consent });
+    const saved = await app.inject({
+      method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload: { callConsent: answer },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().callConsent).toEqual({ ...answer, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
+    expect(saved.json().consent).toEqual(consent);
+  });
+
+  it('honours an explicit sharing opt-out in the same request as first call approval', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1', { callConsent: undefined }));
+    const saved = await app.inject({
+      method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload: { callConsent: answer, shareMood: false },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(hasCallConsent(saved.json().callConsent)).toBe(true);
+    expect(saved.json().consent).toEqual({ shareMood: false, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' });
   });
 
   it('preserves the original approval through later updates, mood sharing and resubmissions', async () => {

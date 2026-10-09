@@ -94,11 +94,6 @@ export function ResidentsPage() {
           )}
           <p><button className="ghost" type="button" disabled={busyId !== null || (!r.active && !hasCallConsent(r.callConsent))}
             onClick={() => void updateResident(r.id, { active: !r.active })}>{r.active ? 'Pause calls' : 'Resume calls'}</button></p>
-          <label className="check">
-            <input type="checkbox" checked={Boolean(r.consent?.shareMood)} disabled={busyId !== null}
-              onChange={(e) => void updateResident(r.id, { shareMood: e.target.checked })} />
-            Agreed their family may be told how they are in themselves
-          </label>
           <label className="file">Import past calls (JSON)
             <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
             <span className="button ghost">Choose a file</span>

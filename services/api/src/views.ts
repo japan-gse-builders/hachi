@@ -337,7 +337,7 @@ function screeningView(r: Resident, calls: CallRecord[], now: Date) {
     overall: overallStatus(answers, asOf),
     instruments: (['ULS-3', 'PHQ-2', 'FRAIL', 'STEADI'] as const).map((i) => scoreInstrument(i, answers, asOf)),
     loneliness: lonelinessFor(r, calls, asOf),
-    /** Whether the resident agreed their family may be told how they are in themselves. */
+    /** Whether family mood/loneliness updates are approved. */
     shareMood: Boolean(r.consent?.shareMood),
   };
 }
@@ -391,12 +391,15 @@ const EMERGENCY_HEADLINE: Record<Locale, (name: string, status: string) => strin
 function familyHeadline(r: Resident, c: CallRecord, cases: StoredCase[], locale: Locale): string | null {
   const emergency = cases.find((x) => x.rule === 'R1' && x.detections.some((d) => d.evidence.some((e) => e.callId === c.id)));
   if (emergency) return EMERGENCY_HEADLINE[locale](r.name, CASE_STATUS_LABELS[locale][emergency.status]);
-  return c.wellbeing?.headline ?? null;
+  // Generated free text can mention mood even when no mood tag was extracted.
+  return r.consent?.shareMood ? (c.wellbeing?.headline ?? null) : null;
 }
 
 type LifeStates = Record<LifeDomain, DomainState>;
 
 const perLifeDomain = (state: (d: LifeDomain) => DomainState) => Object.fromEntries(LIFE_DOMAINS.map((d) => [d, state(d)])) as LifeStates;
+const familyDomains = (r: Resident, state: (d: LifeDomain) => DomainState) =>
+  perLifeDomain((d) => d === 'mood' && !r.consent?.shareMood ? 'unmentioned' : state(d));
 const familyTagIds = (w: CallWellbeing) => w.tags.map((t) => t.id).filter(visibleToFamily);
 const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
@@ -415,7 +418,7 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
     return {
       date,
       tagged: tagged.length > 0,
-      domains: onDay.length ? perLifeDomain((d) => combineStates(tagged.map((w) => w.domains[d] ?? 'unmentioned'))) : null,
+      domains: onDay.length ? familyDomains(r, (d) => combineStates(tagged.map((w) => w.domains[d] ?? 'unmentioned'))) : null,
     };
   });
   const tagged = connected.flatMap((c) => (c.wellbeing ? [c.wellbeing] : []));
@@ -424,11 +427,12 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
     .map(({ id, ...counts }) => ({ ...describeTag(id, locale), ...counts }));
   const latest = connected[0];
   return {
+    shareMood: Boolean(r.consent?.shareMood),
     latest: latest
       ? {
           startedAt: latest.startedAt,
           headline: familyHeadline(r, latest, cases, locale),
-          domains: latest.wellbeing ? perLifeDomain((d) => latest.wellbeing!.domains[d] ?? 'unmentioned') : null,
+          domains: latest.wellbeing ? familyDomains(r, (d) => latest.wellbeing!.domains[d] ?? 'unmentioned') : null,
         }
       : null,
     days,
@@ -439,7 +443,8 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
 /**
  * FAM-02, FAM-03, FAM-04. Deliberately excludes recordings, transcripts, speech analysis and the
  * turns, basis and confidence behind tags, so residents can talk freely. Only `family` tags are
- * listed; mood is shown as a domain state only.
+ * listed; mood is shown as a domain state only with approval. Without it, free-text summaries
+ * and headlines are withheld too, since those can contain emotional information.
  */
 export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
@@ -454,9 +459,9 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
         startedAt: c.startedAt,
         connected: c.status === 'completed',
         durationSec: c.status === 'completed' ? (c.durationSec ?? null) : null,
-        summary: c.status === 'completed' ? (c.familySummary ?? null) : null,
+        summary: c.status === 'completed' && r.consent?.shareMood ? (c.familySummary ?? null) : null,
         headline: c.status === 'completed' ? familyHeadline(r, c, cases, locale) : null,
-        domains: w ? perLifeDomain((d) => w.domains[d] ?? 'unmentioned') : null,
+        domains: w ? familyDomains(r, (d) => w.domains[d] ?? 'unmentioned') : null,
         tags: w ? familyTagIds(w).map((id) => describeTag(id, locale)) : [],
       };
     }),

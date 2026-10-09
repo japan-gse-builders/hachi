@@ -55,7 +55,7 @@ export interface Resident {
   family?: FamilyContact;
   /** Absent means nothing has been agreed, which is treated as "no". */
   consent?: ResidentConsent;
-  /** Initial approval for AI calls; independent of the optional mood-sharing permission. */
+  /** Initial approval for AI calls, including family mood/loneliness updates for new approvals. */
   callConsent?: CallConsent;
   /** Normalized family phone/email used to authorize dashboard access (FAM-01). */
   familyLookup: string[];
