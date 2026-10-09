@@ -17,7 +17,9 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="app">
       <header className="top">
-        <Link className="brand" to="/">Hachi</Link>
+        <Link className="brand" to="/">
+          <img src="/branding/hachi-logo.png" alt="Hachi" width={1991} height={790} />
+        </Link>
         {user && (
           <nav className="nav">
             {role === 'staff' && (

@@ -11,7 +11,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(n.title || 'Hachi', {
       body: n.body || 'Please open Hachi.',
-      icon: '/icon.svg',
+      icon: '/branding/icon-192.png',
       data: { link },
       requireInteraction: true,
     }),
