@@ -177,3 +177,6 @@ details summary { cursor: pointer; min-height: 48px; display: flex; align-items:
 .tag.positive { background: #dcebe1; color: #1f4d3a; }
 .tag.concern { background: #fbe3d3; color: #7a2e05; }
 .tag.inferred { border-style: dashed; border-color: currentColor; }
+
+.footer { margin-top: 32px; font-size: 16px; }
+.privacy-notice p { margin: 8px 0; max-width: 68ch; }

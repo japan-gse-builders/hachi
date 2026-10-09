@@ -1,4 +1,4 @@
-import { gatewayVerdict } from '@hachi/core';
+import { gatewayVerdict, hasCallConsent } from '@hachi/core';
 import type { EmergencyLeg, Resident } from '@hachi/store';
 import { scheduleRetry, type CallDeps } from './calls.js';
 import { escapeXml, streamTwiml, TelephonyError } from './twilio.js';
@@ -49,6 +49,9 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
   }
   const ended = call.conversation?.endedBy;
   if (ended && ended !== 'gateway_error') return HANGUP;
+
+  const resident = await deps.store.getResident(ids.residentId);
+  if (!resident?.active || !hasCallConsent(resident.callConsent)) return HANGUP;
 
   // The gateway records what went wrong before closing the stream, so this reads a verdict about
   // this very call. Reconnecting into a fault that meets every session identically costs nine Live

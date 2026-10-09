@@ -1,5 +1,6 @@
 import type {
   Case,
+  CallConsent,
   CallSpeechSample,
   CallTag,
   Contact,
@@ -54,9 +55,13 @@ export interface Resident {
   family?: FamilyContact;
   /** Absent means nothing has been agreed, which is treated as "no". */
   consent?: ResidentConsent;
+  /** Initial approval for AI calls, including family mood/loneliness updates for new approvals. */
+  callConsent?: CallConsent;
   /** Normalized family phone/email used to authorize dashboard access (FAM-01). */
   familyLookup: string[];
   serviceStartedAt: string;
+  /** New enrollment saved before approval; anchor its baseline/rotation when approval arrives. */
+  serviceStartPending?: boolean;
   active: boolean;
   /** Generated demo/evaluation data, not a real person (USR-04). */
   synthetic?: boolean;

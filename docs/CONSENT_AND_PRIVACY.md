@@ -10,29 +10,56 @@ Each point is marked:
 > Hachi must confirm its own obligations under the Act on the Protection of Personal Information
 > (APPI) and any other applicable rules with qualified advisers.
 
-## 1. Consent before enrolment — [Operational]
+## 1. Approval before the first call
 
-Hachi has no consent screen or consent record. Consent is obtained by the care organisation before a
-resident is registered:
+- **[Code]** `/privacy` is public, needs no sign-in or Firebase configuration, and includes support
+  instructions. The footer links to it from both staff and family screens. The page, the staff
+  enrollment notice and the unauthenticated API endpoint `GET /privacy-notice` use shared text in
+  `packages/core/src/privacy.ts`, including the short first-use explanation. The version identifies
+  the information shown; it does not expire an existing approval when the text changes.
+- **[Operational]** Residents use a telephone, so staff read the **short first-use explanation**, answer
+  questions, and ask for explicit approval. A reply such as **“Yes, I agree.”** is sufficient; the resident
+  does not need to recite a script or read the full page aloud. The full notice remains available on
+  `/privacy` and in an expandable section of the form for questions and further explanation.
+  The notice explains Google Gemini processing, recordings and
+  analysis, what staff and family can see, emergency alerts, locations, retention and stopping.
+  The software records staff's attestation; it cannot verify that this conversation took place.
+- **[Code]** Staff can record approval while adding a resident, or later on the Residents screen.
+  The API accepts only an affirmative answer for the notice currently shown, and records the staff
+  user ID and time on the server in `resident.callConsent`. Saving details without approval is
+  allowed. It does **not** permit calls. Existing residents without this record are also pending;
+  staff must obtain and record their approval before daily calls resume after this update.
+  A newly saved pending enrollment starts its baseline and screening rotation when approval is
+  recorded, so waiting does not consume its first four weeks. Existing residents and explicitly
+  dated historical imports retain their service start.
+- **[Code]** Pending residents are excluded from scheduling and missed-check-in warnings. The
+  telephony worker checks again before dialing, including previously queued tasks and retries.
+  The Voice Gateway refuses to start an AI session or recording without approval. Family screens
+  do not advertise a next call while approval is pending. Normal daily calls reuse the saved
+  first-use approval; there is no repeated approval prompt or automatic re-consent on version changes.
+- **[Code]** New first-use approvals include short family updates about mood and loneliness,
+  explained in the short prompt and full notice. The API records this sharing approval in
+  `resident.consent` with the same staff identity and time; there is no separate sharing checkbox.
+  Pending enrollment does not imply sharing approval. Existing sharing choices are preserved,
+  including opt-outs, and resubmitting an old call approval does not expand its scope. Staff can
+  still record a later sharing request through `shareMood` in the API without altering call approval.
+- **[Operational]** The family member agrees to receive alerts and access the dashboard, and the
+  resident agrees to the chosen family contact (requirements §4). There is no separate family
+  approval record in Hachi.
+- **[Code]** Staff can use **Pause calls** on the Residents screen, which sets `active: false`.
+  This stops future daily calls, queued attempts and stream reconnections. It does not interrupt an
+  AI conversation already running. The resident can hang up to end that conversation. Emergency
+  bridges and alert calls for an emergency already raised remain available.
+- **[Operational]** Stopping future calls is a request to the enrolling care team. There is no
+  automatic spoken withdrawal detector in the call. Deletion and retention are separate processes.
+  Removing a family contact (`family: null` on `PATCH /api/residents/:id`) stops their dashboard
+  access on the next request; this action is available in the API, not the staff UI.
 
-- The **resident** is told, in plain English, that:
-  - the daily calls are made by an **AI**, not a person;
-  - calls are **recorded** and transcribed;
-  - what they say and how they speak (response time, hesitations, vocabulary, staying on topic) is
-    **analysed** to spot changes, and this is not a medical diagnosis;
-  - care staff see the results, and in an emergency staff and the registered family member are
-    alerted and phoned;
-  - the registered family member can see a short summary of each call, but **not** recordings,
-    transcripts or speech analysis;
-  - audio is processed in the United States (see section 6);
-  - they can **stop at any time**, and how to do so.
-- The **family member** consents to receive alerts and to access the dashboard, and the resident
-  agrees to them being registered (requirements §4).
-- Staff record who gave consent and when, outside Hachi.
-- To stop: staff mark the resident inactive, or remove the family contact to stop family alerts and
-  dashboard access. [Code: the API accepts `active: false` and `family: null` on
-  `PATCH /api/residents/:id`; inactive residents are never dialled, and a removed family contact loses
-  dashboard access on the next request. The staff app has no button for either yet.]
+The public page directs people to their enrolling care team and the contacts shown on the family
+dashboard; this repository has no organisation-wide support email or telephone number configured.
+Historical call imports and synthetic evaluations remain staff-only/offline workflows. The new
+approval gate protects live calls; staff remain responsible for obtaining permission for imported
+historical data.
 
 ## 2. What Hachi tells the resident on every call
 
@@ -56,7 +83,8 @@ resident is registered:
 | Call recordings | Yes, on the case page (signed URL valid 15 minutes) | **No** | [Code] API |
 | Transcripts and quoted evidence | Yes | **No** | [Code] API |
 | Speech analysis (R3 features, baseline, trend) | Yes | **No** | [Code] API |
-| Short plain-language summary per call | Yes | Yes (last 14 days) | [Code] API |
+| Short plain-language summary per call | Yes | With mood-sharing approval (last 14 days) | [Code] API |
+| Mood status and loneliness updates | Yes | With mood-sharing approval | [Code] API / analyzer |
 | Call times, connected or not, duration | Yes | Yes (last 14 days) | [Code] API |
 | Alerts sent to the family member and case status | Yes | Yes | [Code] API |
 | Staff name and contact | Yes | Yes | [Code] API |
@@ -70,6 +98,10 @@ resident is registered:
   residents get the same response.
 - **[Code]** Family messages never include transcript quotes. SMS contains no link, phone number or
   quote.
+- **[Code]** Without mood-sharing approval, the family API withholds mood states, generated
+  headlines and free-text summaries, which can contain emotional information. The family view
+  hides the Mood area. Family-visible tags, call times, alerts and neutral emergency follow-up
+  messages remain available; transcripts and speech analysis remain staff-only in all cases.
 - **[Operational]** Deciding who is given a staff account, and removing it when they leave.
 
 ## 4. Data minimisation

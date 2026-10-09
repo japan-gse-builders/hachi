@@ -88,8 +88,9 @@ describe('what the set questions add up to, for staff', () => {
     expect(frail).toMatchObject({ answered: 1, of: 5, askable: 3, positive: null });
   });
 
-  it('says plainly whether the family may be told how the resident is in themselves', async () => {
-    const { screening } = await withAnswers([]);
+  it('reports family mood-sharing approval from the first-use agreement', async () => {
+    expect((await withAnswers([])).screening.shareMood).toBe(true);
+    const { screening } = await withAnswers([], { callConsent: undefined });
     expect(screening.shareMood).toBe(false);
     expect(screening.loneliness.status).toBe('incomplete');
   });
@@ -122,7 +123,7 @@ describe('recording what the resident agreed to', () => {
 
   it('is not something family can set for the resident', async () => {
     const { app, as, store } = setup();
-    await store.createResident(makeResident('res-1'));
+    await store.createResident(makeResident('res-1', { callConsent: undefined }));
     const res = await app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('familyPhone'), payload: { shareMood: true } });
     expect(res.statusCode).toBe(403);
     expect((await store.getResident('res-1'))!.consent).toBeUndefined();

@@ -27,7 +27,7 @@ function Cell({ state, title }: { state: CellState; title?: string }) {
 }
 
 /** Headline and the latest call's six life domains. */
-export function LatestCall({ latest, now }: { latest: FamilyGlance['latest']; now: Date }) {
+export function LatestCall({ latest, now, shareMood = false }: { latest: FamilyGlance['latest']; now: Date; shareMood?: boolean }) {
   return (
     <div className="stack glance-latest">
       {latest && <p className="meta">{latestCallLabel(latest.startedAt, now)}</p>}
@@ -35,7 +35,7 @@ export function LatestCall({ latest, now }: { latest: FamilyGlance['latest']; no
       {worthAsking(latest) && <p>Some things came up that may be worth asking about next time you talk.</p>}
       {latest && (
         <ul className="glance-today" aria-label="The latest call, by area of life">
-          {LIFE_DOMAINS.map((d) => {
+          {LIFE_DOMAINS.filter((d) => d.key !== 'mood' || shareMood).map((d) => {
             const state = domainState(latest.domains, d.key);
             return (
               <li key={d.key}>
@@ -65,7 +65,7 @@ export function Legend() {
 }
 
 /** Rows are areas of life, columns are days; a dashed cell is a day without a call that connected. */
-export function TwoWeekGrid({ days }: { days: FamilyGlance['days'] }) {
+export function TwoWeekGrid({ days, shareMood = false }: { days: FamilyGlance['days']; shareMood?: boolean }) {
   const first = days[0];
   const last = days.at(-1);
   return (
@@ -88,7 +88,7 @@ export function TwoWeekGrid({ days }: { days: FamilyGlance['days'] }) {
             </tr>
           </thead>
           <tbody>
-            {LIFE_DOMAINS.map((dom) => (
+            {LIFE_DOMAINS.filter((dom) => dom.key !== 'mood' || shareMood).map((dom) => (
               <tr key={dom.key}>
                 <th scope="row">{dom.label}</th>
                 {days.map((d) => {
