@@ -36,7 +36,7 @@ export function FamilyFinishPage() {
   if (user) return <Navigate to="/" replace />;
   if (!valid) {
     return (
-      <section className="card stack">
+      <section className="card stack narrow">
         <h1>This link does not work</h1>
         <p><Link to="/family/login">Ask for a new sign-in link</Link>.</p>
       </section>
@@ -51,7 +51,7 @@ export function FamilyFinishPage() {
   };
 
   return (
-    <form className="card stack" onSubmit={submit}>
+    <form className="card stack narrow" onSubmit={submit}>
       <h1>Confirm your email</h1>
       <p className="meta">You opened the link on a different device. Enter the same email address to finish signing in.</p>
       {error && <p className="error">{error}</p>}

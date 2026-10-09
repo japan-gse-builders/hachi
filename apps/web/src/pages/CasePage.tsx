@@ -73,7 +73,7 @@ export function CasePage() {
       </section>
 
       {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
-      <div className="stack case-evidence">
+      <div className="card stack case-column case-evidence">
         <section className="card">
           <h2 className="eyebrow">What was said</h2>
           {evidence.map((e, i) => (
@@ -137,7 +137,7 @@ export function CasePage() {
         </form>
       </div>
 
-      <div className="stack case-records">
+      <div className="card stack case-column case-records">
         <section className="card">
           <h2 className="eyebrow">Notifications</h2>
           {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}

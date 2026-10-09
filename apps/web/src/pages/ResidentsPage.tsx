@@ -59,48 +59,52 @@ export function ResidentsPage() {
   };
 
   return (
-    <div className="stack tiles">
+    <div className="stack">
       <div className="row">
         <h1>Residents</h1>
         <Link className="button" to="/staff/residents/new">Add resident</Link>
       </div>
       {error && <p className="error">{error}</p>}
-      {residents?.map((r) => (
-        <article className="card" key={r.id}>
-          <h2>{r.name}</h2>
-          <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
-          <p className="meta">Resident {r.id}</p>
-          {hasCallConsent(r.callConsent) ? (
-            <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-GB')}.</p>
-          ) : (
-            <>
-              <p role="status">Approval needed. Daily calls will wait until the resident agrees.</p>
-              {consentFor !== r.id && <button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button>}
-              {consentFor === r.id && (
-                <form className="stack" onSubmit={(event) => {
-                  event.preventDefault();
-                  if (new FormData(event.currentTarget).get('callConsent') !== 'on') return;
-                  void updateResident(r.id, { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version } })
-                    .then((saved) => { if (saved) setConsentFor(null); });
-                }}>
-                  <CallConsentField required />
-                  <div className="row">
-                    <button type="submit" disabled={busyId !== null}>{busyId === r.id ? 'Saving…' : 'Save approval'}</button>
-                    <button className="ghost" type="button" disabled={busyId !== null} onClick={() => setConsentFor(null)}>Cancel</button>
-                  </div>
-                </form>
+      {residents && residents.length > 0 && (
+        <div className="tiles">
+          {residents.map((r) => (
+            <article className="card" key={r.id}>
+              <h2>{r.name}</h2>
+              <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
+              <p className="meta">Resident {r.id}</p>
+              {hasCallConsent(r.callConsent) ? (
+                <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-GB')}.</p>
+              ) : (
+                <>
+                  <p role="status">Approval needed. Daily calls will wait until the resident agrees.</p>
+                  {consentFor !== r.id && <button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button>}
+                  {consentFor === r.id && (
+                    <form className="stack" onSubmit={(event) => {
+                      event.preventDefault();
+                      if (new FormData(event.currentTarget).get('callConsent') !== 'on') return;
+                      void updateResident(r.id, { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version } })
+                        .then((saved) => { if (saved) setConsentFor(null); });
+                    }}>
+                      <CallConsentField required />
+                      <div className="row">
+                        <button type="submit" disabled={busyId !== null}>{busyId === r.id ? 'Saving…' : 'Save approval'}</button>
+                        <button className="ghost" type="button" disabled={busyId !== null} onClick={() => setConsentFor(null)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </>
               )}
-            </>
-          )}
-          <p><button className="ghost" type="button" disabled={busyId !== null || (!r.active && !hasCallConsent(r.callConsent))}
-            onClick={() => void updateResident(r.id, { active: !r.active })}>{r.active ? 'Pause calls' : 'Resume calls'}</button></p>
-          <label className="file">Import past calls (JSON)
-            <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
-            <span className="button ghost">Choose a file</span>
-          </label>
-          {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
-        </article>
-      ))}
+              <p><button className="ghost" type="button" disabled={busyId !== null || (!r.active && !hasCallConsent(r.callConsent))}
+                onClick={() => void updateResident(r.id, { active: !r.active })}>{r.active ? 'Pause calls' : 'Resume calls'}</button></p>
+              <label className="file">Import past calls (JSON)
+                <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
+                <span className="button ghost">Choose a file</span>
+              </label>
+              {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

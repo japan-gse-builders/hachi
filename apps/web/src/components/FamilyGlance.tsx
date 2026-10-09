@@ -71,7 +71,7 @@ export function TwoWeekGrid({ days, shareMood = false }: { days: FamilyGlance['d
   return (
     <section className="card stack">
       <h2>The last two weeks at a glance</h2>
-      <div className="glance-scroll">
+      <div className="table-scroll glance-scroll" role="region" aria-label="Two-week call history" tabIndex={0}>
         <table className="glance-grid">
           <caption className="meta">
             {first && last ? `One column per day, ${dayLabel(first.date)} to ${dayLabel(last.date)}.` : ''} "Not talked about" does not mean all is well.
@@ -104,7 +104,6 @@ export function TwoWeekGrid({ days, shareMood = false }: { days: FamilyGlance['d
           </tbody>
         </table>
       </div>
-      <Legend />
     </section>
   );
 }

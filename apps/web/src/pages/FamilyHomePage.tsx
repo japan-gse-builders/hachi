@@ -43,7 +43,7 @@ export function FamilyHomePage() {
   if (residents.length === 1) return <Navigate to={`/family/residents/${residents[0]!.id}`} replace />;
   if (residents.length === 0) {
     return (
-      <section className="card stack">
+      <section className="card stack narrow">
         <h1>No one is linked to this email yet</h1>
         <p>You are signed in as {user?.email}. Ask the care team to add this address as the family contact.</p>
       </section>
@@ -52,11 +52,13 @@ export function FamilyHomePage() {
   return (
     <div className="stack narrow">
       <h1>Who would you like to check on?</h1>
-      {residents.map((r) => (
-        <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
-          <h2>{r.name}</h2>
-        </Link>
-      ))}
+      <div className="tiles tiles-compact">
+        {residents.map((r) => (
+          <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
+            <h2>{r.name}</h2>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

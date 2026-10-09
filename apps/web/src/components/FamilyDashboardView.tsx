@@ -1,12 +1,13 @@
 import { channelList, familyDeliveryList, formatWhen, minutes, phoneDisplay, topicList } from '../format';
 import type { FamilyDashboard } from '../types';
-import { LatestCall, TagList, TagTrends, TwoWeekGrid } from './FamilyGlance';
+import { LatestCall, Legend, TagList, TagTrends, TwoWeekGrid } from './FamilyGlance';
 
 /** FAM-02..04: what family see, without recordings, transcripts or anything about how the resident speaks. */
 export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now: Date }) {
   const { staff, glance } = data;
   return (
     <>
+      {glance && <Legend />}
       <section className="card">
         <h1>Daily calls with {data.resident.name}</h1>
         {glance && <LatestCall latest={glance.latest} now={now} shareMood={glance.shareMood} />}
