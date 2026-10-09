@@ -40,6 +40,7 @@ a { color: #1f4d3a; }
 .stack > * { min-width: 0; }
 .card { min-width: 0; background: white; border-radius: 16px; padding: 16px; box-shadow: 0 1px 0 rgba(28, 25, 21, 0.08); overflow-wrap: anywhere; }
 .tiles > .card { display: flex; flex-direction: column; }
+.tiles > .card > p:not(.quote) { margin: 4px 0; }
 .tiles > .card > .badge { align-self: flex-start; }
 .tiles > .card > .file { margin-top: auto; padding-top: 12px; }
 .tiles > .card > .row:last-child, .tiles > .card-link > .meta:last-child { margin-top: auto; padding-top: 12px; }
@@ -95,7 +96,7 @@ input, select, textarea { width: 100%; padding: 12px; border-radius: 12px; borde
 .agent { color: #5c564c; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .check input { width: auto; }
-.table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+.table-scroll { position: relative; min-width: 0; max-width: 100%; overflow-x: auto; }
 .table-scroll:focus-visible { outline: 3px solid #1f4d3a; outline-offset: 2px; }
 .speech-charts { display: grid; gap: 16px; }
 @media (min-width: 640px) { .speech-charts { grid-template-columns: 1fr 1fr; } }
