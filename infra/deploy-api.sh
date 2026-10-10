@@ -12,6 +12,11 @@ SERVICE=hachi-api
 REPO=hachi
 RUNTIME_SA="hachi-api@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
+# "Call now" (issue #13) queues dial tasks for the telephony service, signed as the same invoker
+# account Cloud Scheduler and the telephony service's own tasks use.
+INVOKER_SA="hachi-tasks@${PROJECT_ID}.iam.gserviceaccount.com"
+CALL_QUEUE=outbound-calls
+STAFF_CALL_COOLDOWN_MIN="${STAFF_CALL_COOLDOWN_MIN:-10}"
 WEB_ORIGINS="${WEB_ORIGINS:-http://localhost:5173,https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com}"
 
 cd "$(dirname "$0")/.."
@@ -20,7 +25,7 @@ gcloud config set project "$PROJECT_ID" >/dev/null
 echo "==> Service account"
 gcloud iam service-accounts describe "$RUNTIME_SA" >/dev/null 2>&1 \
   || gcloud iam service-accounts create hachi-api --display-name "Hachi API (Cloud Run runtime)"
-for role in roles/datastore.user roles/firebaseauth.admin; do
+for role in roles/datastore.user roles/firebaseauth.admin roles/cloudtasks.enqueuer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME_SA" --role "$role" --condition=None >/dev/null
 done
 gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
@@ -28,6 +33,17 @@ gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
 # Signed URLs without a key file.
 gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountTokenCreator >/dev/null
+# Lets the API create dial tasks that carry an OIDC token for the invoker account. The account is
+# created by deploy-telephony.sh; without it "Call now" stays off (the route answers 503).
+TELEPHONY_ENV=""
+if gcloud iam service-accounts describe "$INVOKER_SA" >/dev/null 2>&1; then
+  gcloud iam service-accounts add-iam-policy-binding "$INVOKER_SA" \
+    --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountUser >/dev/null
+  PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
+  TELEPHONY_ENV="@TELEPHONY_BASE_URL=https://hachi-telephony-${PROJECT_NUMBER}.${REGION}.run.app@TASKS_LOCATION=${REGION}@CALL_QUEUE=${CALL_QUEUE}@TASKS_INVOKER_SA=${INVOKER_SA}@STAFF_CALL_COOLDOWN_MIN=${STAFF_CALL_COOLDOWN_MIN}"
+else
+  echo "Note: ${INVOKER_SA} does not exist yet; run deploy-telephony.sh first to enable \"Call now\"." >&2
+fi
 
 echo "==> Building image"
 if [[ -n "${IMAGE:-}" ]]; then
@@ -42,7 +58,7 @@ echo "==> Deploying Cloud Run"
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 0 --max-instances 5 --cpu 1 --memory 512Mi \
   --timeout 60 \
-  --set-env-vars "^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@RECORDINGS_BUCKET=${RECORDINGS_BUCKET}@WEB_ORIGINS=${WEB_ORIGINS}"
+  --set-env-vars "^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@RECORDINGS_BUCKET=${RECORDINGS_BUCKET}@WEB_ORIGINS=${WEB_ORIGINS}${TELEPHONY_ENV}"
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 echo "==> Health check"

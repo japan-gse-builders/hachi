@@ -10,6 +10,8 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@google-cloud/tasks": "^7.2.1",
+    "@hachi/cloud": "^0.1.0",
     "@hachi/core": "*",
     "@hachi/store": "*",
     "fastify": "^5.12.5",

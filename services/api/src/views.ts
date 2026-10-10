@@ -193,8 +193,11 @@ export function buildUnreached(
   locale: Locale,
 ): UnreachedView {
   const items: UnreachedResident[] = [];
-  for (const { resident: r, calls } of entries) {
+  for (const { resident: r, calls: all } of entries) {
     if (!r.active || !hasCallConsent(r.callConsent)) continue;
+    // A call staff asked for counts when somebody talked to the resident; one that did not connect is
+    // not a missed check-in, because the check-in is the daily call and it has its own attempts.
+    const calls = all.filter((c) => c.trigger !== 'staff' || (c.status === 'completed' && missedReason(attemptOf(c)) === null));
     const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
     const today = localDate(now, r.timeZone);
     const reached = calls.filter((c) => missedReason(attemptOf(c)) === null && c.status === 'completed');
@@ -223,6 +226,29 @@ export function buildUnreached(
   // Our own faults first: they are the ones where nothing at all is known about the resident.
   items.sort((a, b) => Number(b.ourFault) - Number(a.ourFault) || b.at.localeCompare(a.at));
   return { items, note: unreachedNote(items, locale) };
+}
+
+/**
+ * One call's progress, for the "Call now" button to follow (issue #13). Before the telephony
+ * service has created the call there is nothing stored yet, so it reads as `requested`.
+ */
+export function callProgressView(callId: string, c: CallRecord | null, r: Resident) {
+  if (!c) {
+    const asked = r.lastStaffCall?.callId === callId ? r.lastStaffCall : undefined;
+    if (!asked) return null;
+    return { id: callId, status: 'requested' as const, trigger: 'staff' as const, requestedBy: asked.requestedBy, startedAt: asked.at, endedAt: null, durationSec: null, endedBy: null, failureCode: null };
+  }
+  return {
+    id: c.id,
+    status: c.status,
+    trigger: c.trigger ?? null,
+    requestedBy: c.requestedBy ?? null,
+    startedAt: c.startedAt,
+    endedAt: c.endedAt ?? null,
+    durationSec: c.durationSec ?? null,
+    endedBy: c.conversation?.endedBy ?? null,
+    failureCode: c.failure?.code ?? null,
+  };
 }
 
 /** Calls listed on the case page; the speech baseline may come from older ones. */
@@ -289,6 +315,9 @@ export async function buildCaseDetail(
       id: x.id,
       startedAt: x.startedAt,
       status: x.status,
+      // Staff asked for this call (issue #13); null for the daily check-in.
+      trigger: x.trigger ?? null,
+      requestedBy: x.requestedBy ?? null,
       durationSec: x.durationSec ?? null,
       summary: x.summary ?? null,
       wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, x.transcript ?? [], locale) : null,

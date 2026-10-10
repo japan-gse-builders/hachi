@@ -151,6 +151,9 @@ export interface CaseDetail {
     id: string;
     startedAt: string;
     status: string;
+    /** 'staff' when a member of staff asked Hachi to call (issue #13). Missing from older servers. */
+    trigger?: 'staff' | null;
+    requestedBy?: string | null;
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
     /** Missing from older servers; null for calls analysed before tags existed. */
@@ -269,4 +272,6 @@ export interface Resident {
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
   consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
   callConsent?: import('./privacy').CallConsent;
+  /** The call holding this resident's line, if any; stale once `until` has passed (issue #13). */
+  callSlot?: { callId: string; at: string; until: string };
 }
