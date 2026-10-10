@@ -5,6 +5,7 @@ import {
   CASE_STATUSES,
   formatUsd,
   spendStatus,
+  STAFF_REQUEST_HOLD_MS,
   type SpendLedger,
   type SpendPolicy,
   combineStates,
@@ -230,13 +231,26 @@ export function buildUnreached(
 
 /**
  * One call's progress, for the "Call now" button to follow (issue #13). Before the telephony
- * service has created the call there is nothing stored yet, so it reads as `requested`.
+ * service has created the call there is nothing stored yet, so it reads as `requested`, but only
+ * for as long as the request holds the line: a task that never reached the telephony service would
+ * otherwise read as "about to ring" for ever.
  */
-export function callProgressView(callId: string, c: CallRecord | null, r: Resident) {
+export function callProgressView(callId: string, c: CallRecord | null, r: Resident, now: Date) {
   if (!c) {
     const asked = r.lastStaffCall?.callId === callId ? r.lastStaffCall : undefined;
     if (!asked) return null;
-    return { id: callId, status: 'requested' as const, trigger: 'staff' as const, requestedBy: asked.requestedBy, startedAt: asked.at, endedAt: null, durationSec: null, endedBy: null, failureCode: null };
+    const lapsed = now.getTime() - Date.parse(asked.at) > STAFF_REQUEST_HOLD_MS;
+    return {
+      id: callId,
+      status: lapsed ? ('failed' as const) : ('requested' as const),
+      trigger: 'staff' as const,
+      requestedBy: asked.requestedBy,
+      startedAt: asked.at,
+      endedAt: null,
+      durationSec: null,
+      endedBy: null,
+      failureCode: lapsed ? 'not_placed' : null,
+    };
   }
   return {
     id: c.id,
@@ -306,6 +320,8 @@ export async function buildCaseDetail(
       householdNotes: r.householdNotes ?? null,
       // USR-04: the evidence carries this too, so a demo quote is never read as a real one.
       synthetic: r.synthetic === true,
+      // Whether "Call now" can work at all (issue #13): the same conditions the daily call has.
+      callable: r.active && !r.synthetic && hasCallConsent(r.callConsent),
     },
     detections: c.detections.map((d) => ({
       ...d,

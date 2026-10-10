@@ -7,8 +7,13 @@ import { CallConsentField } from '../components/CallConsentField';
 import { CallNowButton } from '../components/CallNowButton';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
 
-/** The call holding the line now, so the page follows it instead of offering a second call. */
-const liveCall = (r: Resident) => (r.callSlot && Date.parse(r.callSlot.until) > Date.now() ? r.callSlot.callId : undefined);
+/**
+ * A staff call holding the line now, so the page follows it instead of offering a second call.
+ * Daily calls are left out: at a shared call time they would start a poll for every resident on
+ * the page. Pressing "Call now" during one is refused with its id, and the button follows it then.
+ */
+const liveCall = (r: Resident) =>
+  r.callSlot && /-now-\d+$/.test(r.callSlot.callId) && Date.parse(r.callSlot.until) > Date.now() ? r.callSlot.callId : undefined;
 
 export function ResidentsPage() {
   const { token } = useAuth();

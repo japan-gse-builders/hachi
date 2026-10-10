@@ -30,6 +30,8 @@ describe('following a call staff asked for (issue #13)', () => {
   it('says why a call was not made, and when it ended badly', () => {
     expect(callProgressLine(p({ status: 'failed', failureCode: 'budget_exhausted' }), 'Maggie')).toContain('budget');
     expect(callProgressLine(p({ status: 'failed', failureCode: '21219' }), 'Maggie')).toBe('The call could not be made.');
+    expect(callProgressLine(p({ status: 'failed', failureCode: 'paused' }), 'Maggie')).toContain('paused');
+    expect(callProgressLine(p({ status: 'failed', failureCode: 'not_placed' }), 'Maggie')).toContain('You can ask again');
     expect(callProgressLine(p({ status: 'completed', endedBy: 'silent_after_greeting' }), 'Maggie')).toContain('did not speak');
     expect(callProgressLine(p({ status: 'completed', endedBy: 'emergency' }), 'Maggie')).toContain('emergency');
   });

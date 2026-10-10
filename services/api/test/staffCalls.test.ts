@@ -118,6 +118,32 @@ describe('asking Hachi to call now (issue #13)', () => {
     expect(res.json().reason).toBe('gateway_unavailable');
   });
 
+  it('does not hold staff to the cooldown after a call that went wrong on our side', async () => {
+    const ctx = await seeded();
+    await ctx.callNow();
+    await ctx.store.addCalls([
+      call({ id: '2026-10-01-now-1', status: 'failed', trigger: 'staff', requestedBy: 'staff-1', failure: { code: 'line_busy', message: 'busy', retryable: false } }),
+    ]);
+    await ctx.endCall();
+    expect((await ctx.callNow()).json()).toEqual({ callId: '2026-10-01-now-2', status: 'requested' });
+  });
+
+  it('still spaces out a call that rang and was not answered', async () => {
+    const ctx = await seeded();
+    await ctx.callNow();
+    await ctx.store.addCalls([call({ id: '2026-10-01-now-1', status: 'no_answer', trigger: 'staff', requestedBy: 'staff-1', durationSec: undefined })]);
+    await ctx.endCall();
+    expect((await ctx.callNow()).statusCode).toBe(429);
+  });
+
+  it('does not hold staff to the cooldown when the request never reached the telephony service', async () => {
+    const ctx = await seeded();
+    await ctx.callNow();
+    // The line the request held has lapsed and no call was ever created.
+    await ctx.store.updateResident('res-1', ({ callSlot: _slot, ...r }) => ({ ...r, lastStaffCall: { ...r.lastStaffCall!, at: later(-6 * 60_000) } }));
+    expect((await ctx.callNow()).json()).toEqual({ callId: '2026-10-01-now-2', status: 'requested' });
+  });
+
   it('frees the line and the cooldown when the task cannot be queued', async () => {
     const ctx = await seeded();
     ctx.queue.fail = true;
@@ -152,6 +178,13 @@ describe('asking Hachi to call now (issue #13)', () => {
       expect((await ctx.progress('2026-10-01-now-1')).json()).toMatchObject({ id: '2026-10-01-now-1', status: 'in_progress', trigger: 'staff', durationSec: null });
     });
 
+    it('stops reading as requested once the request has lapsed without a call', async () => {
+      const ctx = await seeded();
+      await ctx.callNow();
+      await ctx.store.updateResident('res-1', (r) => ({ ...r, lastStaffCall: { ...r.lastStaffCall!, at: later(-6 * 60_000) } }));
+      expect((await ctx.progress('2026-10-01-now-1')).json()).toMatchObject({ status: 'failed', failureCode: 'not_placed' });
+    });
+
     it('answers 404 for a call that was never asked for', async () => {
       const ctx = await seeded();
       expect((await ctx.progress('2026-10-01-now-7')).statusCode).toBe(404);
@@ -161,6 +194,16 @@ describe('asking Hachi to call now (issue #13)', () => {
 });
 
 describe('staff calls elsewhere on the staff screens', () => {
+  it('say on the case page whether "Call now" can work for the resident', async () => {
+    const { app, store, as } = setup();
+    await store.createResident(makeResident('res-1'));
+    await store.putCase(storedCase());
+    const callable = async () => (await app.inject({ method: 'GET', url: '/api/cases/case-1', ...as('staff') })).json().resident.callable;
+    expect(await callable()).toBe(true);
+    await store.updateResident('res-1', (r) => ({ ...r, active: false }));
+    expect(await callable()).toBe(false);
+  });
+
   it('are marked on the case page with who asked', async () => {
     const { app, store, as } = setup();
     await store.createResident(makeResident('res-1'));

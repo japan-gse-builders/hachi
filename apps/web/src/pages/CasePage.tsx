@@ -72,7 +72,7 @@ export function CasePage() {
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
         {/* The next step after reading a case is often to hear from them again (issue #13). */}
-        {!detail.resident.synthetic && (
+        {(detail.resident.callable ?? !detail.resident.synthetic) && (
           <CallNowButton residentId={detail.resident.id} name={detail.resident.preferredName || detail.resident.name} phone={detail.resident.phone} />
         )}
       </section>

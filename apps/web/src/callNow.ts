@@ -22,6 +22,10 @@ const NOT_PLACED: Record<string, string> = {
   budget_exhausted: "This month's AI budget is used up, so the call was not made.",
   gateway_unavailable: "Hachi's conversations are not working at the moment, so the call was not made.",
   line_busy: 'Another call to them was already under way, so this one was not made.',
+  paused: 'Calls were paused for them before Hachi could ring, so the call was not made.',
+  consent_required: 'They have not agreed to calls from Hachi, so the call was not made.',
+  synthetic: 'This is a demo resident, so Hachi does not call them.',
+  not_placed: 'The call did not start within a few minutes. You can ask again.',
 };
 
 /** What the button says about the call, in a sentence staff can act on. */

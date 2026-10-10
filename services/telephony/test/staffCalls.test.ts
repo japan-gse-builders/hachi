@@ -75,6 +75,26 @@ describe('a staff-requested call', () => {
     expect(noConsent.telephony.calls.length + demo.telephony.calls.length).toBe(0);
   });
 
+  it.each([
+    ['inactive', 'paused', { active: false }],
+    ['consent_required', 'consent_required', { callConsent: undefined }],
+    ['synthetic', 'synthetic', { synthetic: true }],
+  ])('when refused (%s), says why on the call and frees the line at once', async (_reason, code, overrides) => {
+    const { deps, store } = await seeded({}, overrides);
+    await placeCall(deps, staff, 0);
+    expect((await store.getCall('res-1', STAFF_ID))!).toMatchObject({ status: 'failed', trigger: 'staff', failure: { code, retryable: false } });
+    expect((await store.getResident('res-1'))!.callSlot).toBeUndefined();
+  });
+
+  it('leaves a call already made alone when its task comes again after calls were paused', async () => {
+    const { deps, store } = await seeded();
+    expect((await placeCall(deps, staff, 0)).outcome).toBe('placed');
+    await store.updateResident('res-1', (r) => ({ ...r, active: false }));
+    expect(await placeCall(deps, staff, 1)).toEqual({ outcome: 'skipped', reason: 'inactive' });
+    expect((await store.getCall('res-1', STAFF_ID))!.status).toBe('scheduled');
+    expect((await store.getResident('res-1'))!.callSlot?.callId).toBe(STAFF_ID);
+  });
+
   it('is not retried when Twilio refuses it, and frees the line', async () => {
     const { deps, store, queue, telephony } = await seeded();
     telephony.failWith(unverified());

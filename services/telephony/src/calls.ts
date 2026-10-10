@@ -238,16 +238,61 @@ function withoutLease(c: CallRecord): CallRecord {
   return rest;
 }
 
+const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required', { code: string; message: string }> = {
+  inactive: { code: 'paused', message: 'Calls were paused for this resident before the call could be made' },
+  synthetic: { code: 'synthetic', message: 'A synthetic demo resident is never called' },
+  consent_required: { code: 'consent_required', message: 'The resident has not agreed to calls from Hachi' },
+};
+
+/**
+ * A staff call refused before it was dialled still gets a record, so the member of staff following
+ * it reads why rather than "about to ring", and the line the request held is freed at once instead
+ * of keeping the daily check-in waiting. A record that already exists is left alone: the call was
+ * made, and this is a redelivered task.
+ */
+async function refuseStaffCall(
+  deps: CallDeps,
+  r: Resident,
+  input: PlaceCallInput & { staff: NonNullable<PlaceCallInput['staff']> },
+  reason: keyof typeof REFUSED,
+): Promise<PlaceCallOutcome> {
+  const callId = callIdOf(input);
+  const at = deps.now().toISOString();
+  const created = await deps.store.createCallIfAbsent({
+    id: callId,
+    residentId: r.id,
+    source: 'live',
+    status: 'failed',
+    channel: r.channel,
+    startedAt: at,
+    endedAt: at,
+    analysisPending: false,
+    createdAt: at,
+    trigger: 'staff',
+    requestedBy: input.staff.requestedBy,
+    localDate: input.localDate,
+    failure: { ...REFUSED[reason], retryable: false },
+  });
+  if (created) await releaseLine(deps, r.id, callId);
+  return { outcome: 'skipped', reason };
+}
+
 /**
  * Places one call attempt. Safe under Cloud Tasks at-least-once delivery: the call document is
  * created once, and a short lease ensures only one worker dials it.
  */
 export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetryCount: number): Promise<PlaceCallOutcome> {
   const r = await deps.store.getResident(input.residentId);
-  if (!r || !r.active) return { outcome: 'skipped', reason: 'inactive' };
-  // Demo residents are not people; whatever number they carry is not theirs to be rung on.
-  if (r.synthetic) return { outcome: 'skipped', reason: 'synthetic' };
-  if (!hasCallConsent(r.callConsent)) return { outcome: 'skipped', reason: 'consent_required' };
+  if (!r) return { outcome: 'skipped', reason: 'inactive' };
+  const refused: keyof typeof REFUSED | null = !r.active
+    ? 'inactive'
+    : // Demo residents are not people; whatever number they carry is not theirs to be rung on.
+      r.synthetic
+      ? 'synthetic'
+      : !hasCallConsent(r.callConsent)
+        ? 'consent_required'
+        : null;
+  if (refused) return input.staff ? refuseStaffCall(deps, r, { ...input, staff: input.staff }, refused) : { outcome: 'skipped', reason: refused };
 
   const staff = input.staff;
   const callId = callIdOf(input);

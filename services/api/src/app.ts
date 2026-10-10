@@ -221,6 +221,19 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const refusal = await callRefusal(r, t);
     if (refusal) throw refusal;
 
+    // The cooldown spares the resident a second ring too soon. A call that went wrong on our side
+    // (refused, line busy, a fault while dialling or mid-call, or a request that never reached the
+    // telephony service) is no reason to make staff wait, so it does not count; one that rang and
+    // was not answered still does. A late task for the old request cannot ring as well: it would
+    // find the line held by the new one.
+    const last = r.lastStaffCall;
+    const lastCall = last ? await store.getCall(r.id, last.callId) : null;
+    const lastFaulted = last
+      ? lastCall
+        ? !!lastCall.failure
+        : t.getTime() - Date.parse(last.at) > STAFF_REQUEST_HOLD_MS
+      : false;
+
     // The line and the cooldown are decided in one transaction, so two members of staff pressing at
     // once get one call between them.
     type Outcome = { kind: 'busy'; callId: string } | { kind: 'cooldown'; ms: number } | { kind: 'ok'; callId: string; date: string; seq: number };
@@ -232,7 +245,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         outcome = { kind: 'busy', callId: cur.callSlot!.callId };
         return cur;
       }
-      const wait = staffCallCooldownLeft(cur.lastStaffCall?.at, t, cooldownMs);
+      const faulted = lastFaulted && cur.lastStaffCall?.callId === last?.callId;
+      const wait = faulted ? 0 : staffCallCooldownLeft(cur.lastStaffCall?.at, t, cooldownMs);
       if (wait > 0) {
         outcome = { kind: 'cooldown', ms: wait };
         return cur;
@@ -280,7 +294,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     requireStaff(req);
     if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
     const r = await getResidentOr404(req.params.id);
-    const view = callProgressView(req.params.callId, await store.getCall(r.id, req.params.callId), r);
+    const view = callProgressView(req.params.callId, await store.getCall(r.id, req.params.callId), r, now());
     if (!view) throw new NotFoundError('Call');
     return view;
   });
