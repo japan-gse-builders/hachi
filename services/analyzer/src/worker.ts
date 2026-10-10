@@ -88,12 +88,26 @@ function classifyFailure(part: AnalysisGap['part'], err: unknown, stored = true)
 
 const leaseActive = (c: CallRecord, nowIso: string) => !!c.analysisLease && c.analysisLease > nowIso;
 
-/** A redelivered task, or a second pass after a reconnect, must not add the same evidence twice. */
+/** True while a pass staff asked for has not run yet: a finished pass is newer than the request. */
+const reanalysisDue = (c: CallRecord) => {
+  const asked = c.reanalysis?.requestedAt;
+  return !!asked && (!c.analysis || asked > c.analysis.at);
+};
+
+/**
+ * A redelivered task, or a second pass after a reconnect, must not add the same evidence twice. A
+ * pass staff asked for also leaves alone what they already closed for this call: it is there for
+ * what the first pass could not check, and an R1 found by keywords then was already handled.
+ */
 async function withoutRepeats(store: Store, call: CallRecord, detections: Detection[]): Promise<Detection[]> {
   if (!detections.length) return detections;
   const cases = await store.listCasesByResident(call.residentId);
+  const again = reanalysisDue(call);
   return detections.filter(
-    (d) => !cases.some((c) => c.rule === d.rule && c.status !== 'closed' && c.detections.some((x) => x.evidence.some((e) => e.callId === call.id))),
+    (d) =>
+      !cases.some(
+        (c) => c.rule === d.rule && (again || c.status !== 'closed') && c.detections.some((x) => x.evidence.some((e) => e.callId === call.id)),
+      ),
   );
 }
 
@@ -259,12 +273,12 @@ export interface SweepResult {
 }
 
 /**
- * A pass staff asked for gets a task name of its own. Under the hourly key it would collide with a
- * sweep task that already ran for this call in the same hour, and Cloud Tasks would drop it.
+ * A pass staff asked for gets a task name of its own. Under the hourly key alone it would collide
+ * with a sweep task that already ran for this call in the same hour, and Cloud Tasks would drop it.
+ * The hour stays in the name so a task that gave up can be queued again the next hour.
  */
-function taskKey(c: CallRecord, hourly: string): string {
-  const asked = c.reanalysis?.requestedAt;
-  return asked && (!c.analysis || asked > c.analysis.at) ? `reanalysis-${asked.replace(/\D/g, '')}` : hourly;
+function taskKey(c: CallRecord, hour: string): string {
+  return reanalysisDue(c) ? `reanalysis-${c.reanalysis!.requestedAt.replace(/\D/g, '')}-${hour}` : `sweep-${hour}`;
 }
 
 /**
@@ -276,7 +290,7 @@ export async function sweep(deps: WorkerDeps, opts: { minAgeSec?: number; limit?
   const nowIso = now.toISOString();
   const cutoff = now.getTime() - (opts.minAgeSec ?? deps.config.settleSec + 300) * 1000;
   const limit = opts.limit ?? 100;
-  const key = `sweep-${nowIso.slice(0, 13).replace(/\D/g, '')}`;
+  const hour = nowIso.slice(0, 13).replace(/\D/g, '');
 
   const due: CallRecord[] = [];
   for (const r of await deps.store.listActiveResidents()) {
@@ -287,7 +301,7 @@ export async function sweep(deps: WorkerDeps, opts: { minAgeSec?: number; limit?
     }
   }
   const batch = due.slice(0, limit);
-  const results = await Promise.allSettled(batch.map((c) => deps.queue.enqueue(analysisTask(c.residentId, c.id, taskKey(c, key)))));
+  const results = await Promise.allSettled(batch.map((c) => deps.queue.enqueue(analysisTask(c.residentId, c.id, taskKey(c, hour)))));
   const errors = results.flatMap((r, i) => (r.status === 'rejected' ? [`${batch[i]!.id}: ${(r.reason as Error)?.message ?? r.reason}`] : []));
   return { queued: batch.length - errors.length, errors };
 }

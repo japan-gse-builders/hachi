@@ -380,6 +380,25 @@ describe('analyzeCall', () => {
       expect(c.analysis!.error).toBeUndefined();
       expect(c.analysisPending).toBe(false);
     });
+
+    it('does not raise again what staff already closed for this call', async () => {
+      const { deps, store, reviewer, advance } = await setup({ calls: [call({ transcript: breathless })] });
+      reviewer.next(rejected());
+      expect(await analyzeCall(deps, ref)).toMatchObject({ rules: ['R1'] });
+      const [first] = await store.listCasesByResident('res-1');
+      await store.mutateCase(first!.id, (c) => ({ case: { ...c, status: 'closed' }, events: [] }));
+
+      advance(600);
+      await store.updateCall('res-1', ref.callId, (c) => ({
+        ...c,
+        analysisPending: true,
+        reanalysis: { requestedAt: deps.now().toISOString(), requestedBy: 'staff-1' },
+      }));
+      advance(60);
+      await expect(analyzeCall(deps, ref)).resolves.toMatchObject({ outcome: 'analyzed', rules: [], model: true });
+      expect(await store.listCasesByResident('res-1')).toHaveLength(1);
+      expect((await store.getCall('res-1', ref.callId))!.summary).toEqual(review().staffSummary);
+    });
   });
 
   it('reports not_found when the call disappears during analysis', async () => {
@@ -431,7 +450,7 @@ describe('sweep', () => {
       ],
     });
     await sweep(deps);
-    expect(queue.tasks.map((t) => t.name)).toEqual(['analyze-res-1-a-reanalysis-20261002023015123']);
+    expect(queue.tasks.map((t) => t.name)).toEqual(['analyze-res-1-a-reanalysis-20261002023015123-2026100203']);
   });
 
   it('caps the batch and reports enqueue failures', async () => {

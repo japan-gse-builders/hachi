@@ -203,7 +203,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
    * Asks for a call whose analysis did not finish to be analysed again. It only marks the call
    * pending: the analyzer's sweep, which runs every few minutes, is what queues the work, so the API
    * needs no access to the analyzer's queue. Refused for calls that have nothing missing, because a
-   * second pass costs a model request and finds nothing new.
+   * second pass costs a model request and finds nothing new. A call already waiting is not an error:
+   * another member of staff got there first, and the pass they asked for is the one this would be.
    */
   app.post<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId/reanalysis', async (req, reply) => {
     const staff = requireStaff(req);
@@ -214,16 +215,13 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const existing = await store.getCall(r.id, req.params.callId);
     if (!existing) throw new NotFoundError('Call');
     const requestedAt = now().toISOString();
-    let refusal: string | null = null;
+    let outcome = 'requested' as 'requested' | 'already_pending' | 'complete';
     await store.updateCall(r.id, existing.id, (c) => {
-      refusal = c.analysisPending
-        ? 'This call is already waiting to be analysed'
-        : analysisGaps(c).length === 0
-          ? 'This call was fully analysed; there is nothing to check again'
-          : null;
-      return refusal ? null : { ...c, analysisPending: true, reanalysis: { requestedAt, requestedBy: staff.uid } };
+      outcome = c.analysisPending ? 'already_pending' : analysisGaps(c).length === 0 ? 'complete' : 'requested';
+      return outcome === 'requested' ? { ...c, analysisPending: true, reanalysis: { requestedAt, requestedBy: staff.uid } } : null;
     });
-    if (refusal) throw new HttpError(409, refusal);
+    if (outcome === 'complete') throw new HttpError(409, 'This call was fully analysed; there is nothing to check again');
+    if (outcome === 'already_pending') return reply.status(202).send({ status: 'already_pending' });
     req.log.info({ residentId: r.id, callId: existing.id, by: staff.uid }, 'reanalysis requested');
     return reply.status(202).send({ status: 'requested', requestedAt });
   });

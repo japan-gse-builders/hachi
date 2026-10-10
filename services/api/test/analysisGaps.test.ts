@@ -126,12 +126,14 @@ describe('calls whose analysis did not finish (issue #11)', () => {
       expect(list.items[0]).toMatchObject({ callId: 'failed', reanalysisRequested: true });
     });
 
-    it('refuses a second request while the first is waiting', async () => {
+    it('accepts a second request while the first is waiting, without recording it again', async () => {
       const ctx = await seeded();
       expect((await reanalyse(ctx)).statusCode).toBe(202);
+      const before = (await ctx.store.getCall('res-1', 'failed'))!.reanalysis;
       const again = await reanalyse(ctx);
-      expect(again.statusCode).toBe(409);
-      expect(again.json().error).toContain('already waiting');
+      expect(again.statusCode).toBe(202);
+      expect(again.json()).toEqual({ status: 'already_pending' });
+      expect((await ctx.store.getCall('res-1', 'failed'))!.reanalysis).toEqual(before);
     });
 
     it('refuses a call that was fully analysed', async () => {
