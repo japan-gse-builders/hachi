@@ -304,6 +304,50 @@ describe('CallSession: transcript and ending', () => {
       expect((await hangUp(ctx)).endChecks).toEqual({ refused: 0, noFarewell: 1, reopened: 0 });
     });
 
+    // The goodbye's words can trail its audio, so end_call may arrive before they do. Asking for a
+    // goodbye then would make Hachi say a second one straight after the first.
+    it('waits for the turn to end before deciding when end_call outruns the words of the goodbye', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I have to go now.');
+      ctx.gemini.h.audio(loud24k());
+      const answered = ctx.gemini.tools.length;
+      endCall(ctx);
+      expect(ctx.gemini.tools).toHaveLength(answered);
+      expect(endMarks(ctx)).toEqual([]);
+      ctx.gemini.h.outputTranscript('Thank you, Maggie. Goodbye!');
+      ctx.gemini.h.turnComplete();
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'SILENT', response: { status: 'ok' } });
+      expect(ctx.gemini.tools.some((t) => t.response?.message === FAREWELL_GUIDANCE)).toBe(false);
+      await ctx.session.onMessage(markMessage(await endMark(ctx)));
+      expect(ctx.socket.closed).toBe(true);
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).toMatchObject({ endedBy: 'agent' });
+    });
+
+    it('asks for the goodbye once that turn has ended without one', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I have to go now.');
+      ctx.gemini.h.audio(loud24k());
+      endCall(ctx);
+      ctx.gemini.h.outputTranscript('Of course, Maggie.');
+      ctx.gemini.h.turnComplete();
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'WHEN_IDLE', response: { status: 'ok', message: FAREWELL_GUIDANCE } });
+      expect(endMarks(ctx)).toEqual([]);
+      ctx.gemini.h.outputTranscript(' Take care. Goodbye!');
+      ctx.gemini.h.turnComplete();
+      await ctx.session.onMessage(markMessage(await endMark(ctx)));
+      expect(ctx.socket.closed).toBe(true);
+    });
+
+    it('ends on a yes said the way people say it, with no punctuation in the transcript', async () => {
+      const ctx = await started();
+      ctx.gemini.h.outputTranscript('that was a nice chat would you like to end our call now');
+      ctx.gemini.h.inputTranscript('yes dear');
+      ctx.gemini.h.outputTranscript(' Thank you, Maggie. Goodbye!');
+      endCall(ctx);
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'SILENT', response: { status: 'ok' } });
+      expect(endMarks(ctx)).toHaveLength(1);
+    });
+
     it('goes back to the conversation when the resident starts talking during the goodbye', async () => {
       const ctx = await started({ timing: { endFallbackMs: 50 } });
       askedToEnd(ctx);

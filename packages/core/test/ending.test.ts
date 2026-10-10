@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { isClosingReply, isSpokenFarewell, residentWantsToEnd } from '../src/ending.js';
+import { END_QUESTION, isClosingReply, isSpokenFarewell, residentWantsToEnd } from '../src/ending.js';
 
-const ASKED = 'That sounds like a lovely day. Would you like to end our call now?';
+const ASKED = `That sounds like a lovely day. ${END_QUESTION}`;
 
 describe('residentWantsToEnd (issue #10)', () => {
   it.each([
@@ -68,6 +68,27 @@ describe('residentWantsToEnd (issue #10)', () => {
       expect(residentWantsToEnd("Yes, I'm fine", ASKED)).toBe(false);
       expect(residentWantsToEnd('No', ASKED)).toBe(false);
     });
+
+    // Refusing these would send Hachi back to the same question every time the resident answers it.
+    it.each(['Yes dear', 'Okay then', 'Yes, I think so', 'Yes please, that would be lovely', "Yes, don't worry", 'Alright, yes'])(
+      'still counts "%s", a yes said the way people say it',
+      (said) => {
+        expect(residentWantsToEnd(said, ASKED)).toBe(true);
+      },
+    );
+
+    it.each(["Yes... I don't think so", 'Okay, no', 'Yes, but one more thing', "Don't go", "Don't hang up yet"])(
+      'does not count "%s", which is not a yes',
+      (said) => {
+        expect(residentWantsToEnd(said, ASKED)).toBe(false);
+      },
+    );
+
+    it('counts after the end question even when the transcript has no punctuation', () => {
+      expect(residentWantsToEnd('yes', 'that was nice would you like to end our call now')).toBe(true);
+      expect(residentWantsToEnd('yes', 'would you like to chat more or would you like to end our call now')).toBe(false);
+      expect(residentWantsToEnd('yes', 'shall we finish for today')).toBe(false);
+    });
   });
 });
 
@@ -87,7 +108,21 @@ describe('isSpokenFarewell (issue #10)', () => {
 
 describe('isClosingReply (issue #10)', () => {
   it('lets an answering goodbye keep the ending', () => {
-    for (const said of ['Bye!', 'Thank you, you too.', 'Okay, take care. Bye bye.', 'See you tomorrow then', '']) {
+    for (const said of [
+      'Bye!',
+      'Thank you, you too.',
+      'Okay, take care. Bye bye.',
+      'See you tomorrow then',
+      '',
+      'Goodnight',
+      'Thanks for calling',
+      'Thank you for ringing, bye',
+      'Cheerio',
+      "You're welcome, bye",
+      'Bye, God bless',
+      'Mm-hmm',
+      'It was lovely talking to you',
+    ]) {
       expect(isClosingReply(said)).toBe(true);
     }
   });

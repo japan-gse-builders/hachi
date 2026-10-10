@@ -16,7 +16,7 @@ import {
 import type { CallRecord, ConversationEnd, EndChecks, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
-import type { LiveConnector, LiveHandlers, LiveSession, ToolCall } from './live.js';
+import type { LiveConnector, LiveHandlers, LiveSession, ToolCall, ToolScheduling } from './live.js';
 import {
   buildSystemInstruction,
   priorContext,
@@ -207,6 +207,15 @@ export class CallSession {
   private reopenable = false;
   /** What the resident has said since the goodbye began. */
   private sinceGoodbye = '';
+  /** Hachi is part-way through a turn: some of its audio or words have arrived, and it has not completed. */
+  private modelTurnOpen = false;
+  /**
+   * An end_call the resident did ask for, received while Hachi was still speaking with no goodbye in
+   * the words heard so far. A turn's words can trail its audio, so the goodbye may already have been
+   * said: it is answered when the turn completes, because asking for a goodbye now would get a
+   * second one straight after the first.
+   */
+  private pendingEnd?: { call: ToolCall; live: LiveSession | undefined };
   /** How often the checks kept the call open, so it can be counted across calls afterwards. */
   private readonly endChecks: EndChecks = { refused: 0, noFarewell: 0, reopened: 0 };
   private timers: NodeJS.Timeout[] = [];
@@ -448,17 +457,27 @@ export class CallSession {
   private handlers(generation: number): LiveHandlers {
     const current = () => generation === this.liveGeneration && this.state === 'active';
     return {
-      audio: (pcm) => current() && this.onModelAudio(pcm),
+      audio: (pcm) => {
+        if (!current()) return;
+        this.modelTurnOpen = true;
+        this.onModelAudio(pcm);
+      },
       inputTranscript: (text) => current() && this.onResidentText(text),
-      outputTranscript: (text) => current() && this.appendTurn('agent', text),
+      outputTranscript: (text) => {
+        if (!current()) return;
+        this.modelTurnOpen = true;
+        this.appendTurn('agent', text);
+      },
       interrupted: () => {
         if (!current()) return;
+        this.modelTurnOpen = false;
         this.sendTwilio({ event: 'clear', streamSid: this.streamSid });
         this.recorder.clearOutbound();
         this.down.reset();
       },
       turnComplete: () => {
         if (!current()) return;
+        this.modelTurnOpen = false;
         if (this.farewellTurns) this.onFarewellTurn();
         const name = `t${++this.markSeq}`;
         this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
@@ -618,8 +637,20 @@ export class CallSession {
       ok('The call will end now.', 'SILENT');
       return this.requestEnd('agent');
     }
+    if (this.modelTurnOpen) {
+      this.pendingEnd = { call, live };
+      this.farewellTurns = 1;
+      return;
+    }
     this.farewellTurns = 2;
     ok(FAREWELL_GUIDANCE, 'WHEN_IDLE');
+  }
+
+  /** Answers an end_call held until its turn completed; dropped if Gemini has since reconnected. */
+  private answerPendingEnd(status: 'ok' | 'error', message: string, scheduling: ToolScheduling): void {
+    const pending = this.pendingEnd;
+    this.pendingEnd = undefined;
+    if (pending && pending.live === this.live) pending.live?.respondToTool(pending.call, { status, retryable: false, message }, scheduling);
   }
 
   /** Hachi finished speaking after the resident asked to end: hang up only if that was a goodbye. */
@@ -627,11 +658,18 @@ export class CallSession {
     // Help is being arranged: the goodbye that was due no longer is.
     if (this.emergencyActive) {
       this.farewellTurns = 0;
+      this.answerPendingEnd('error', 'Not ended: help is being arranged.', 'SILENT');
       return;
     }
     if (isSpokenFarewell(this.latestExchange().agentSince)) {
       this.farewellTurns = 0;
+      this.answerPendingEnd('ok', 'The call will end now.', 'SILENT');
       return this.requestEnd('agent');
+    }
+    // The turn end_call arrived in is over without a goodbye: only now is it worth asking for one.
+    if (this.pendingEnd) {
+      this.farewellTurns = 2;
+      return this.answerPendingEnd('ok', FAREWELL_GUIDANCE, 'WHEN_IDLE');
     }
     if (--this.farewellTurns > 0) return;
     this.reopenable = false;
@@ -646,6 +684,7 @@ export class CallSession {
     this.farewellTurns = 0;
     this.reopenable = false;
     this.sinceGoodbye = '';
+    this.answerPendingEnd('error', 'Not ended: the resident started talking again.', 'SILENT');
     if (this.endReason === 'agent') {
       this.endReason = undefined;
       this.hangupMark = undefined;

@@ -1,4 +1,4 @@
-import type { ScreenItem, Turn } from '@hachi/core';
+import { END_QUESTION, type ScreenItem, type Turn } from '@hachi/core';
 import type { CallRecord } from '@hachi/store';
 
 /** What earlier calls tell the next one (CNV-07 / CNV-08 / DET-04). */
@@ -115,7 +115,7 @@ export function buildSystemInstruction(
 }
 
 /** The one question whose plain "yes" counts as agreeing to end the call (see `residentWantsToEnd`). */
-export const END_QUESTION = 'Would you like to end our call now?';
+export { END_QUESTION };
 /** Sent back when end_call is refused: the resident has not asked to finish. */
 export const END_REFUSED_GUIDANCE =
   'Not ended: the resident has not clearly said they want to finish, so the call stays open. Do not say goodbye. ' +

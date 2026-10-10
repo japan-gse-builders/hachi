@@ -6,8 +6,13 @@
  * question, a wrong guess costs the call.
  *
  * English only, like the calls. Transcripts arrive with or without punctuation, so nothing here
- * depends on it except where the absence only makes the answer more conservative.
+ * depends on it except where the absence only makes the answer more conservative, and one place
+ * where it would loop: Hachi's own end question is recognised by its words when it carries no
+ * punctuation at all, or a plain "yes" to it would never count.
  */
+
+/** The one question whose answer can be a plain "yes" (see `residentWantsToEnd`). Hachi asks it word for word. */
+export const END_QUESTION = 'Would you like to end our call now?';
 
 function normalized(text: string): string {
   return text.toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
@@ -18,11 +23,15 @@ const END_CALL = String.raw`(?:end|finish|stop|close|wrap up) (?:with )?${CALL}`
 /** Ways of saying "end this call" that are not also ordinary words for something else. */
 const ENDING = String.raw`(?:${END_CALL}|hang up|stop (?:talking|chatting)|finish for (?:now|today))`;
 
-/** Wanting more of the call, said anywhere in the turn, outweighs any goodbye in it. */
+/**
+ * Wanting more of the call, said anywhere in the turn, outweighs any goodbye in it. A bare "don't"
+ * is not one: "yes, don't worry" is agreeing. "Don't go" and "don't want …" are, and a "don't"
+ * aimed at the ending is caught as a negated ending below.
+ */
 const CONTINUE =
-  /\b(?:wait|hold on|one more|not yet|keep (?:talking|chatting)|continue (?:talking|chatting|our)|don't|do not|not ready|not done|don't want|do not want|not want)\b/;
-/** "Not … end", "never … goodbye": a negated ending is the opposite of one. */
-const NEGATED = /\b(?:not|never|isn't|aren't|wasn't)(?:\W+\w+){0,3}\W+(?:end|finish|stop|hang|goodbye|over)\b/;
+  /\b(?:wait|hold on|hang on|one more|not yet|keep (?:talking|chatting)|continue (?:talking|chatting|our)|(?:don't|do not) (?:go|leave)|not ready|not done|don't want|do not want|not want)\b/;
+/** "Not … end", "never … goodbye", "don't … hang up": a negated ending is the opposite of one. */
+const NEGATED = /\b(?:not|never|isn't|aren't|wasn't|don't|do not)(?:\W+\w+){0,3}\W+(?:end|finish|stop|hang|goodbye|over)\b/;
 /** Reported, conditional and future endings are not a request to end this call now. */
 const NOT_NOW = /\b(?:if|when|unless|after|before|said|says|told|tells|asked)\b/;
 /** A question about ending is not a request to end. */
@@ -41,22 +50,36 @@ const SAYS_GOODBYE = /(?:^|[.!;,]\s*)(?:(?:okay|ok|well|alright|thanks|thank you
 
 /** A plain yes, which only counts as agreeing to end right after a question that asked exactly that. */
 const AFFIRM = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'alright', 'fine', 'good', 'please']);
-const FILLER = new Set(['that', "that's", 'sounds', 'would', 'be', 'is', 'do', 'thank', 'thanks', 'you', 'all', 'right', 'of', 'course', 'hachi']);
+/**
+ * Words that can ride along with a yes without changing it: "yes dear", "okay then", "yes, I think
+ * so", "yes please, that would be lovely", "yes, don't worry". Anything else ("yes, I'm fine", "yes,
+ * but …") leaves the answer unclear, and an unclear answer keeps the call open.
+ */
+const FILLER = new Set([
+  'that', "that's", 'sounds', 'would', 'be', 'is', 'do', 'thank', 'thanks', 'you', 'all', 'right', 'of', 'course', 'hachi',
+  'dear', 'love', 'then', 'i', 'think', 'suppose', 'guess', 'so', 'lovely', 'nice', 'worry', 'now', 'for', 'today', 'very', 'much',
+]);
+
+const plainWords = (text: string) => text.replace(/[^a-z' ]/g, ' ').split(' ').filter(Boolean);
 
 function isBareYes(text: string): boolean {
-  const words = text.replace(/[^a-z' ]/g, ' ').split(' ').filter(Boolean);
+  // "Don't worry" is reassurance. Any other no, not or don't ("yes… I don't think so") is not a yes.
+  const rest = text.replace(/\b(?:don't|do not) worry\b/g, ' ');
+  if (/\b(?:no|nope|not|don't)\b/.test(rest)) return false;
+  const words = plainWords(rest);
   return words.some((w) => AFFIRM.has(w)) && words.every((w) => AFFIRM.has(w) || FILLER.has(w));
 }
+
+const END_QUESTION_WORDS = plainWords(END_QUESTION.toLowerCase()).join(' ');
 
 /** Hachi's last turn was a single yes/no question asking whether to end the call, and nothing else. */
 function askedWhetherToEnd(agentText: string): boolean {
   const reply = normalized(agentText);
-  return (
-    reply.endsWith('?') &&
-    reply.split('?').length === 2 &&
-    new RegExp(String.raw`\b${ENDING}\b`).test(reply) &&
-    !/\b(?:or|not|don't|do not)\b/.test(reply)
-  );
+  // A choice ("… or end the call?") or a negative question has no yes that means "end".
+  if (/\b(?:or|not|don't|do not)\b/.test(reply)) return false;
+  // Unpunctuated, a question cannot be told from a statement, except the one Hachi is told to ask.
+  if (!/[.!?;]/.test(reply)) return plainWords(reply).join(' ').endsWith(END_QUESTION_WORDS);
+  return reply.endsWith('?') && reply.split('?').length === 2 && new RegExp(String.raw`\b${ENDING}\b`).test(reply);
 }
 
 /**
@@ -86,6 +109,10 @@ const CLOSING_WORDS = new Set([
   'bye', 'goodbye', 'good', 'night', 'day', 'thank', 'thanks', 'you', 'too', 'same', 'to', 'ok', 'okay', 'alright', 'all', 'right',
   'yes', 'yeah', 'take', 'care', 'see', 'tomorrow', 'then', 'hachi', 'cheers', 'and', 'oh', 'well', 'so', 'much', 'very', 'a', 'lovely',
   'have', 'nice', 'speak', 'talk', 'soon', 'for', 'now', 'dear', 'love',
+  // The other ways people answer a goodbye on the phone. A word missing here reopens the call, and
+  // a reopened call has to be asked to end all over again.
+  'goodnight', 'morning', 'afternoon', 'evening', 'calling', 'ringing', 'call', 'ring', 'chat', 'chatting', 'talking', 'welcome', "you're",
+  'cheerio', 'ta', 'bless', 'god', 'mm', 'hmm', 'mhm', 'it', "it's", 'was', 'been', 'pleasure', 'likewise', 'later', 'again', 'byee',
 ]);
 
 /**
@@ -94,6 +121,5 @@ const CLOSING_WORDS = new Set([
  * Nothing heard yet counts as closing, so a cough-length transcript does not reopen a call.
  */
 export function isClosingReply(residentText: string): boolean {
-  const words = normalized(residentText).replace(/[^a-z' ]/g, ' ').split(' ').filter(Boolean);
-  return words.every((w) => CLOSING_WORDS.has(w));
+  return plainWords(normalized(residentText)).every((w) => CLOSING_WORDS.has(w));
 }
