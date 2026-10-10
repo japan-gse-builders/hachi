@@ -1,4 +1,5 @@
 import {
+  ANALYSIS_FAILURE_LABELS,
   baselineFor,
   buildBaseline,
   CASE_STATUS_LABELS,
@@ -8,6 +9,7 @@ import {
   type SpendLedger,
   type SpendPolicy,
   combineStates,
+  describeAnalysisGaps,
   domainStatus,
   effectiveUrgency,
   hasCallConsent,
@@ -34,6 +36,7 @@ import {
   usualRange,
   visibleToFamily,
   wellbeingTag,
+  type AnalysisGap,
   type CheckInAttempt,
   type DomainState,
   type LifeDomain,
@@ -223,6 +226,94 @@ export function buildUnreached(
   // Our own faults first: they are the ones where nothing at all is known about the resident.
   items.sort((a, b) => Number(b.ourFault) - Number(a.ourFault) || b.at.localeCompare(a.at));
   return { items, note: unreachedNote(items, locale) };
+}
+
+/**
+ * Days back a call whose analysis is incomplete stays on the queue. The same seven days R2 counts
+ * meals over: an unchecked call older than that no longer changes what the rule can see.
+ */
+export const INCOMPLETE_DAYS = 7;
+
+/**
+ * What a call's analysis could not do. Calls analysed before the categories existed carry only the
+ * raw messages, and still count: they are the calls this list was made to stop hiding.
+ */
+export function analysisGaps(c: CallRecord): AnalysisGap[] {
+  const a = c.analysis;
+  if (!a) return [];
+  if (a.incomplete?.length) return a.incomplete;
+  return [
+    ...(a.error ? [{ part: 'review' as const, failure: 'unknown' as const }] : []),
+    ...(a.voiceError ? [{ part: 'voice' as const, failure: 'unknown' as const }] : []),
+  ];
+}
+
+/** True while a pass staff asked for is waiting to run. */
+export function reanalysisRequested(c: CallRecord): boolean {
+  const asked = c.reanalysis?.requestedAt;
+  return c.analysisPending && !!asked && (!c.analysis || asked > c.analysis.at);
+}
+
+export interface IncompleteAnalysis {
+  residentId: string;
+  residentName: string;
+  callId: string;
+  startedAt: string;
+  localDate: string;
+  /** Which halves failed; categories only, never the provider's message. */
+  parts: AnalysisGap['part'][];
+  reasons: string[];
+  notChecked: string;
+  checked: string;
+  reanalysisRequested: boolean;
+}
+
+export interface IncompleteView {
+  items: IncompleteAnalysis[];
+  /** One sentence for the top of the list; null when every call was fully checked. */
+  note: string | null;
+}
+
+function incompleteNote(items: readonly IncompleteAnalysis[], locale: Locale): string | null {
+  if (!items.length) return null;
+  if (locale === 'ja') return `この ${INCOMPLETE_DAYS} 日間で ${items.length} 件の通話が最後まで解析できていません。「懸念なし」ではなく「未確認」です。`;
+  const calls = items.length === 1 ? '1 call' : `${items.length} calls`;
+  return `${calls} from the last ${INCOMPLETE_DAYS} days could not be fully checked. Treat them as unchecked, not as fine.`;
+}
+
+/**
+ * Calls whose analysis did not finish, so staff can tell them apart from calls in which nothing was
+ * found. Kept off the case list on purpose: a failed analysis is not a finding about the resident
+ * and must not be ranked with one or given an urgency.
+ */
+export function buildIncompleteAnalyses(
+  entries: readonly { resident: Resident; calls: readonly CallRecord[] }[],
+  now: Date,
+  locale: Locale,
+): IncompleteView {
+  const since = now.getTime() - INCOMPLETE_DAYS * 86_400_000;
+  const items: IncompleteAnalysis[] = [];
+  for (const { resident: r, calls } of entries) {
+    for (const c of calls) {
+      if (c.source === 'imported' || Date.parse(c.startedAt) < since) continue;
+      const gaps = analysisGaps(c);
+      const text = describeAnalysisGaps(gaps, locale);
+      if (!text) continue;
+      items.push({
+        residentId: r.id,
+        residentName: r.name,
+        callId: c.id,
+        startedAt: c.startedAt,
+        localDate: c.localDate ?? localDate(new Date(c.startedAt), r.timeZone),
+        parts: [...new Set(gaps.map((g) => g.part))],
+        reasons: [...new Set(gaps.map((g) => ANALYSIS_FAILURE_LABELS[locale][g.failure]))],
+        ...text,
+        reanalysisRequested: reanalysisRequested(c),
+      });
+    }
+  }
+  items.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  return { items, note: incompleteNote(items, locale) };
 }
 
 /** Calls listed on the case page; the speech baseline may come from older ones. */
@@ -458,6 +549,9 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
       return {
         startedAt: c.startedAt,
         connected: c.status === 'completed',
+        // Whether notes are still to come, and nothing about why: a missing note must not read as
+        // a quiet day, and the reason is a matter for staff (FAM-03).
+        notesPending: c.status === 'completed' && (c.analysisPending || analysisGaps(c).some((g) => g.part === 'review')),
         durationSec: c.status === 'completed' ? (c.durationSec ?? null) : null,
         summary: c.status === 'completed' && r.consent?.shareMood ? (c.familySummary ?? null) : null,
         headline: c.status === 'completed' ? familyHeadline(r, c, cases, locale) : null,

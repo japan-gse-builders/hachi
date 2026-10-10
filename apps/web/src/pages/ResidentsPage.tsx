@@ -2,8 +2,9 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import type { Resident } from '../types';
+import type { IncompleteAnalyses, Resident } from '../types';
 import { CallConsentField } from '../components/CallConsentField';
+import { IncompleteAnalysisList } from '../components/IncompleteAnalyses';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
 
 export function ResidentsPage() {
@@ -13,11 +14,17 @@ export function ResidentsPage() {
   const [imported, setImported] = useState<Record<string, string>>({});
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [incomplete, setIncomplete] = useState<IncompleteAnalyses | null>(null);
   useEffect(() => {
     void token()
       .then((t) => api<{ residents: Resident[] }>('/api/residents', t))
       .then((data) => setResidents(data.residents))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load residents'));
+    // Secondary: the residents still show if this list cannot be loaded.
+    void token()
+      .then((t) => api<IncompleteAnalyses>('/api/incomplete-analyses?locale=en', t))
+      .then(setIncomplete)
+      .catch(() => setIncomplete(null));
   }, [token]);
 
   // USR-04: a JSON file of {"calls": [{startedAt, endedAt, transcript}]} for demos and baselines.
@@ -72,6 +79,7 @@ export function ResidentsPage() {
               <h2>{r.name}</h2>
               <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
               <p className="meta">Resident {r.id}</p>
+              {incomplete && <IncompleteAnalysisList items={incomplete.items.filter((i) => i.residentId === r.id)} showResident={false} />}
               {hasCallConsent(r.callConsent) ? (
                 <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-GB')}.</p>
               ) : (

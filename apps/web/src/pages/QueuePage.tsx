@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { ContactRequests } from '../components/ContactRequests';
+import { IncompleteAnalysisList } from '../components/IncompleteAnalyses';
 import { deliveryLabel, formatWhen, urgencyTone } from '../format';
 import type { Queue, Spend } from '../types';
 
@@ -72,6 +73,15 @@ export function QueuePage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      {/* Beside the cases rather than among them: these calls found nothing because nothing finished looking. */}
+      {queue?.incomplete && queue.incomplete.items.length > 0 && (
+        <div className="card card-unchecked stack">
+          <p>
+            <strong>Not fully checked.</strong> {queue.incomplete.note}
+          </p>
+          <IncompleteAnalysisList items={queue.incomplete.items} />
         </div>
       )}
       {error && <p className="error">{error}</p>}

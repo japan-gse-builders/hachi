@@ -116,10 +116,10 @@ export class GeminiListener implements SpeechListener {
     try {
       json = JSON.parse(raw ?? '');
     } catch {
-      throw new ReviewError('Gemini listening returned invalid JSON', true);
+      throw new ReviewError('Gemini listening returned invalid JSON', true, 'invalid_output');
     }
     const parsed = listeningSchema.safeParse(json);
-    if (!parsed.success) throw new ReviewError(`Gemini listening output does not match the schema: ${parsed.error.issues[0]?.path.join('.')}`, true);
+    if (!parsed.success) throw new ReviewError(`Gemini listening output does not match the schema: ${parsed.error.issues[0]?.path.join('.')}`, true, 'invalid_output');
     return parsed.data;
   }
 }

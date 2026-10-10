@@ -47,13 +47,20 @@ export interface CallReviewer {
   review(input: ReviewInput): Promise<ModelReview>;
 }
 
+/** What went wrong with a Gemini request, so a failed analysis can say why without its raw message. */
+export type ReviewFailure = 'unavailable' | 'rejected' | 'invalid_output';
+
 export class ReviewError extends Error {
+  readonly kind: ReviewFailure;
+
   constructor(
     message: string,
     readonly retryable: boolean,
+    kind?: ReviewFailure,
   ) {
     super(message);
     this.name = 'ReviewError';
+    this.kind = kind ?? (retryable ? 'unavailable' : 'rejected');
   }
 }
 
@@ -273,10 +280,10 @@ export class GeminiReviewer implements CallReviewer {
     try {
       json = JSON.parse(raw ?? '');
     } catch {
-      throw new ReviewError('Gemini returned invalid JSON', true);
+      throw new ReviewError('Gemini returned invalid JSON', true, 'invalid_output');
     }
     const parsed = reviewSchema.safeParse(json);
-    if (!parsed.success) throw new ReviewError(`Gemini output does not match the schema: ${parsed.error.issues[0]?.path.join('.')}`, true);
+    if (!parsed.success) throw new ReviewError(`Gemini output does not match the schema: ${parsed.error.issues[0]?.path.join('.')}`, true, 'invalid_output');
     return parsed.data;
   }
 }

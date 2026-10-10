@@ -2,6 +2,7 @@ import { ANALYZE_CALL_PATH, SEND_NOTIFICATION_PATH } from '@hachi/cloud';
 import type { Turn } from '@hachi/core';
 import { NotFoundError } from '@hachi/store';
 import { describe, expect, it, vi } from 'vitest';
+import { ReviewError } from '../src/model.js';
 import { analyzeCall, parseAnalyzeInput, sweep } from '../src/worker.js';
 import { call, rejected, resident, review, setup, TRANSCRIPT, unavailable } from './fixtures.js';
 
@@ -22,7 +23,7 @@ describe('parseAnalyzeInput', () => {
 describe('analyzeCall', () => {
   it('analyses a finished call and clears the pending flag', async () => {
     const { deps, store, reviewer } = await setup();
-    await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: [], model: true });
+    await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: [], model: true, incomplete: [] });
     const c = (await store.getCall('res-1', ref.callId))!;
     expect(c).toMatchObject({ analysisPending: false, summary: review().staffSummary, familySummary: review().familySummary });
     expect(c.wellbeing).toMatchObject({ domains: { body: 'concern', food: 'concern', mood: 'good', sleep: 'unmentioned' }, headline: review().headline });
@@ -192,17 +193,32 @@ describe('analyzeCall', () => {
     expect(await analyzeCall(deps, ref, 0)).toMatchObject({ outcome: 'retry', reason: 'Gemini request failed: 503' });
     expect((await store.getCall('res-1', ref.callId))!.analysisLease).toBeUndefined();
     expect(await analyzeCall(deps, ref, 1)).toMatchObject({ outcome: 'retry' });
-    await expect(analyzeCall(deps, ref, 2)).resolves.toEqual({ outcome: 'analyzed', rules: ['R1'], model: false });
+    await expect(analyzeCall(deps, ref, 2)).resolves.toEqual({
+      outcome: 'analyzed',
+      rules: ['R1'],
+      model: false,
+      incomplete: [{ part: 'review', failure: 'model_unavailable' }],
+      errors: ['Gemini request failed: 503'],
+    });
     const c = (await store.getCall('res-1', ref.callId))!;
     expect(c.summary).toBeUndefined();
-    expect(c.analysis).toMatchObject({ error: 'Gemini request failed: 503', intake: { status: 'unknown' } });
+    expect(c.analysis).toMatchObject({
+      error: 'Gemini request failed: 503',
+      intake: { status: 'unknown' },
+      incomplete: [{ part: 'review', failure: 'model_unavailable' }],
+    });
     expect(c.analysisPending).toBe(false);
   });
 
   it('does not retry permanent model errors', async () => {
     const { deps, reviewer } = await setup({ calls: [call({ transcript: breathless })] });
     reviewer.next(rejected());
-    await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: ['R1'], model: false });
+    await expect(analyzeCall(deps, ref)).resolves.toMatchObject({
+      outcome: 'analyzed',
+      rules: ['R1'],
+      model: false,
+      incomplete: [{ part: 'review', failure: 'model_rejected' }],
+    });
   });
 
   it('treats unexpected reviewer errors as temporary', async () => {
@@ -215,9 +231,12 @@ describe('analyzeCall', () => {
 
   it('skips the model when the resident said nothing', async () => {
     const { deps, store, reviewer } = await setup({ calls: [call({ transcript: [TRANSCRIPT[0]!] })] });
-    await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: [], model: false });
+    await expect(analyzeCall(deps, ref)).resolves.toEqual({ outcome: 'analyzed', rules: [], model: false, incomplete: [] });
     expect(reviewer.inputs).toHaveLength(0);
-    expect((await store.getCall('res-1', ref.callId))!.analysis).toMatchObject({ turns: 1, intake: { status: 'unknown' } });
+    // Nobody spoke, so there was nothing to review: not a gap staff need to chase.
+    const analysis = (await store.getCall('res-1', ref.callId))!.analysis!;
+    expect(analysis).toMatchObject({ turns: 1, intake: { status: 'unknown' } });
+    expect(analysis.incomplete).toBeUndefined();
     const empty = await setup({ calls: [call({ transcript: undefined as never })] });
     expect((await analyzeCall(empty.deps, ref)).outcome).toBe('analyzed');
   });
@@ -282,6 +301,7 @@ describe('analyzeCall', () => {
       const c = (await store.getCall('res-1', ref.callId))!;
       expect(c.speech).toMatchObject({ measuredFrom: 'text_only', features: { responseLatencyMs: null, repairRate: null } });
       expect(c.analysis!.voiceError).toBe('storage 503');
+      expect(c.analysis!.incomplete).toEqual([{ part: 'voice', failure: 'recording_missing' }]);
     });
 
     it('retries a listening outage but not an unreadable file or a rejected request', async () => {
@@ -294,7 +314,9 @@ describe('analyzeCall', () => {
       const broken = await setup({ calls: [recorded()], voice: true });
       broken.recordings.fallback = Buffer.from('not audio');
       expect((await analyzeCall(broken.deps, ref, 0)).outcome).toBe('analyzed');
-      expect((await broken.store.getCall('res-1', ref.callId))!.analysis!.voiceError).toContain('Not a WAV');
+      const unreadable = (await broken.store.getCall('res-1', ref.callId))!.analysis!;
+      expect(unreadable.voiceError).toContain('Not a WAV');
+      expect(unreadable.incomplete).toEqual([{ part: 'voice', failure: 'recording_unreadable' }]);
 
       const both = await setup({ calls: [recorded()], voice: true });
       both.reviewer.next(rejected());
@@ -320,6 +342,43 @@ describe('analyzeCall', () => {
       const silent = await setup({ calls: [call({ audioUri: 'gs://rec/x.wav', transcript: [TRANSCRIPT[0]!] })], voice: true });
       await analyzeCall(silent.deps, ref);
       expect(silent.recordings.reads).toHaveLength(0);
+    });
+  });
+
+  describe('a call the model could not review (issue #11)', () => {
+    it('records the failure as a category, not only as the raw message', async () => {
+      const { deps, store, reviewer } = await setup();
+      reviewer.next(new ReviewError('Gemini output does not match the schema: intake', true, 'invalid_output'));
+      await analyzeCall(deps, ref, 3);
+      const a = (await store.getCall('res-1', ref.callId))!.analysis!;
+      expect(a.incomplete).toEqual([{ part: 'review', failure: 'model_invalid_output' }]);
+      expect(a.error).toContain('does not match the schema');
+    });
+
+    it('files errors that are not from Gemini as unknown, after the retries run out', async () => {
+      const { deps, store, reviewer } = await setup();
+      reviewer.next(new Error('socket hang up'));
+      await analyzeCall(deps, ref, 3);
+      expect((await store.getCall('res-1', ref.callId))!.analysis!.incomplete).toEqual([{ part: 'review', failure: 'unknown' }]);
+    });
+
+    it('fills in what was missing when staff ask for it to be analysed again', async () => {
+      const { deps, store, reviewer } = await setup();
+      reviewer.next(rejected());
+      await analyzeCall(deps, ref);
+      expect((await store.getCall('res-1', ref.callId))!.summary).toBeUndefined();
+
+      await store.updateCall('res-1', ref.callId, (c) => ({
+        ...c,
+        analysisPending: true,
+        reanalysis: { requestedAt: '2026-10-02T03:00:00.000Z', requestedBy: 'staff-1' },
+      }));
+      expect((await analyzeCall(deps, ref)).outcome).toBe('analyzed');
+      const c = (await store.getCall('res-1', ref.callId))!;
+      expect(c.summary).toEqual(review().staffSummary);
+      expect(c.analysis!.incomplete).toBeUndefined();
+      expect(c.analysis!.error).toBeUndefined();
+      expect(c.analysisPending).toBe(false);
     });
   });
 
@@ -360,6 +419,19 @@ describe('sweep', () => {
     await store.addCalls([old('b', { residentId: 'res-2' })]);
     expect((await sweep(deps, { limit: 1 })).queued).toBe(1);
     expect(queue.tasks).toHaveLength(1);
+  });
+
+  it('names a staff-requested pass after the request, so an earlier sweep task cannot swallow it', async () => {
+    const { deps, queue } = await setup({
+      calls: [
+        old('a', {
+          analysis: { at: '2026-10-02T02:01:00.000Z', turns: 4, intake: { date: '2026-10-02', status: 'unknown' }, memory: { topics: [], plans: [], likes: [] } },
+          reanalysis: { requestedAt: '2026-10-02T02:30:15.123Z', requestedBy: 'staff-1' },
+        }),
+      ],
+    });
+    await sweep(deps);
+    expect(queue.tasks.map((t) => t.name)).toEqual(['analyze-res-1-a-reanalysis-20261002023015123']);
   });
 
   it('caps the batch and reports enqueue failures', async () => {

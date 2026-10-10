@@ -6,6 +6,8 @@ import {
   itemsForCall,
   localDate,
   spendMonth,
+  type AnalysisFailure,
+  type AnalysisGap,
   type Detection,
   type Locale,
   type RuleId,
@@ -49,7 +51,8 @@ async function chargeTokens(deps: WorkerDeps, tokens: { in: number; out: number 
 }
 
 export type AnalyzeOutcome =
-  | { outcome: 'analyzed'; rules: RuleId[]; model: boolean }
+  /** `incomplete` lists what could not be checked; `errors` carries the raw reasons for the log only. */
+  | { outcome: 'analyzed'; rules: RuleId[]; model: boolean; incomplete: AnalysisGap[]; errors?: string[] }
   /** Nothing to do (already analysed, or the resident no longer exists). */
   | { outcome: 'done' }
   | { outcome: 'not_found' }
@@ -66,6 +69,23 @@ export function parseAnalyzeInput(body: unknown): CallRef | null {
   return ID.test(b.residentId) && ID.test(b.callId) ? { residentId: b.residentId, callId: b.callId } : null;
 }
 
+const REVIEW_FAILURES: Record<ReviewError['kind'], AnalysisFailure> = {
+  unavailable: 'model_unavailable',
+  rejected: 'model_rejected',
+  invalid_output: 'model_invalid_output',
+};
+
+/**
+ * Turns a rejected review or measurement into a category staff can read. `stored` says whether the
+ * recording was fetched: a failure before that is storage, a failure after it that is not the model
+ * is the file itself.
+ */
+function classifyFailure(part: AnalysisGap['part'], err: unknown, stored = true): AnalysisGap {
+  if (err instanceof ReviewError) return { part, failure: REVIEW_FAILURES[err.kind] };
+  if (part === 'voice') return { part, failure: stored ? 'recording_unreadable' : 'recording_missing' };
+  return { part, failure: 'unknown' };
+}
+
 const leaseActive = (c: CallRecord, nowIso: string) => !!c.analysisLease && c.analysisLease > nowIso;
 
 /** A redelivered task, or a second pass after a reconnect, must not add the same evidence twice. */
@@ -79,8 +99,11 @@ async function withoutRepeats(store: Store, call: CallRecord, detections: Detect
 
 /**
  * QUE-02, FAM-03, DET-01..04, SPK-01..04, CNV-07: analyses one finished call. `attempt` is the
- * Cloud Tasks retry count; after `modelAttempts` the rule-based checks run without the model so
- * an outage never blocks R1/R2 detection.
+ * Cloud Tasks retry count; after `modelAttempts` the call is finished without the model, so an
+ * outage never blocks the keyword check for R1 or R4. It does stop everything that only the model
+ * can read: meals and drinks (R2), topic coherence (R3), summaries, screening answers and contact
+ * requests. Those calls are recorded with `analysis.incomplete`, which staff see as "not fully
+ * checked" rather than as a call in which nothing was found, and can ask to have analysed again.
  */
 export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): Promise<AnalyzeOutcome> {
   const { store, config } = deps;
@@ -155,6 +178,10 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
       await release({});
       return { outcome: 'retry', reason: (retryReview ? modelError : voiceError)! };
     }
+    const incomplete: AnalysisGap[] = [
+      ...(reviewed.status === 'rejected' ? [classifyFailure('review', reviewed.reason)] : []),
+      ...(measured.status === 'rejected' ? [classifyFailure('voice', measured.reason, stored)] : []),
+    ];
     const review: ModelReview | null = reviewed.status === 'fulfilled' ? reviewed.value : null;
     const voice = measured.status === 'fulfilled' ? measured.value : null;
     const timing: TimingSource = call.source === 'imported' ? 'transcript' : (voice ?? 'unavailable');
@@ -172,6 +199,7 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
       model: deps.reviewer.model,
       ...(modelError ? { modelError } : {}),
       ...(voiceError ? { voiceError } : {}),
+      incomplete,
       now,
     });
 
@@ -209,7 +237,14 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     }
 
     await release(result.update, transcript.length);
-    return { outcome: 'analyzed', rules: detections.map((d) => d.rule), model: review !== null };
+    const errors = [modelError, voiceError].filter((e): e is string => !!e);
+    return {
+      outcome: 'analyzed',
+      rules: detections.map((d) => d.rule),
+      model: review !== null,
+      incomplete,
+      ...(errors.length ? { errors } : {}),
+    };
   } catch (err) {
     // Hand the call back so the retried task can claim it straight away.
     await release({}).catch(() => undefined);
@@ -223,7 +258,19 @@ export interface SweepResult {
   errors: string[];
 }
 
-/** Safety net (Cloud Scheduler): queues finished calls whose analysis task was lost. */
+/**
+ * A pass staff asked for gets a task name of its own. Under the hourly key it would collide with a
+ * sweep task that already ran for this call in the same hour, and Cloud Tasks would drop it.
+ */
+function taskKey(c: CallRecord, hourly: string): string {
+  const asked = c.reanalysis?.requestedAt;
+  return asked && (!c.analysis || asked > c.analysis.at) ? `reanalysis-${asked.replace(/\D/g, '')}` : hourly;
+}
+
+/**
+ * Safety net (Cloud Scheduler): queues finished calls whose analysis task was lost, and calls that
+ * staff asked to have analysed again (the API only marks them pending; this is what runs them).
+ */
 export async function sweep(deps: WorkerDeps, opts: { minAgeSec?: number; limit?: number } = {}): Promise<SweepResult> {
   const now = deps.now();
   const nowIso = now.toISOString();
@@ -240,7 +287,7 @@ export async function sweep(deps: WorkerDeps, opts: { minAgeSec?: number; limit?
     }
   }
   const batch = due.slice(0, limit);
-  const results = await Promise.allSettled(batch.map((c) => deps.queue.enqueue(analysisTask(c.residentId, c.id, key))));
+  const results = await Promise.allSettled(batch.map((c) => deps.queue.enqueue(analysisTask(c.residentId, c.id, taskKey(c, key)))));
   const errors = results.flatMap((r, i) => (r.status === 'rejected' ? [`${batch[i]!.id}: ${(r.reason as Error)?.message ?? r.reason}`] : []));
   return { queued: batch.length - errors.length, errors };
 }

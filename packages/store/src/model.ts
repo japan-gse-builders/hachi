@@ -1,4 +1,5 @@
 import type {
+  AnalysisGap,
   Case,
   CallConsent,
   CallSpeechSample,
@@ -123,6 +124,8 @@ export interface CallRecord {
   analysis?: CallAnalysis;
   /** An analysis worker holds the call until this time. */
   analysisLease?: string;
+  /** The last time staff asked for this call to be analysed again, and who asked. */
+  reanalysis?: { requestedAt: string; requestedBy: string };
 }
 
 export interface CallWellbeing {
@@ -152,9 +155,14 @@ export interface CallAnalysis {
   answers?: ItemAnswer[];
   /** The resident asked for someone to ring them (kept whether or not a message could be sent). */
   contactRequest?: ContactRequest;
-  /** Why the model could not be used, if it was not. */
+  /**
+   * The parts that could not be done, and why, as categories. Present means the call was NOT fully
+   * checked: staff must see it as such, never as a call in which nothing was found.
+   */
+  incomplete?: AnalysisGap[];
+  /** Why the model could not be used, if it was not. Raw provider text: logs and this record only. */
   error?: string;
-  /** Why speech could not be measured from the recording, if it was not. */
+  /** Why speech could not be measured from the recording, if it was not. Same as `error`. */
   voiceError?: string;
 }
 
