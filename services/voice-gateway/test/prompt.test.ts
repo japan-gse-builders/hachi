@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { screenItem } from '@hachi/core';
 import type { CallMemory, CallRecord } from '@hachi/store';
-import { buildSystemInstruction, EMERGENCY_TOOL_GUIDANCE, emergencyCue, openingCue, priorContext, resumeCue, wrapUpCue } from '../src/prompt.js';
+import { buildSystemInstruction, EMERGENCY_TOOL_GUIDANCE, emergencyCue, END_QUESTION, END_REFUSED_GUIDANCE, openingCue, priorContext, resumeCue, wrapUpCue } from '../src/prompt.js';
+import { residentWantsToEnd } from '@hachi/core';
 
 describe('buildSystemInstruction', () => {
   const prompt = buildSystemInstruction('Maggie');
@@ -10,6 +11,13 @@ describe('buildSystemInstruction', () => {
     expect(prompt).toContain('Greet Maggie by name');
     expect(prompt).toMatch(/AI assistant/);
     expect(prompt).toMatch(/recorded/);
+  });
+
+  it('asks before ending, in the one question whose plain yes the gateway accepts (issue #10)', () => {
+    expect(prompt).toContain(`ask exactly: "${END_QUESTION}"`);
+    expect(prompt).toContain('Never decide on your own that the call is over');
+    expect(END_REFUSED_GUIDANCE).toContain(END_QUESTION);
+    expect(residentWantsToEnd('Yes', END_QUESTION)).toBe(true);
   });
 
   it('asks about feelings and meals today and yesterday', () => {

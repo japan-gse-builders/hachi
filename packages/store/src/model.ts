@@ -114,7 +114,7 @@ export interface CallRecord {
   /** Number of media streams opened for this call (a dropped stream is reconnected a limited number of times). */
   streams?: number;
   /** Set by the Voice Gateway when the conversation ends; tells Twilio what to do next. */
-  conversation?: { endedBy: ConversationEnd; at: string };
+  conversation?: { endedBy: ConversationEnd; at: string; endChecks?: EndChecks };
   /** Recordings of additional media streams after a reconnect. */
   extraAudioUris?: string[];
   /** R1 raised during the call; the resident is bridged to family and staff. */
@@ -156,6 +156,17 @@ export interface CallAnalysis {
   error?: string;
   /** Why speech could not be measured from the recording, if it was not. */
   voiceError?: string;
+}
+
+/**
+ * Issue #10: how often the model asked to hang up and the gateway kept the call open — no request
+ * from the resident (`refused`), no goodbye actually said (`noFarewell`), or the resident talking
+ * again during it (`reopened`). Kept so it can be counted how often the model jumps the gun.
+ */
+export interface EndChecks {
+  refused: number;
+  noFarewell: number;
+  reopened: number;
 }
 
 /**

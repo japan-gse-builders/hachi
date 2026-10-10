@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { emergencyCue, EMERGENCY_TOOL_GUIDANCE, openingCue, resumeCue, silenceCue, silenceFarewellCue, wrapUpCue } from '../src/prompt.js';
+import {
+  emergencyCue,
+  END_QUESTION,
+  END_REFUSED_GUIDANCE,
+  EMERGENCY_TOOL_GUIDANCE,
+  FAREWELL_GUIDANCE,
+  openingCue,
+  reopenedCue,
+  resumeCue,
+  silenceCue,
+  silenceFarewellCue,
+  wrapUpCue,
+} from '../src/prompt.js';
 import { callDoc, IDS, markMessage, mediaMessage, setup, startMessage, tick, wait } from './fixtures.js';
 
 const loud24k = (n = 480) => new Int16Array(n).fill(6000);
@@ -8,6 +20,12 @@ async function started(opts: Parameters<typeof setup>[0] = {}) {
   const ctx = await setup(opts);
   await ctx.session.onMessage(startMessage());
   return { ...ctx, gemini: ctx.live.last };
+}
+
+/** The resident says they want to finish and Hachi says goodbye, which is what end_call needs (issue #10). */
+function askedToEnd(ctx: Awaited<ReturnType<typeof started>>) {
+  ctx.gemini.h.inputTranscript('I have to go now.');
+  ctx.gemini.h.outputTranscript('Thank you, Maggie. Goodbye!');
 }
 
 async function endMark(ctx: Awaited<ReturnType<typeof started>>) {
@@ -173,8 +191,8 @@ describe('CallSession: transcript and ending', () => {
     for (let i = 0; i < 10; i++) await ctx.session.onMessage(mediaMessage());
     ctx.gemini.h.outputTranscript('Hello Maggie, ');
     ctx.gemini.h.outputTranscript(' how are you?');
-    ctx.gemini.h.inputTranscript('I am ');
-    ctx.gemini.h.inputTranscript('fine, thanks.');
+    ctx.gemini.h.inputTranscript('I am fine, thanks. ');
+    ctx.gemini.h.inputTranscript('I have to go now.');
     ctx.gemini.h.outputTranscript('Goodbye!');
     ctx.gemini.h.toolCalls([{ id: 'f1', name: 'end_call', args: { reason: 'completed' } }]);
     expect(ctx.gemini.tools[0]).toMatchObject({ scheduling: 'SILENT', response: { status: 'ok' } });
@@ -193,7 +211,7 @@ describe('CallSession: transcript and ending', () => {
     expect(call.analysisPending).toBe(true);
     expect(call.transcript!.map((t) => [t.speaker, t.text])).toEqual([
       ['agent', 'Hello Maggie, how are you?'],
-      ['resident', 'I am fine, thanks.'],
+      ['resident', 'I am fine, thanks. I have to go now.'],
       ['agent', 'Goodbye!'],
     ]);
     expect(call.transcript![0]!.startMs).toBe(200);
@@ -204,6 +222,7 @@ describe('CallSession: transcript and ending', () => {
 
   it('waits for speech that follows end_call before hanging up', async () => {
     const ctx = await started();
+    askedToEnd(ctx);
     ctx.gemini.h.toolCalls([{ id: 'f1', name: 'end_call', args: {} }]);
     const first = await endMark(ctx);
     ctx.gemini.h.audio(loud24k());
@@ -216,9 +235,141 @@ describe('CallSession: transcript and ending', () => {
 
   it('hangs up after a fallback delay if the mark never comes back', async () => {
     const ctx = await started();
+    askedToEnd(ctx);
     ctx.gemini.h.toolCalls([{ id: 'f1', name: 'end_call', args: {} }]);
     await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('agent');
+  });
+
+  describe('ending only when the resident asked (issue #10)', () => {
+    const endCall = (ctx: Awaited<ReturnType<typeof started>>, reason = 'completed') =>
+      ctx.gemini.h.toolCalls([{ id: `f${ctx.gemini.tools.length}`, name: 'end_call', args: { reason } }]);
+    const endMarks = (ctx: Awaited<ReturnType<typeof started>>) => ctx.socket.ofType('mark').filter((m) => String(m.mark.name).startsWith('end'));
+    const hangUp = async (ctx: Awaited<ReturnType<typeof started>>) => {
+      await ctx.session.onSocketClosed();
+      return (await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation!;
+    };
+
+    it('keeps the call open when the model asks to end without the resident asking, and says why', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I had soup for lunch.');
+      ctx.gemini.h.outputTranscript('That sounds lovely. Goodbye!');
+      endCall(ctx);
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'WHEN_IDLE', response: { status: 'error', message: END_REFUSED_GUIDANCE } });
+      expect(endMarks(ctx)).toEqual([]);
+      ctx.gemini.h.turnComplete();
+      await ctx.session.onMessage(markMessage(await endMark(ctx)));
+      expect(ctx.session.currentState).toBe('active');
+      expect((await hangUp(ctx)).endChecks).toEqual({ refused: 1, noFarewell: 0, reopened: 0 });
+      expect(ctx.logged.some((l) => l.msg?.includes('end_call refused'))).toBe(true);
+    });
+
+    it('ends on a plain yes to the end question', async () => {
+      const ctx = await started();
+      ctx.gemini.h.outputTranscript(`That was a nice chat. ${END_QUESTION}`);
+      ctx.gemini.h.inputTranscript('Yes.');
+      ctx.gemini.h.outputTranscript('Thank you, Maggie. Goodbye!');
+      endCall(ctx);
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'SILENT', response: { status: 'ok' } });
+      await ctx.session.onMessage(markMessage(endMarks(ctx).at(-1)!.mark.name));
+      expect(ctx.socket.closed).toBe(true);
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).toMatchObject({ endedBy: 'agent' });
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation!.endChecks).toBeUndefined();
+    });
+
+    it('asks for the goodbye first when the resident asked but Hachi has not said it', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I have to go now.');
+      endCall(ctx);
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'WHEN_IDLE', response: { status: 'ok', message: FAREWELL_GUIDANCE } });
+      expect(endMarks(ctx)).toEqual([]);
+      // The turn the tool call arrived in ends first; the goodbye comes in the next one.
+      ctx.gemini.h.outputTranscript('Of course.');
+      ctx.gemini.h.turnComplete();
+      expect(endMarks(ctx)).toEqual([]);
+      ctx.gemini.h.outputTranscript(' Take care, Maggie. Goodbye!');
+      ctx.gemini.h.turnComplete();
+      await ctx.session.onMessage(markMessage(await endMark(ctx)));
+      expect(ctx.socket.closed).toBe(true);
+    });
+
+    it('stays open if Hachi never says goodbye', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I have to go now.');
+      endCall(ctx);
+      ctx.gemini.h.outputTranscript('Before you go, how did you sleep?');
+      ctx.gemini.h.turnComplete();
+      ctx.gemini.h.turnComplete();
+      expect(endMarks(ctx)).toEqual([]);
+      expect((await hangUp(ctx)).endChecks).toEqual({ refused: 0, noFarewell: 1, reopened: 0 });
+    });
+
+    it('goes back to the conversation when the resident starts talking during the goodbye', async () => {
+      const ctx = await started({ timing: { endFallbackMs: 50 } });
+      askedToEnd(ctx);
+      endCall(ctx);
+      const mark = endMarks(ctx).at(-1)!.mark.name;
+      ctx.gemini.h.inputTranscript('Oh wait, ');
+      ctx.gemini.h.inputTranscript('one more thing.');
+      expect(ctx.gemini.texts.at(-1)).toBe(reopenedCue('Maggie'));
+      await ctx.session.onMessage(markMessage(mark));
+      await wait(120);
+      expect(ctx.session.currentState).toBe('active');
+      expect((await hangUp(ctx)).endChecks).toEqual({ refused: 0, noFarewell: 0, reopened: 1 });
+    });
+
+    it('still ends when the resident only answers the goodbye', async () => {
+      const ctx = await started();
+      askedToEnd(ctx);
+      endCall(ctx);
+      const mark = endMarks(ctx).at(-1)!.mark.name;
+      ctx.gemini.h.inputTranscript('Bye! ');
+      ctx.gemini.h.inputTranscript('Thank you, you too.');
+      await ctx.session.onMessage(markMessage(mark));
+      expect(ctx.socket.closed).toBe(true);
+    });
+
+    it('does not hang up for a goodbye that was due when an emergency began', async () => {
+      const ctx = await started();
+      ctx.gemini.h.inputTranscript('I have to go now.');
+      endCall(ctx);
+      ctx.gemini.h.toolCalls([{ id: 'e1', name: 'report_emergency', args: { quote: 'my chest hurts', symptom: 'chest pain' } }]);
+      ctx.gemini.h.outputTranscript('I am contacting your family now. Goodbye for now.');
+      ctx.gemini.h.turnComplete();
+      await vi.waitFor(() => expect(ctx.emergency.raised).toHaveLength(1));
+      await tick();
+      // One ending only, the emergency's: the goodbye turn did not ask to hang up as well.
+      expect(endMarks(ctx)).toHaveLength(1);
+    });
+
+    it.each(['wrong_person', 'voicemail'])('does not ask for consent when the reason is %s', async (reason) => {
+      const ctx = await started();
+      ctx.gemini.h.outputTranscript('I will call another time. Goodbye.');
+      endCall(ctx, reason);
+      expect(endMarks(ctx)).toHaveLength(1);
+      // Nobody on the line can take it back by talking.
+      ctx.gemini.h.inputTranscript('Please leave a message after the tone.');
+      await ctx.session.onMessage(markMessage(endMarks(ctx)[0]!.mark.name));
+      expect(ctx.socket.closed).toBe(true);
+    });
+
+    it('ends without asking once the time limit has asked for the goodbye', async () => {
+      const ctx = await started({ maxConversationSec: 2, timing: { wrapUpLeadSec: 1 } });
+      await vi.waitFor(() => expect(ctx.gemini.texts).toContain(wrapUpCue('Maggie')), { timeout: 1500 });
+      ctx.gemini.h.outputTranscript('Our time is up. Goodbye, Maggie!');
+      endCall(ctx);
+      expect(endMarks(ctx)).toHaveLength(1);
+    });
+
+    it('does not let end_call overwrite why the gateway was already ending the call', async () => {
+      const ctx = await started({ silence: { promptSec: 0.01, prompts: 0 } });
+      ctx.gemini.h.turnComplete();
+      await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceFarewellCue('Maggie')));
+      endCall(ctx);
+      expect(ctx.gemini.tools.at(-1)).toMatchObject({ scheduling: 'SILENT', response: { status: 'ok' } });
+      await ctx.session.onMessage(markMessage(endMarks(ctx).at(-1)!.mark.name));
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation!.endedBy).toBe('silent_after_greeting');
+    });
   });
 
   it('records a hang-up by the resident', async () => {
@@ -473,6 +624,7 @@ describe('CallSession: reconnects', () => {
 
   it('finishes instead of reconnecting when the call was already ending', async () => {
     const ctx = await started();
+    askedToEnd(ctx);
     ctx.gemini.h.toolCalls([{ id: 'f', name: 'end_call', args: {} }]);
     ctx.gemini.h.closed('x');
     await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));

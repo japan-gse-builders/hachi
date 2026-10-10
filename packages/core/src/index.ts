@@ -7,6 +7,7 @@ export * from './r4.js';
 export * from './spend.js';
 export * from './gateway.js';
 export * from './reach.js';
+export * from './ending.js';
 export * from './voice.js';
 export * from './cases.js';
 export * from './priority.js';
