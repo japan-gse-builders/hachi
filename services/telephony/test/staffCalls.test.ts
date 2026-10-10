@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { afterStream, MAX_STREAMS } from '../src/bridge.js';
 import { staffCallTask } from '@hachi/cloud';
 import { applyCallStatus, LINE_BUSY_RECHECK_SEC, parsePlaceCallInput, placeCall, PLACE_CALL_PATH } from '../src/calls.js';
-import { makeDeps, NOW, resident, unverified } from './fixtures.js';
+import { makeDeps, NOW, resident, retryable, unverified } from './fixtures.js';
 
 /** Issue #13: staff ask Hachi to call a resident now, through the same path as the daily check-in. */
 
@@ -11,12 +11,13 @@ const daily = { residentId: 'res-1', localDate: '2026-10-02', attempt: 0 };
 const staff = { ...daily, staff: { seq: 1, requestedBy: 'staff-1' } };
 const STAFF_ID = '2026-10-02-now-1';
 
-/** What the API does before the task runs: hold the line for this call. */
+/** What the API does before the task runs: hold the line for this call and remember the request. */
 async function seeded(overrides: Parameters<typeof makeDeps>[0] = {}, residentOverrides = {}) {
   const ctx = makeDeps(overrides);
   await ctx.store.createResident(
     resident('res-1', {
       callSlot: { callId: STAFF_ID, at: NOW.toISOString(), until: new Date(NOW.getTime() + 300_000).toISOString() },
+      lastStaffCall: { callId: STAFF_ID, at: NOW.toISOString(), requestedBy: 'staff-1' },
       ...residentOverrides,
     }),
   );
@@ -131,6 +132,39 @@ describe('a staff-requested call', () => {
     expect(telephony.calls).toHaveLength(0);
     expect((await store.getCall('res-1', STAFF_ID))!.failure!.code).toBe('line_busy');
     expect((await store.getResident('res-1'))!.callSlot!.callId).toBe('2026-10-02-0');
+  });
+});
+
+describe('a staff request whose task arrives late', () => {
+  const sixMinutes = 6 * 60_000;
+
+  it('does not ring once the request has lapsed, and says so the same way the API does', async () => {
+    const { deps, store, telephony, clock } = await seeded();
+    clock.now = new Date(NOW.getTime() + sixMinutes);
+    expect(await placeCall(deps, staff, 0)).toEqual({ outcome: 'skipped', reason: 'request_lapsed' });
+    expect(telephony.calls).toHaveLength(0);
+    expect((await store.getCall('res-1', STAFF_ID))!).toMatchObject({ status: 'failed', trigger: 'staff', failure: { code: 'not_placed', retryable: false } });
+    expect(await store.getSpendLedger(spendMonth(NOW))).toBeNull();
+  });
+
+  it('does not ring for a request that a newer one has replaced, and leaves the newer one\u2019s line alone', async () => {
+    const newer = { callId: '2026-10-02-now-2', at: NOW.toISOString(), until: new Date(NOW.getTime() + 300_000).toISOString() };
+    const { deps, store, telephony } = await seeded({}, {
+      callSlot: newer,
+      lastStaffCall: { callId: newer.callId, at: NOW.toISOString(), requestedBy: 'staff-2' },
+    });
+    expect(await placeCall(deps, staff, 0)).toEqual({ outcome: 'skipped', reason: 'request_lapsed' });
+    expect(telephony.calls).toHaveLength(0);
+    expect((await store.getResident('res-1'))!.callSlot).toEqual(newer);
+  });
+
+  it('carries on with a call that was taken up in time when its task comes again later', async () => {
+    const { deps, telephony, clock } = await seeded();
+    telephony.failWith(retryable());
+    expect((await placeCall(deps, staff, 0)).outcome).toBe('retry_later');
+    telephony.next = null;
+    clock.now = new Date(NOW.getTime() + sixMinutes);
+    expect((await placeCall(deps, staff, 1)).outcome).toBe('placed');
   });
 });
 

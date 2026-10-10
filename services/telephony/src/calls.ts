@@ -11,6 +11,7 @@ import {
   reserve,
   settle,
   spendMonth,
+  STAFF_REQUEST_HOLD_MS,
   staffCallId,
 } from '@hachi/core';
 import type { CallRecord, CallStatus, Resident, Store } from '@hachi/store';
@@ -125,7 +126,15 @@ export type PlaceCallOutcome =
   | { outcome: 'placed'; providerCallId: string }
   | {
       outcome: 'skipped';
-      reason: 'inactive' | 'synthetic' | 'consent_required' | 'already_handled' | 'budget_exhausted' | 'gateway_unavailable' | 'line_busy';
+      reason:
+        | 'inactive'
+        | 'synthetic'
+        | 'consent_required'
+        | 'already_handled'
+        | 'budget_exhausted'
+        | 'gateway_unavailable'
+        | 'line_busy'
+        | 'request_lapsed';
     }
   /** The daily check-in found the line busy with another call and will look again shortly. */
   | { outcome: 'deferred'; reason: 'line_busy' }
@@ -238,11 +247,23 @@ function withoutLease(c: CallRecord): CallRecord {
   return rest;
 }
 
-const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required', { code: string; message: string }> = {
+const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required' | 'request_lapsed', { code: string; message: string }> = {
   inactive: { code: 'paused', message: 'Calls were paused for this resident before the call could be made' },
   synthetic: { code: 'synthetic', message: 'A synthetic demo resident is never called' },
   consent_required: { code: 'consent_required', message: 'The resident has not agreed to calls from Hachi' },
+  // The same code the API reports once the request's hold has run out, so both say the same thing.
+  request_lapsed: { code: 'not_placed', message: 'The request lapsed before the call could be made' },
 };
+
+/**
+ * A staff request is only good while it holds the line. After that the API has told staff the call
+ * did not start and let them ask again, so a task that arrives late (a Cloud Tasks backlog, an
+ * outage) must not ring the resident anyway, unseen by anyone. A newer request replaces it too.
+ */
+function staffRequestLapsed(r: Resident, callId: string, now: Date): boolean {
+  const asked = r.lastStaffCall;
+  return !asked || asked.callId !== callId || now.getTime() - Date.parse(asked.at) > STAFF_REQUEST_HOLD_MS;
+}
 
 /**
  * A staff call refused before it was dialled still gets a record, so the member of staff following
@@ -296,6 +317,11 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
 
   const staff = input.staff;
   const callId = callIdOf(input);
+  // Only before the call exists: once a run has created it, the request was taken up in time and a
+  // redelivered task carries on with it as usual.
+  if (staff && staffRequestLapsed(r, callId, deps.now()) && !(await deps.store.getCall(r.id, callId))) {
+    return refuseStaffCall(deps, r, { ...input, staff }, 'request_lapsed');
+  }
   const at = deps.now().toISOString();
   const token = deps.newToken();
   let streamToken = deps.newToken();
