@@ -146,6 +146,8 @@ export class CallSession {
   private previousTurns: Turn[] = [];
   private prior?: PriorContext;
   private items: readonly ScreenItem[] = [];
+  /** Staff asked for this call; it comes outside the daily schedule (issue #13). */
+  private unscheduled = false;
   private offsetMs = 0;
 
   private live?: LiveSession;
@@ -290,8 +292,10 @@ export class CallSession {
     // A reconnected stream must not treat the quiet after the drop as a resident who never spoke.
     this.heardResident = this.previousTurns.some((t) => t.speaker === 'resident');
     this.offsetMs = this.previousTurns.length ? this.previousTurns[this.previousTurns.length - 1]!.endMs + 1000 : 0;
+    this.unscheduled = call.trigger === 'staff';
     // The rotation runs on the calendar, so a resumed stream asks the same questions as the first.
-    this.items = itemsForCall(
+    // The set questions belong to the daily call; an extra call staff asked for is about now.
+    this.items = this.unscheduled ? [] : itemsForCall(
       resident.serviceStartedAt.slice(0, 10),
       call.localDate ?? localDate(new Date(), resident.timeZone),
     );
@@ -350,7 +354,7 @@ export class CallSession {
     this.silenceTimer = undefined;
     if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
     if (++this.silencePrompts <= this.deps.config.silence.prompts) {
-      this.live?.sendText(silenceCue(this.name, this.heardResident));
+      this.live?.sendText(silenceCue(this.name, this.heardResident, this.unscheduled));
       // Re-armed here as well as on turnComplete, so a model that answers with nothing still ends.
       this.armSilence();
       return;
@@ -378,6 +382,7 @@ export class CallSession {
         handle ? [] : [...this.previousTurns, ...this.transcript()],
         this.prior,
         this.items,
+        { unscheduled: this.unscheduled },
       ),
       ...(handle ? { resumeHandle: handle } : {}),
     });

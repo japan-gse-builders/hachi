@@ -44,9 +44,14 @@ export function buildApp(deps: AnalyzerAppDeps): FastifyInstance {
     // Transcripts are personal data; logs carry ids and outcomes only.
     const log = { ...ref, outcome: result.outcome, ...(result.outcome === 'analyzed' ? { rules: result.rules, model: result.model } : {}) };
     if (result.outcome === 'retry') req.log.warn({ ...log, reason: result.reason.slice(0, 200) }, 'analysis deferred');
-    else if (result.outcome === 'analyzed' && !result.model) req.log.warn(log, 'analysed without the model');
+    // The API shows staff only the category; the provider's own words are kept here for whoever fixes it.
+    else if (result.outcome === 'analyzed' && result.incomplete.length) {
+      req.log.warn({ ...log, incomplete: result.incomplete, errors: result.errors?.map((e) => e.slice(0, 200)) }, 'analysis incomplete');
+    }
     else req.log.info(log, 'analysis');
-    return reply.status(result.outcome === 'retry' || result.outcome === 'busy' ? 503 : 200).send(result);
+    // The raw errors were logged above; the reply goes to Cloud Tasks, which has no use for them.
+    const body = result.outcome === 'analyzed' ? { ...result, errors: undefined } : result;
+    return reply.status(result.outcome === 'retry' || result.outcome === 'busy' ? 503 : 200).send(body);
   });
 
   app.post('/tasks/sweep', async (req, reply) => {

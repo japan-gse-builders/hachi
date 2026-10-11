@@ -612,13 +612,14 @@ describe('family dashboard (FAM-01..04)', () => {
       {
         startedAt: '2026-10-01T01:00:00.000Z',
         connected: true,
+        notesPending: false,
         durationSec: 240,
         summary: { health: 'A little tired', meals: 'Ate very little yesterday', topics: ['grandson'] },
         headline: 'Margaret Smithさんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：対応中。',
         domains: null,
         tags: [],
       },
-      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, durationSec: null, summary: null, headline: null, domains: null, tags: [] },
+      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, notesPending: false, durationSec: null, summary: null, headline: null, domains: null, tags: [] },
     ]);
     expect(d.alerts).toEqual([
       {

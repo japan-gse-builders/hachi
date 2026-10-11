@@ -84,6 +84,18 @@ describe('CallSession: stream start', () => {
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.streams).toBe(1);
   });
 
+  it('tells the model that staff asked for this call and leaves the set questions to the daily one (issue #13)', async () => {
+    const daily = await started();
+    expect(daily.gemini.setup.systemInstruction).toContain('calling for the daily check-in');
+    const ctx = await started({ call: { trigger: 'staff', requestedBy: 'staff-1' } });
+    const prompt = ctx.gemini.setup.systemInstruction;
+    expect(prompt).toContain('care team asked you to give them a quick call now');
+    expect(prompt).not.toContain('calling for the daily check-in');
+    expect(prompt).toContain('There are none on this call');
+    expect(prompt).not.toContain("Today's set questions.");
+    expect(ctx.gemini.texts).toEqual([openingCue('Maggie')]);
+  });
+
   it('records the Twilio call id when the status callback has not arrived yet', async () => {
     const ctx = await setup({ call: { providerCallId: undefined } });
     await ctx.session.onMessage(startMessage({}, 'CA9'));

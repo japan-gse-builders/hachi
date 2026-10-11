@@ -92,6 +92,12 @@ h3 { margin: 0 0 4px; font-size: var(--heading-section); }
 .card-link:focus-visible { outline: 3px solid #1f4d3a; outline-offset: 2px; }
 .card-link p { margin: 4px 0; }
 .card-emergency, .card-emergency:hover { border-left: 8px solid #b3261e; }
+/* Not a finding, so not an urgency colour: a call nobody has finished checking. */
+.card-unchecked { border-left: 8px solid #8a6d1f; }
+.unchecked { background: #efe6c8; color: #5c4a10; }
+.gaps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.gaps li { border-top: 1px solid #ece7dc; padding-top: 12px; }
+.gaps li p { margin: 4px 0; }
 .reason { font-weight: 600; }
 .calls { display: grid; gap: 12px; }
 .calls article { border-top: 1px solid #ece7dc; padding-top: 12px; }

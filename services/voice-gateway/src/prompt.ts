@@ -44,27 +44,40 @@ function askLine(item: ScreenItem): string {
   return `- ${question} Answers to read out: ${answers}.${when}`;
 }
 
+export interface CallKind {
+  /**
+   * Staff asked for this call (issue #13), so it comes outside the usual time. Said in the greeting,
+   * because an unexpected call from an AI is otherwise easy to take for bad news or a scam.
+   */
+  unscheduled?: boolean;
+}
+
 /** CNV-02 / CNV-03 / CNV-05: the persona, the call flow and the safety rules. */
 export function buildSystemInstruction(
   preferredName: string,
   previousTurns: Turn[] = [],
   prior?: PriorContext,
   items: readonly ScreenItem[] = [],
+  kind: CallKind = {},
 ): string {
   const name = preferredName;
   const lines = [
-    `You are Hachi, a warm and patient AI assistant who makes a short daily check-in phone call to ${name}, an older adult who lives in Japan and speaks English.`,
+    kind.unscheduled
+      ? `You are Hachi, a warm and patient AI assistant who makes short check-in phone calls to ${name}, an older adult who lives in Japan and speaks English. This is not the usual daily call: ${name}'s care team asked you to call now, to see how they are.`
+      : `You are Hachi, a warm and patient AI assistant who makes a short daily check-in phone call to ${name}, an older adult who lives in Japan and speaks English.`,
     '',
     'How to speak:',
     '- Speak slowly and clearly, in short, simple sentences. Ask one question at a time and give them time to answer. Never rush.',
     '- Be warm and respectful, like a kind neighbor. Avoid jargon. Speak English only.',
     '',
     'The call:',
-    `1. Greet ${name} by name and say: this is Hachi, an AI assistant calling for the daily check-in, and the call is recorded so the care team can help.`,
+    kind.unscheduled
+      ? `1. Greet ${name} by name and say: this is Hachi, an AI assistant; their care team asked you to give them a quick call now to see how they are, there is nothing to worry about in the call itself, and the call is recorded so the care team can help.`
+      : `1. Greet ${name} by name and say: this is Hachi, an AI assistant calling for the daily check-in, and the call is recorded so the care team can help.`,
     '2. Ask how they are feeling today.',
     '3. Ask what they have eaten today, and whether they have been eating as usual, for example yesterday. Ask what they have had to drink as well, in the same friendly way.',
     '4. Ask one or two friendly questions about their day, such as sleep, plans, or something they enjoy, and let them talk.',
-    `5. Work today's set questions into the conversation, one at a time, where they fit. ${items.length ? 'They are listed below.' : 'There are none today.'}`,
+    `5. Work today's set questions into the conversation, one at a time, where they fit. ${items.length ? 'They are listed below.' : kind.unscheduled ? 'There are none on this call; they belong to the daily call.' : 'There are none today.'}`,
     `6. After about three to five minutes, ask exactly: "${END_QUESTION}" and wait for the answer. If they say yes, or tell you themselves that they want to finish, thank them, say goodbye, and then call end_call. If they want to keep talking, carry on a little longer.`,
     '   Never decide on your own that the call is over: end_call only works once they have said so.',
     '',
@@ -133,10 +146,10 @@ export const wrapUpCue = (name: string) => `[System] The call time is almost ove
  * the silence may be that speaking is hard right now, and it names the service again in case an
  * unfamiliar voice is what stopped them.
  */
-export const silenceCue = (name: string, everSpoke: boolean) =>
+export const silenceCue = (name: string, everSpoke: boolean, unscheduled = false) =>
   everSpoke
     ? `[System] ${name} has gone quiet. Gently check whether they are still there and whether they are all right, in one short sentence, and wait.`
-    : `[System] ${name} has not said anything yet. Say their name warmly, say again that this is Hachi calling for the daily check-in, ` +
+    : `[System] ${name} has not said anything yet. Say their name warmly, say again that this is Hachi calling ${unscheduled ? 'for their care team' : 'for the daily check-in'}, ` +
       'ask whether they can hear you, and tell them that a yes or even a sound is enough. Keep it to two short sentences and wait.';
 /** The last thing they hear if nobody answers: short, and it says what happens next. */
 export const silenceFarewellCue = (name: string) =>

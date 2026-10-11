@@ -1,6 +1,8 @@
 import type {
+  AnalysisGap,
   Case,
   CallConsent,
+  CallSlot,
   CallSpeechSample,
   CallTag,
   Contact,
@@ -65,6 +67,10 @@ export interface Resident {
   active: boolean;
   /** Generated demo/evaluation data, not a real person (USR-04). */
   synthetic?: boolean;
+  /** The call that holds this resident's line right now, if any (see `CallSlot`). */
+  callSlot?: CallSlot;
+  /** The latest call staff asked Hachi to make; numbers the day's series and spaces requests out. */
+  lastStaffCall?: { callId: string; at: string; requestedBy: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -77,10 +83,17 @@ export interface CallSummary {
   topics: string[];
 }
 
+/** Why Hachi rang. Absent on the daily check-in and on calls made before staff could ask. */
+export type CallTrigger = 'staff';
+
 export interface CallRecord {
   id: string;
   residentId: string;
   source: 'live' | 'imported';
+  /** 'staff': a member of staff asked Hachi to call now, outside the daily schedule. */
+  trigger?: CallTrigger;
+  /** uid of the staff member who asked, for `trigger: 'staff'`. */
+  requestedBy?: string;
   /** Generated demo/evaluation data, not a real call (USR-04). */
   synthetic?: boolean;
   status: CallStatus;
@@ -100,7 +113,10 @@ export interface CallRecord {
   speech?: CallSpeechSample;
   analysisPending: boolean;
   createdAt: string;
-  /** 0 for the scheduled call; incremented for each retry after a technical failure. */
+  /**
+   * 0 for the scheduled call; incremented for each retry after a technical failure. Absent on
+   * staff-requested calls, which are never retried: staff can ask again.
+   */
   attempt?: number;
   /** Twilio Call SID. */
   providerCallId?: string;
@@ -123,6 +139,8 @@ export interface CallRecord {
   analysis?: CallAnalysis;
   /** An analysis worker holds the call until this time. */
   analysisLease?: string;
+  /** The last time staff asked for this call to be analysed again, and who asked. */
+  reanalysis?: { requestedAt: string; requestedBy: string };
 }
 
 export interface CallWellbeing {
@@ -152,9 +170,14 @@ export interface CallAnalysis {
   answers?: ItemAnswer[];
   /** The resident asked for someone to ring them (kept whether or not a message could be sent). */
   contactRequest?: ContactRequest;
-  /** Why the model could not be used, if it was not. */
+  /**
+   * The parts that could not be done, and why, as categories. Present means the call was NOT fully
+   * checked: staff must see it as such, never as a call in which nothing was found.
+   */
+  incomplete?: AnalysisGap[];
+  /** Why the model could not be used, if it was not. Raw provider text: logs and this record only. */
   error?: string;
-  /** Why speech could not be measured from the recording, if it was not. */
+  /** Why speech could not be measured from the recording, if it was not. Same as `error`. */
   voiceError?: string;
 }
 

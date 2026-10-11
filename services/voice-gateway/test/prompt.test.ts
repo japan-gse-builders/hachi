@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { screenItem } from '@hachi/core';
 import type { CallMemory, CallRecord } from '@hachi/store';
-import { buildSystemInstruction, EMERGENCY_TOOL_GUIDANCE, emergencyCue, END_QUESTION, END_REFUSED_GUIDANCE, openingCue, priorContext, resumeCue, wrapUpCue } from '../src/prompt.js';
+import { buildSystemInstruction, EMERGENCY_TOOL_GUIDANCE, emergencyCue, END_QUESTION, END_REFUSED_GUIDANCE, openingCue, priorContext, resumeCue, silenceCue, wrapUpCue } from '../src/prompt.js';
 import { residentWantsToEnd } from '@hachi/core';
 
 describe('buildSystemInstruction', () => {
@@ -18,6 +18,17 @@ describe('buildSystemInstruction', () => {
     expect(prompt).toContain('Never decide on your own that the call is over');
     expect(END_REFUSED_GUIDANCE).toContain(END_QUESTION);
     expect(residentWantsToEnd('Yes', END_QUESTION)).toBe(true);
+  });
+
+  it('greets a call staff asked for as one outside the usual time, still as an AI and recorded (issue #13)', () => {
+    const extra = buildSystemInstruction('Maggie', [], undefined, [], { unscheduled: true });
+    expect(extra).toContain('This is not the usual daily call');
+    expect(extra).toContain('care team asked you to give them a quick call now');
+    expect(extra).toMatch(/AI assistant/);
+    expect(extra).toMatch(/recorded/);
+    expect(extra).not.toContain('calling for the daily check-in');
+    expect(silenceCue('Maggie', false, true)).toContain('calling for their care team');
+    expect(silenceCue('Maggie', false)).toContain('calling for the daily check-in');
   });
 
   it('asks about feelings and meals today and yesterday', () => {

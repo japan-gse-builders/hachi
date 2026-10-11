@@ -1,4 +1,4 @@
-import { parseSpendSettings, type SpendSettings } from '@hachi/core';
+import { parseGatewayPolicy, parseSpendSettings, type GatewayPolicy, type SpendSettings } from '@hachi/core';
 
 export interface ApiConfig {
   port: number;
@@ -8,6 +8,22 @@ export interface ApiConfig {
   corsOrigins: string[];
   /** Read-only here: the API reports the month, the services that spend money enforce it. */
   spend: SpendSettings;
+  /** Read-only too: lets "Call now" say up front that the conversation is known to be broken. */
+  gateway: GatewayPolicy;
+  /**
+   * Staff asking Hachi to call now (issue #13): where the telephony service's dial tasks go.
+   * Absent without TELEPHONY_BASE_URL, which is what local development wants.
+   */
+  calls?: {
+    telephonyBaseUrl: string;
+    project: string;
+    location: string;
+    queue: string;
+    /** Signs the task's OIDC token; the telephony service only accepts this account. */
+    invokerServiceAccount: string;
+    /** Least time between two staff requests for the same resident. */
+    cooldownMs: number;
+  };
 }
 
 const BUCKET_NAME = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
@@ -32,5 +48,35 @@ export function loadConfig(env: NodeJS.ProcessEnv): ApiConfig {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`WEB_ORIGINS must be http(s) origins: ${origin}`);
     if (url.origin !== origin) throw new Error(`WEB_ORIGINS entries must be origins without a path: ${origin}`);
   }
-  return { port, recordingsBucket, corsOrigins, spend: parseSpendSettings(env) };
+  return { port, recordingsBucket, corsOrigins, spend: parseSpendSettings(env), gateway: parseGatewayPolicy(env), ...callsConfig(env) };
+}
+
+function callsConfig(env: NodeJS.ProcessEnv): Pick<ApiConfig, 'calls'> {
+  const base = env.TELEPHONY_BASE_URL?.trim();
+  if (!base) return {};
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new Error('TELEPHONY_BASE_URL is not a valid URL');
+  }
+  if (url.protocol !== 'https:') throw new Error('TELEPHONY_BASE_URL must use https://');
+  const need = (name: string) => {
+    const v = env[name]?.trim();
+    if (!v) throw new Error(`${name} is not set (needed with TELEPHONY_BASE_URL)`);
+    return v;
+  };
+  const raw = env.STAFF_CALL_COOLDOWN_MIN?.trim();
+  const minutes = raw ? Number(raw) : 10;
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 120) throw new Error('STAFF_CALL_COOLDOWN_MIN must be an integer between 0 and 120');
+  return {
+    calls: {
+      telephonyBaseUrl: base.replace(/\/+$/, ''),
+      project: need('GOOGLE_CLOUD_PROJECT'),
+      location: env.TASKS_LOCATION?.trim() || 'asia-northeast1',
+      queue: env.CALL_QUEUE?.trim() || 'outbound-calls',
+      invokerServiceAccount: need('TASKS_INVOKER_SA'),
+      cooldownMs: minutes * 60_000,
+    },
+  };
 }

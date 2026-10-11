@@ -52,6 +52,8 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
                   <p className="meta">
                     {formatWhen(c.startedAt)} · {c.connected ? `Talked${c.durationSec !== null ? ` for ${minutes(c.durationSec)}` : ''}` : 'Did not connect'}
                   </p>
+                  {/* Not ready is not the same as nothing to say, so it is said rather than left blank. */}
+                  {c.notesPending && <p className="meta">Hachi's notes on this call are not ready yet.</p>}
                   <TagList tags={c.tags ?? []} label={`Topics from the call on ${formatWhen(c.startedAt)}`} />
                   {c.summary && (
                     <>

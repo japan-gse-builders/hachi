@@ -36,11 +36,35 @@ export interface UnreachedResident {
   tried: string;
 }
 
+/**
+ * A call whose analysis did not finish (issue #11). Not a finding and not ranked: it says what has
+ * not been checked, so it is never read as a call in which nothing was wrong. Localized by the API.
+ */
+export interface IncompleteAnalysis {
+  residentId: string;
+  residentName: string;
+  callId: string;
+  startedAt: string;
+  localDate: string;
+  parts: ('review' | 'voice')[];
+  reasons: string[];
+  notChecked: string;
+  checked: string;
+  reanalysisRequested: boolean;
+}
+
+export interface IncompleteAnalyses {
+  items: IncompleteAnalysis[];
+  note: string | null;
+}
+
 export interface Queue {
   items: QueueItem[];
   legend: UrgencyLegendItem[];
   /** Missing from servers older than the unreached list. */
   unreached?: { items: UnreachedResident[]; note: string | null };
+  /** Missing from servers older than issue #11. */
+  incomplete?: IncompleteAnalyses;
 }
 
 /** This month's AI spend. Null when the API was started without a budget configured. */
@@ -145,12 +169,17 @@ export interface CaseDetail {
     vulnerability: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
     householdNotes: string | null;
     synthetic: boolean;
+    /** Active, agreed to calls and not synthetic, so "Call now" can work (issue #13). Missing from older servers. */
+    callable?: boolean;
   };
   detections: { summary: string; detectedAt: string; evidence: Evidence[] }[];
   calls: {
     id: string;
     startedAt: string;
     status: string;
+    /** 'staff' when a member of staff asked Hachi to call (issue #13). Missing from older servers. */
+    trigger?: 'staff' | null;
+    requestedBy?: string | null;
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
     /** Missing from older servers; null for calls analysed before tags existed. */
@@ -241,6 +270,8 @@ export interface FamilyDashboard {
   calls: {
     startedAt: string;
     connected: boolean;
+    /** True while Hachi's notes on a connected call are not ready; never says why. Missing on older servers. */
+    notesPending?: boolean;
     durationSec: number | null;
     summary: { health: string; meals: string; topics: string[] } | null;
     headline?: string | null;
@@ -269,4 +300,6 @@ export interface Resident {
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
   consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
   callConsent?: import('./privacy').CallConsent;
+  /** The call holding this resident's line, if any; stale once `until` has passed (issue #13). */
+  callSlot?: { callId: string; at: string; until: string };
 }
