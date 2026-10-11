@@ -2,6 +2,7 @@ import type {
   AnalysisGap,
   Case,
   CallConsent,
+  CallSlot,
   CallSpeechSample,
   CallTag,
   Contact,
@@ -66,6 +67,10 @@ export interface Resident {
   active: boolean;
   /** Generated demo/evaluation data, not a real person (USR-04). */
   synthetic?: boolean;
+  /** The call that holds this resident's line right now, if any (see `CallSlot`). */
+  callSlot?: CallSlot;
+  /** The latest call staff asked Hachi to make; numbers the day's series and spaces requests out. */
+  lastStaffCall?: { callId: string; at: string; requestedBy: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -78,10 +83,17 @@ export interface CallSummary {
   topics: string[];
 }
 
+/** Why Hachi rang. Absent on the daily check-in and on calls made before staff could ask. */
+export type CallTrigger = 'staff';
+
 export interface CallRecord {
   id: string;
   residentId: string;
   source: 'live' | 'imported';
+  /** 'staff': a member of staff asked Hachi to call now, outside the daily schedule. */
+  trigger?: CallTrigger;
+  /** uid of the staff member who asked, for `trigger: 'staff'`. */
+  requestedBy?: string;
   /** Generated demo/evaluation data, not a real call (USR-04). */
   synthetic?: boolean;
   status: CallStatus;
@@ -101,7 +113,10 @@ export interface CallRecord {
   speech?: CallSpeechSample;
   analysisPending: boolean;
   createdAt: string;
-  /** 0 for the scheduled call; incremented for each retry after a technical failure. */
+  /**
+   * 0 for the scheduled call; incremented for each retry after a technical failure. Absent on
+   * staff-requested calls, which are never retried: staff can ask again.
+   */
   attempt?: number;
   /** Twilio Call SID. */
   providerCallId?: string;

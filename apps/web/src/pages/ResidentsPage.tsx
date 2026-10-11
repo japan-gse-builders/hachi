@@ -5,7 +5,16 @@ import { useAuth } from '../auth';
 import type { IncompleteAnalyses, Resident } from '../types';
 import { CallConsentField } from '../components/CallConsentField';
 import { IncompleteAnalysisList } from '../components/IncompleteAnalyses';
+import { CallNowButton } from '../components/CallNowButton';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
+
+/**
+ * A staff call holding the line now, so the page follows it instead of offering a second call.
+ * Daily calls are left out: at a shared call time they would start a poll for every resident on
+ * the page. Pressing "Call now" during one is refused with its id, and the button follows it then.
+ */
+const liveCall = (r: Resident) =>
+  r.callSlot && /-now-\d+$/.test(r.callSlot.callId) && Date.parse(r.callSlot.until) > Date.now() ? r.callSlot.callId : undefined;
 
 export function ResidentsPage() {
   const { token } = useAuth();
@@ -101,6 +110,9 @@ export function ResidentsPage() {
                     </form>
                   )}
                 </>
+              )}
+              {r.active && hasCallConsent(r.callConsent) && (
+                <CallNowButton residentId={r.id} name={r.preferredName || r.name} phone={r.phone} busyCallId={liveCall(r)} />
               )}
               <p><button className="ghost" type="button" disabled={busyId !== null || (!r.active && !hasCallConsent(r.callConsent))}
                 onClick={() => void updateResident(r.id, { active: !r.active })}>{r.active ? 'Pause calls' : 'Resume calls'}</button></p>

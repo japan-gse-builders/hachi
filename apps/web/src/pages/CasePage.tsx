@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { CallNowButton } from '../components/CallNowButton';
 import { ScreeningCard } from '../components/ScreeningCard';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, topicList, urgencyTone } from '../format';
@@ -70,6 +71,10 @@ export function CasePage() {
         <p className="reason">{detail.case.reason}</p>
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
+        {/* The next step after reading a case is often to hear from them again (issue #13). */}
+        {(detail.resident.callable ?? !detail.resident.synthetic) && (
+          <CallNowButton residentId={detail.resident.id} name={detail.resident.preferredName || detail.resident.name} phone={detail.resident.phone} />
+        )}
       </section>
 
       {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
@@ -151,7 +156,10 @@ export function CasePage() {
           <div className="calls">
             {detail.calls.map((c) => (
               <article key={c.id}>
-                <p className="meta">{formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}</p>
+                <p className="meta">
+                  {formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}
+                  {c.trigger === 'staff' ? ' · Called at staff request' : ''}
+                </p>
                 {c.wellbeing && c.wellbeing.tags.length > 0 && (
                   <ul className="tag-list" aria-label="Wellbeing tags with the turn each came from">
                     {c.wellbeing.tags.map((t) => (

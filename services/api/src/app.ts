@@ -1,4 +1,23 @@
-import { emptyLedger, HISTORY_CALLS, PRIVACY_NOTICE, spendMonth, type Locale, type SpendSettings } from '@hachi/core';
+import { staffCallTask, type TaskQueue } from '@hachi/cloud';
+import {
+  claimSlot,
+  emptyLedger,
+  gatewayVerdict,
+  hasCallConsent,
+  HISTORY_CALLS,
+  localDate,
+  nextStaffCallSeq,
+  PRIVACY_NOTICE,
+  slotBusy,
+  spendMonth,
+  spendStatus,
+  STAFF_REQUEST_HOLD_MS,
+  staffCallCooldownLeft,
+  staffCallId,
+  type GatewayPolicy,
+  type Locale,
+  type SpendSettings,
+} from '@hachi/core';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError, type ZodType } from 'zod';
 import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
@@ -15,6 +34,7 @@ import {
   buildQueue,
   buildSpendView,
   buildUnreached,
+  callProgressView,
   FAMILY_WINDOW_DAYS,
   INCOMPLETE_DAYS,
   UNREACHED_LOOKBACK_DAYS,
@@ -33,12 +53,21 @@ export interface AppDeps {
   corsOrigins?: string[];
   /** Without it the spend route reports nothing, which is what local development wants. */
   spend?: SpendSettings;
+  /** Lets "Call now" refuse up front when the conversation is known to be broken. */
+  gateway?: GatewayPolicy;
+  /**
+   * Staff asking Hachi to call now (issue #13): the telephony service's dial queue. Without it the
+   * route answers 503, which is what local development wants.
+   */
+  calls?: { queue: TaskQueue; cooldownMs: number };
 }
 
 export class HttpError extends Error {
   constructor(
     readonly statusCode: number,
     message: string,
+    /** A stable code for the app to act on; the message is for people. */
+    readonly reason?: string,
   ) {
     super(message);
   }
@@ -110,7 +139,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return reply.status(400).send({ error: 'validation', issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
     }
     if (err instanceof NotFoundError) return reply.status(404).send({ error: err.message });
-    if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message });
+    if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message, ...(err.reason ? { reason: err.reason } : {}) });
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) return reply.status(status).send({ error: (err as Error).message });
     req.log.error(err);
@@ -160,6 +189,117 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const calls = buildImportedCalls(r, input, newId, now());
     await store.addCalls(calls);
     return reply.status(201).send({ imported: calls.length, usableForBaseline: calls.filter((c) => c.speech?.usable).length });
+  });
+
+  // ---- Staff: ask Hachi to call a resident now (issue #13) ----
+
+  /**
+   * The same checks the daily check-in goes through, made here as well so staff hear why at once
+   * rather than watching a call fail. The telephony service makes them again when it dials: this is
+   * the explanation, that is the enforcement.
+   */
+  const callRefusal = async (r: Resident, t: Date): Promise<HttpError | null> => {
+    if (r.synthetic) return new HttpError(409, 'This is a synthetic demo resident, not a real person, so Hachi does not call them', 'synthetic');
+    if (!r.active) return new HttpError(409, 'Calls are paused for this resident. Resume them first.', 'paused');
+    if (!hasCallConsent(r.callConsent)) return new HttpError(409, 'The resident has not agreed to calls from Hachi yet', 'consent_required');
+    if (deps.spend) {
+      const month = spendMonth(t);
+      const ledger = (await store.getSpendLedger(month)) ?? emptyLedger(month, t.toISOString());
+      if (spendStatus(ledger, deps.spend.policy).paused) {
+        return new HttpError(409, "This month's AI budget is used up, so Hachi is not placing calls", 'budget_exhausted');
+      }
+    }
+    if (deps.gateway && gatewayVerdict(await store.getGatewayBreaker(), t, deps.gateway) === 'down') {
+      return new HttpError(409, "Hachi's conversations are not working at the moment, so the call would only end in an apology", 'gateway_unavailable');
+    }
+    return null;
+  };
+
+  app.post<{ Params: { id: string } }>('/api/residents/:id/calls', async (req, reply) => {
+    const staff = requireStaff(req);
+    if (!deps.calls) throw new HttpError(503, 'Calling from this screen is not set up on this server', 'not_configured');
+    const { queue, cooldownMs } = deps.calls;
+    const r = await getResidentOr404(req.params.id);
+    const t = now();
+    const refusal = await callRefusal(r, t);
+    if (refusal) throw refusal;
+
+    // The cooldown spares the resident a second ring too soon. A call that went wrong on our side
+    // (refused, line busy, a fault while dialling or mid-call, or a request that never reached the
+    // telephony service) is no reason to make staff wait, so it does not count; one that rang and
+    // was not answered still does. A late task for the old request cannot ring as well: it would
+    // find the line held by the new one.
+    const last = r.lastStaffCall;
+    const lastCall = last ? await store.getCall(r.id, last.callId) : null;
+    const lastFaulted = last
+      ? lastCall
+        ? !!lastCall.failure
+        : t.getTime() - Date.parse(last.at) > STAFF_REQUEST_HOLD_MS
+      : false;
+
+    // The line and the cooldown are decided in one transaction, so two members of staff pressing at
+    // once get one call between them.
+    type Outcome = { kind: 'busy'; callId: string } | { kind: 'cooldown'; ms: number } | { kind: 'ok'; callId: string; date: string; seq: number };
+    let outcome = { kind: 'busy', callId: '' } as Outcome;
+    let previous: Resident['lastStaffCall'];
+    await store.updateResident(r.id, (cur) => {
+      previous = cur.lastStaffCall;
+      if (slotBusy(cur.callSlot, t)) {
+        outcome = { kind: 'busy', callId: cur.callSlot!.callId };
+        return cur;
+      }
+      const faulted = lastFaulted && cur.lastStaffCall?.callId === last?.callId;
+      const wait = faulted ? 0 : staffCallCooldownLeft(cur.lastStaffCall?.at, t, cooldownMs);
+      if (wait > 0) {
+        outcome = { kind: 'cooldown', ms: wait };
+        return cur;
+      }
+      const date = localDate(t, cur.timeZone);
+      const seq = nextStaffCallSeq(date, cur.lastStaffCall?.callId);
+      const callId = staffCallId(date, seq);
+      outcome = { kind: 'ok', callId, date, seq };
+      return {
+        ...cur,
+        callSlot: claimSlot(undefined, callId, t, STAFF_REQUEST_HOLD_MS)!,
+        lastStaffCall: { callId, at: t.toISOString(), requestedBy: staff.uid },
+      };
+    });
+    if (outcome.kind === 'busy') {
+      return reply.status(409).send({ error: `Hachi is already on the phone to ${r.name}, or about to be`, reason: 'call_in_progress', callId: outcome.callId });
+    }
+    if (outcome.kind === 'cooldown') {
+      const sec = Math.ceil(outcome.ms / 1000);
+      return reply
+        .status(429)
+        .header('retry-after', String(sec))
+        .send({ error: `Hachi called ${r.name} a few minutes ago. You can ask again in ${Math.ceil(sec / 60)} min.`, reason: 'cooldown', retryAfterSec: sec });
+    }
+
+    const { callId, date, seq } = outcome;
+    try {
+      await queue.enqueue(staffCallTask(r.id, date, seq, staff.uid));
+    } catch (err) {
+      // Nothing will dial, so neither the line nor the cooldown should hold anyone back.
+      await store.updateResident(r.id, (cur) => {
+        if (cur.lastStaffCall?.callId !== callId) return cur;
+        const { callSlot, lastStaffCall: _last, ...rest } = cur;
+        return { ...rest, ...(callSlot && callSlot.callId !== callId ? { callSlot } : {}), ...(previous ? { lastStaffCall: previous } : {}) };
+      });
+      req.log.error({ residentId: r.id, callId, err: (err as Error).message }, 'could not queue a staff call');
+      throw new HttpError(503, 'The call could not be queued. Please try again.', 'queue_unavailable');
+    }
+    req.log.info({ residentId: r.id, callId, by: staff.uid }, 'staff asked Hachi to call');
+    return reply.status(202).send({ callId, status: 'requested' });
+  });
+
+  /** One call's progress, so the "Call now" button can say ringing, on the call, or ended. */
+  app.get<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId', async (req) => {
+    requireStaff(req);
+    if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
+    const r = await getResidentOr404(req.params.id);
+    const view = callProgressView(req.params.callId, await store.getCall(r.id, req.params.callId), r, now());
+    if (!view) throw new NotFoundError('Call');
+    return view;
   });
 
   // ---- Staff: triage queue and cases (QUE-01..03) ----

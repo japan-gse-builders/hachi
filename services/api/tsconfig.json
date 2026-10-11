@@ -5,5 +5,5 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/store" }]
+  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/store" }, { "path": "../../packages/cloud" }]
 }

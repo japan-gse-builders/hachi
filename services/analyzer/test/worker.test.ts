@@ -34,6 +34,15 @@ describe('analyzeCall', () => {
     expect(reviewer.inputs[0]).toMatchObject({ preferredName: 'Maggie', staffLocale: 'en' });
   });
 
+  it('looks for set-question answers only in the daily call, not in one staff asked for (issue #13)', async () => {
+    const daily = await setup();
+    await analyzeCall(daily.deps, ref);
+    expect(daily.reviewer.inputs[0]!.items!.length).toBeGreaterThan(0);
+    const extra = await setup({ calls: [call({ trigger: 'staff', requestedBy: 'staff-1' })] });
+    await analyzeCall(extra.deps, ref);
+    expect(extra.reviewer.inputs[0]!.items).toEqual([]);
+  });
+
   it('opens a case, queues notifications and asks the notifier to send them', async () => {
     const { deps, store, notifications, reviewer } = await setup();
     reviewer.next(starving);
