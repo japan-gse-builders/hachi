@@ -38,7 +38,7 @@ describe('analyzer app', () => {
     const { app: a } = await app();
     const res = await analyze(a);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ outcome: 'analyzed', rules: [], model: true });
+    expect(res.json()).toEqual({ outcome: 'analyzed', rules: [], model: true, incomplete: [] });
     expect((await analyze(a)).json()).toEqual({ outcome: 'done' });
   });
 
@@ -48,7 +48,9 @@ describe('analyzer app', () => {
     expect((await analyze(a)).statusCode).toBe(503);
     const res = await analyze(a, { ...auth, 'x-cloudtasks-taskretrycount': '5' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ outcome: 'analyzed', model: false });
+    expect(res.json()).toMatchObject({ outcome: 'analyzed', model: false, incomplete: [{ part: 'review', failure: 'model_unavailable' }] });
+    // The provider's own message stays in the log.
+    expect(res.json()).not.toHaveProperty('errors');
   });
 
   it('answers 503 while the call settles or another worker holds it', async () => {

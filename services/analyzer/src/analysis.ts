@@ -12,6 +12,7 @@ import {
   normalizeUtterance,
   parseSpokenNumber,
   screenItem,
+  type AnalysisGap,
   type CallSpeechSample,
   type ContactRequest,
   type Detection,
@@ -41,6 +42,8 @@ export interface AnalysisInput {
   model?: string;
   modelError?: string;
   voiceError?: string;
+  /** What could not be done and why; recorded so staff see the call as not fully checked. */
+  incomplete?: AnalysisGap[];
   now: Date;
 }
 
@@ -303,6 +306,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
         memory: review?.memory ?? EMPTY_MEMORY,
         ...(answers.length ? { answers } : {}),
         ...(contactRequest ? { contactRequest } : {}),
+        ...(input.incomplete?.length ? { incomplete: input.incomplete } : {}),
         ...(input.modelError ? { error: input.modelError } : {}),
         ...(input.voiceError ? { voiceError: input.voiceError } : {}),
       },

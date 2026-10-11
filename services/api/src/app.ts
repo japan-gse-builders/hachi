@@ -27,13 +27,16 @@ import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
 import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
 import {
+  analysisGaps,
   buildCaseDetail,
   buildFamilyDashboard,
+  buildIncompleteAnalyses,
   buildQueue,
   buildSpendView,
   buildUnreached,
   callProgressView,
   FAMILY_WINDOW_DAYS,
+  INCOMPLETE_DAYS,
   UNREACHED_LOOKBACK_DAYS,
   urgencyLegend,
   type MediaSigner,
@@ -301,6 +304,12 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   // ---- Staff: triage queue and cases (QUE-01..03) ----
 
+  /** Each active resident with their calls since `since`. */
+  const recentCalls = (residents: Resident[], since: Date) =>
+    Promise.all(
+      residents.filter((r) => r.active).map(async (r) => ({ resident: r, calls: await store.listCalls(r.id, { since: since.toISOString() }) })),
+    );
+
   /**
    * The queue carries the residents nobody reached as well as the cases, because the two answer the
    * same question and only one of them can be built from what a call found. A resident whose call
@@ -312,15 +321,49 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const [cases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
     const locale = localeOf(req);
     const t = now();
-    const since = new Date(t.getTime() - UNREACHED_LOOKBACK_DAYS * 86_400_000).toISOString();
-    const entries = await Promise.all(
-      residents.filter((r) => r.active).map(async (r) => ({ resident: r, calls: await store.listCalls(r.id, { since }) })),
-    );
+    // One read covers both lists: the unreached lookback is the longer window.
+    const entries = await recentCalls(residents, new Date(t.getTime() - Math.max(UNREACHED_LOOKBACK_DAYS, INCOMPLETE_DAYS) * 86_400_000));
     return {
       items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), t, locale),
       legend: urgencyLegend(locale),
       unreached: buildUnreached(entries, t, locale),
+      incomplete: buildIncompleteAnalyses(entries, t, locale),
     };
+  });
+
+  /** Issue #11: the same list for the residents page, without the cases it does not show. */
+  app.get('/api/incomplete-analyses', async (req) => {
+    requireStaff(req);
+    const t = now();
+    const entries = await recentCalls(await store.listResidents(), new Date(t.getTime() - INCOMPLETE_DAYS * 86_400_000));
+    return buildIncompleteAnalyses(entries, t, localeOf(req));
+  });
+
+  /**
+   * Asks for a call whose analysis did not finish to be analysed again. It only marks the call
+   * pending: the analyzer's sweep, which runs every few minutes, is what queues the work, so the API
+   * needs no access to the analyzer's queue. Refused for calls that have nothing missing, because a
+   * second pass costs a model request and finds nothing new. A call already waiting is not an error:
+   * another member of staff got there first, and the pass they asked for is the one this would be.
+   */
+  app.post<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId/reanalysis', async (req, reply) => {
+    const staff = requireStaff(req);
+    if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
+    const r = await getResidentOr404(req.params.id);
+    // The sweep only looks at residents whose calls are running.
+    if (!r.active) throw new HttpError(409, 'Calls are paused for this resident, so the call cannot be analysed again until they are resumed');
+    const existing = await store.getCall(r.id, req.params.callId);
+    if (!existing) throw new NotFoundError('Call');
+    const requestedAt = now().toISOString();
+    let outcome = 'requested' as 'requested' | 'already_pending' | 'complete';
+    await store.updateCall(r.id, existing.id, (c) => {
+      outcome = c.analysisPending ? 'already_pending' : analysisGaps(c).length === 0 ? 'complete' : 'requested';
+      return outcome === 'requested' ? { ...c, analysisPending: true, reanalysis: { requestedAt, requestedBy: staff.uid } } : null;
+    });
+    if (outcome === 'complete') throw new HttpError(409, 'This call was fully analysed; there is nothing to check again');
+    if (outcome === 'already_pending') return reply.status(202).send({ status: 'already_pending' });
+    req.log.info({ residentId: r.id, callId: existing.id, by: staff.uid }, 'reanalysis requested');
+    return reply.status(202).send({ status: 'requested', requestedAt });
   });
 
   /**
