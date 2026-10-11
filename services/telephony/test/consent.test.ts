@@ -1,7 +1,7 @@
 import { spendMonth } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { afterStream, emergencyTransfer } from '../src/bridge.js';
-import { dispatchDueCalls, placeCall } from '../src/calls.js';
+import { applyCallStatus, dispatchDueCalls, placeCall } from '../src/calls.js';
 import { makeDeps, NOW, resident } from './fixtures.js';
 
 const input = { residentId: 'res-1', localDate: '2026-10-02', attempt: 0 };
@@ -31,6 +31,8 @@ describe('call approval enforcement', () => {
     const approved = resident(input.residentId);
     await store.createResident({ ...approved, callConsent: { ...approved.callConsent!, noticeVersion: '2026-10-01' } });
     expect((await placeCall(deps, input, 0)).outcome).toBe('placed');
+    // The first call has to end before the next can take the line.
+    await applyCallStatus(deps, ids, { CallStatus: 'completed', CallDuration: '120' });
     expect((await placeCall(deps, { ...input, localDate: '2026-10-03' }, 0)).outcome).toBe('placed');
     expect(telephony.calls).toHaveLength(2);
     await store.updateResident(input.residentId, (r) => ({ ...r, active: false }));

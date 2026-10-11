@@ -1,3 +1,5 @@
+import { CloudTasksClient } from '@google-cloud/tasks';
+import { CloudTasksQueue } from '@hachi/cloud';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -21,6 +23,22 @@ const app = buildApp({
   signer: new GcsMediaSigner(getStorage(firebase), config.recordingsBucket),
   corsOrigins: config.corsOrigins,
   spend: config.spend,
+  gateway: config.gateway,
+  ...(config.calls
+    ? {
+        calls: {
+          queue: new CloudTasksQueue(new CloudTasksClient(), {
+            project: config.calls.project,
+            location: config.calls.location,
+            queue: config.calls.queue,
+            // The telephony service checks the token's audience against its own URL.
+            targetBaseUrl: config.calls.telephonyBaseUrl,
+            serviceAccountEmail: config.calls.invokerServiceAccount,
+          }),
+          cooldownMs: config.calls.cooldownMs,
+        },
+      }
+    : {}),
   logger: true,
 });
 

@@ -127,10 +127,12 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
             preferredName: resident.preferredName,
             transcript,
             staffLocale: config.staffLocale,
-            items: itemsForCall(
-              resident.serviceStartedAt.slice(0, 10),
-              call.localDate ?? localDate(new Date(call.startedAt), resident.timeZone),
-            ),
+            // A call staff asked for does not ask the set questions (issue #13), so there are no
+            // answers in it to look for, and none the model should think it found.
+            items:
+              call.trigger === 'staff'
+                ? []
+                : itemsForCall(resident.serviceStartedAt.slice(0, 10), call.localDate ?? localDate(new Date(call.startedAt), resident.timeZone)),
             // Charged, not reserved. The call has already happened; reviewing it is not something
             // the budget is allowed to refuse, only something it has to know about.
             onUsage: (t) => void chargeTokens(deps, t),

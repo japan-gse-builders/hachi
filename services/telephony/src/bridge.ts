@@ -67,20 +67,25 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
     });
   }
 
+  // Only the daily check-in has a next attempt. A staff-requested call is not retried, so it must
+  // not promise a call back that nothing is going to make.
+  const retry = !down && call.attempt !== undefined && !!call.localDate;
   await deps.store.updateCall(ids.residentId, ids.callId, (c) => ({
     ...c,
     failure: {
       ...(down ? { code: 'gateway_unavailable' } : {}),
       message: 'The conversation could not be continued (Voice Gateway unavailable)',
-      retryable: !down,
+      retryable: retry,
     },
   }));
-  if (!down && call.attempt !== undefined && call.localDate) {
-    await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate, attempt: call.attempt });
+  if (retry) {
+    await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate!, attempt: call.attempt! });
   }
   const apology = down
     ? "I'm sorry, our system isn't working at the moment, so we can't talk today. Your care team can see that we could not reach you. Goodbye."
-    : "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye.";
+    : retry
+      ? "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye."
+      : "I'm sorry, we're having a technical problem, so we can't talk right now. Your care team can see that the call did not work. Goodbye.";
   return `<Response>${say(deps, apology)}<Hangup/></Response>`;
 }
 
