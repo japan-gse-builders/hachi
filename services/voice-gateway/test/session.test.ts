@@ -872,3 +872,22 @@ it('does not infer no response when a model turn has no audio to play', async ()
     expect(await ctx.store.listCasesByResident(IDS.residentId)).toEqual([]);
   } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
 });
+
+it('does not let end_call skip the checks or erase an exhausted-silence ending', async () => {
+  vi.useFakeTimers();
+  const ctx = await started({ silence: { promptSec: 1, prompts: 1 } });
+  const end = { id: 'end-silence', name: 'end_call', args: { reason: 'completed' } };
+  try {
+    await playedTurn(ctx);
+    await vi.advanceTimersByTimeAsync(1000);
+    ctx.gemini.h.toolCalls([end]);
+    expect(ctx.gemini.tools.at(-1)!.response.status).toBe('error');
+    expect(ctx.session.currentState).toBe('active');
+    await playedTurn(ctx);
+    await vi.advanceTimersByTimeAsync(1000);
+    ctx.gemini.h.toolCalls([end]);
+    expect(ctx.gemini.tools.at(-1)!.response.status).toBe('ok');
+    await vi.advanceTimersByTimeAsync(151);
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).toMatchObject({ endedBy: 'silent_after_greeting', noResponseEscalated: true });
+  } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
+});

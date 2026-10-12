@@ -580,8 +580,12 @@ export class CallSession {
   private onToolCall(call: ToolCall): void {
     const live = this.live;
     if (call.name === 'end_call') {
+      if (this.silencePrompts > 0 && !this.silenceEscalated && !this.emergencyActive) {
+        live?.respondToTool(call, { status: 'error', retryable: false, message: 'The unanswered-check sequence is still running. Wait for the resident to answer; do not hang up yet.' }, 'SILENT');
+        return;
+      }
       live?.respondToTool(call, { status: 'ok', retryable: false, message: 'The call will end now.' }, 'SILENT');
-      if (!this.emergencyActive) this.requestEnd('agent');
+      if (!this.emergencyActive) this.requestEnd(this.silenceEscalated && this.endReason ? this.endReason : 'agent');
       return;
     }
     if (call.name === 'report_emergency') {

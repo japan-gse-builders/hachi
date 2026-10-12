@@ -13,7 +13,7 @@ records either never speaking or stopping partway through, and contains no inven
 It is flagged immediately when the call ends; regular R1 notifications apply. Silence alone does
 not trigger the medical-emergency conference bridge. Post-call analysis can make the same flag
 if the immediate write failed. A saved case id prevents a duplicate, including after staff close it.
-Older calls without the new escalation marker retain their existing R4 assessment.
+Older calls without the new escalation marker retain their existing R4 assessment. The model cannot skip an unanswered-check sequence with `end_call`, and saying goodbye does not erase the recorded silence reason.
 
 ## Try it locally
 
@@ -30,7 +30,7 @@ phone call, cloud write or notification delivery.
 4. Start again. After the first prompt, select **Reply now**. The test call ends with **No R1 flag**.
 5. Start again and select **End test** before the sequence is exhausted. This also creates no R1 flag.
 
-To restart from this branch's root (Node 22.12+):
+This session's working folder is `/private/tmp/hachi-issue-15-20261013`. To restart from that branch root (Node 22.12+):
 
 ```sh
 npm ci --registry=https://registry.npmjs.org --no-audit --no-fund
@@ -52,8 +52,10 @@ These variables are forwarded by the voice-gateway deployment script; no deploym
 For example, this only changes the local preview's displayed Gemini setup, not real Gemini timing:
 
 ```sh
-LIVE_SILENCE_MS=2500 LIVE_END_OF_SPEECH_SENSITIVITY=low npm run preview:silence
+LIVE_SILENCE_MS=2500 LIVE_END_OF_SPEECH_SENSITIVITY=low npm run preview:silence -- 5193
 ```
+
+The optional example uses port 5193 so it can run alongside the existing 5191 preview.
 
 The connector sends the VAD fields under
 `realtimeInputConfig.automaticActivityDetection` on the first connection and reconnects.
@@ -94,8 +96,8 @@ No real telephone measurements have been claimed by this implementation.
 
 ## Verification completed
 
-On this branch: 1,203 tests passed; 13 Firestore-emulator tests skipped. Coverage thresholds
-passed (99.60% lines; 95.74% branches). Typechecking, service builds, the web production build
+On this branch: 1,204 tests passed; 13 Firestore-emulator tests skipped. Coverage thresholds
+passed (99.60% lines; 95.75% branches). Typechecking, service builds, the web production build
 and deployment-script syntax checks passed. The headless browser verified prompt intervals,
 R1 creation and cancellation on reply. Synthetic WAVs verified measured pauses/overlap;
 these are not real-phone measurements.
