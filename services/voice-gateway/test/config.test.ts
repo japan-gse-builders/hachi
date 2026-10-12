@@ -9,6 +9,27 @@ const base = {
 };
 
 describe('loadConfig', () => {
+  it('keeps automatic turn detection at its defaults unless explicitly configured', () => {
+    expect(loadConfig(base).gemini.activityDetection).toBeUndefined();
+    expect(loadConfig({ ...base, LIVE_SILENCE_MS: ' ', LIVE_END_OF_SPEECH_SENSITIVITY: '' }).gemini.activityDetection).toBeUndefined();
+    expect(loadConfig({ ...base, LIVE_SILENCE_MS: '2500', LIVE_END_OF_SPEECH_SENSITIVITY: 'low' }).gemini.activityDetection).toEqual({
+      silenceDurationMs: 2500, endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+    });
+    expect(loadConfig({ ...base, LIVE_END_OF_SPEECH_SENSITIVITY: 'HIGH' }).gemini.activityDetection).toEqual({ endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH' });
+  });
+
+  it.each(['499', '2501', '850.5', 'no', 'Infinity'])('rejects LIVE_SILENCE_MS=%s', (value) => {
+    expect(() => loadConfig({ ...base, LIVE_SILENCE_MS: value })).toThrow(/LIVE_SILENCE_MS/);
+  });
+
+  it('validates sensitivity and the stepped silence intervals', () => {
+    expect(() => loadConfig({ ...base, LIVE_END_OF_SPEECH_SENSITIVITY: 'medium' })).toThrow(/must be low or high/);
+    expect(loadConfig({ ...base, SILENCE_PROMPT_INTERVALS_SEC: '3:6:10' }).silence).toEqual({ promptSec: 10, prompts: 3, intervalsSec: [3, 6, 10] });
+    for (const value of ['0:4:5', '2.5::5', '2.5:4:121', 'no', '1:2:3:4:5:6']) {
+      expect(() => loadConfig({ ...base, SILENCE_PROMPT_INTERVALS_SEC: value })).toThrow(/SILENCE_PROMPT_INTERVALS_SEC/);
+    }
+    expect(() => loadConfig({ ...base, SILENCE_PROMPT_INTERVALS_SEC: '2.5:4:5', SILENCE_PROMPTS: '2' })).toThrow(/not both/);
+  });
   it('applies defaults', () => {
     expect(loadConfig(base)).toEqual({
       port: 8080,
@@ -19,7 +40,7 @@ describe('loadConfig', () => {
       appBaseUrl: 'https://hachi-test.web.app',
       tasks: { location: 'asia-northeast1', emergencyQueue: 'emergency-calls', notifyQueue: 'notifications', analysisQueue: 'call-analysis', invokerServiceAccount: base.TASKS_INVOKER_SA },
       maxConversationSec: 480,
-      silence: { promptSec: 12, prompts: 2 },
+      silence: { promptSec: 5, prompts: 3, intervalsSec: [2.5, 4, 5] },
     });
   });
 

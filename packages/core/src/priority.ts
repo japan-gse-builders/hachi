@@ -67,7 +67,11 @@ function latest<K extends keyof Case['detections'][number]>(c: Case, key: K) {
 
 function headline(c: Case, locale: Locale): string {
   const t = T[locale];
-  if (c.rule === 'R1') return t.r1;
+  if (c.rule === 'R1') {
+    const noResponse = c.detections.at(-1)?.noResponse;
+    if (noResponse) return noResponse === 'stopped_responding' ? t.r4Stopped : t.r4Silent;
+    return t.r1;
+  }
   if (c.rule === 'R2') return t.r2((latest(c, 'poorIntakeDays') as number | undefined) ?? 1);
   if (c.rule === 'R4') return latest(c, 'noResponse') === 'stopped_responding' ? t.r4Stopped : t.r4Silent;
   return latest(c, 'trend') === 'worsening' ? t.r3Worsening : t.r3;

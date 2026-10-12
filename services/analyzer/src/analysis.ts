@@ -7,6 +7,7 @@ import {
   describeTrend,
   detectR1,
   extractSpeechSample,
+  exhaustedPromptDetection,
   localDate,
   matchAnswer,
   normalizeUtterance,
@@ -251,6 +252,12 @@ function r4Detection(input: AnalysisInput): Detection | null {
   const { call, resident, history, now } = input;
   const ended = call.conversation?.endedBy;
   if (ended !== 'silent_after_greeting' && ended !== 'stopped_responding') return null;
+  // Issue #15's latest policy: exhausted prompts are an R1 flag. This records the observed
+  // silence, without fabricating symptoms or a quote. Older calls retain their R4 assessment.
+  if (call.conversation?.noResponseEscalated) {
+    if (call.emergency || call.conversation.noResponseCaseId) return null;
+    return exhaustedPromptDetection(resident.id, ended, call.conversation.at);
+  }
   const since = Date.parse(call.startedAt) - R4_HISTORY_DAYS * 86_400_000;
   const same = history.filter(
     (c) => c.id !== call.id && c.conversation?.endedBy === ended && Date.parse(c.startedAt) >= since && c.startedAt <= call.startedAt,

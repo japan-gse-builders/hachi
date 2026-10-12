@@ -1,4 +1,4 @@
-import { Behavior, FunctionResponseScheduling, Modality, type LiveServerMessage } from '@google/genai';
+import { Behavior, EndSensitivity, FunctionResponseScheduling, Modality, type LiveServerMessage } from '@google/genai';
 import { describe, expect, it, vi } from 'vitest';
 import { pcmToBytes } from '../src/audio.js';
 import { dispatch, GeminiLiveConnector, TOOLS, type LiveHandlers } from '../src/live.js';
@@ -42,6 +42,17 @@ describe('TOOLS', () => {
 });
 
 describe('GeminiLiveConnector', () => {
+  it('omits realtime configuration by default and retains explicit VAD settings on reconnect', async () => {
+    const { ai, params } = fakeAi();
+    await new GeminiLiveConnector(ai, 'gemini-3.8-live', 'Aoede').connect({ systemInstruction: '' }, handlers());
+    expect(params().config).not.toHaveProperty('realtimeInputConfig');
+    const detection = { silenceDurationMs: 2500, endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW };
+    const connector = new GeminiLiveConnector(ai, 'gemini-3.8-live', 'Aoede', detection);
+    for (const resumeHandle of [undefined, 'resumable-1']) {
+      await connector.connect({ systemInstruction: '', resumeHandle }, handlers());
+      expect(params().config.realtimeInputConfig).toEqual({ automaticActivityDetection: detection });
+    }
+  });
   it('connects with audio output, transcription, the voice and the tools', async () => {
     const { ai, params } = fakeAi();
     await new GeminiLiveConnector(ai, 'gemini-3.8-live', 'Aoede').connect({ systemInstruction: 'be kind' }, handlers());

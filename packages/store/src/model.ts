@@ -130,7 +130,14 @@ export interface CallRecord {
   /** Number of media streams opened for this call (a dropped stream is reconnected a limited number of times). */
   streams?: number;
   /** Set by the Voice Gateway when the conversation ends; tells Twilio what to do next. */
-  conversation?: { endedBy: ConversationEnd; at: string };
+  conversation?: {
+    endedBy: ConversationEnd;
+    at: string;
+    /** The configured no-response prompts were exhausted: flag R1, rather than legacy R4. */
+    noResponseEscalated?: boolean;
+    /** Immediate R1 flag succeeded; post-call analysis must not create the same flag again. */
+    noResponseCaseId?: string;
+  };
   /** Recordings of additional media streams after a reconnect. */
   extraAudioUris?: string[];
   /** R1 raised during the call; the resident is bridged to family and staff. */

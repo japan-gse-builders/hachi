@@ -81,6 +81,9 @@ export function CasePage() {
       <div className="card stack case-column case-evidence">
         <section className="card">
           <h2 className="eyebrow">What was said</h2>
+          {detail.detections.filter((d) => d.noResponse).map((d, i) => (
+            <p key={`no-response-${i}`}>{d.summary} This is an observation of silence; there is no resident quote.</p>
+          ))}
           {evidence.map((e, i) => (
             <blockquote className="quote" key={`${e.callId}-${i}`}>
               {/* The quote is what makes the case checkable, so it reads before the rule that found it. */}

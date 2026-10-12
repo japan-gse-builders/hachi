@@ -323,3 +323,21 @@ Cloud Scheduler → Cloud Tasks → 発信 API → Twilio → 携帯に着信 �
 | WhatsApp | 番号は確保済みだが Meta の事業者登録が未了のため導線を実装していない |
 | 負荷試験・障害注入 | 未実施 |
 | 要件の対応づけ | 52 項目のうち 13 項目はコードに ID を書いていない（実装はあるが機械的に辿れない） |
+
+## 2026-10-13 — Issue #15 local verification
+
+Implemented on `codex/issue-15-live-turn-detection`, following the latest issue comment and
+owner clarification: three checks after 2.5 / 4 / 5 seconds of post-playback silence, then a
+final 5-second response window and an R1 flag. This is an observed no-response policy, not a
+claim of acute symptoms. Old records keep their R4 assessment.
+
+Configuration/connection tests cover optional VAD fields, 500–2500 ms validation, sensitivity,
+reconnects and unchanged model defaults when unset. Timer tests cover playback acknowledgement,
+stepped intervals, cancellation by speech before transcription, late replies and emergency handling.
+Synthetic stereo tests verify 600 ms pause and 900 ms overlap measurements using the same VAD as
+the analyzer. Immediate R1 recording and duplicate prevention are also covered.
+
+The local browser simulation and real-phone trial procedure are in
+[Issue #15 testing](ISSUE_15_LOCAL_TESTING.md). **Real phone/Gemini comparisons have not been run.**
+They require a configured test deployment, consented test phone and stereo recordings. No production
+deployment, real calls or message delivery was performed for this change.
