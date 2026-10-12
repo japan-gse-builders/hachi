@@ -41,7 +41,7 @@ claim that a person has no medical conditions.
 
 ## Restart the local preview
 
-From this branch's root, using Node 22.12+:
+This session's working folder is `/private/tmp/hachi-issue-17-20261013`. From that branch root, using Node 22.12+:
 
 ```sh
 npm ci --registry=https://registry.npmjs.org --no-audit --no-fund
