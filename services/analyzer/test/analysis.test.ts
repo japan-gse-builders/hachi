@@ -445,3 +445,23 @@ describe('analyse', () => {
     expect(r.update.analysis.intake.status).toBe('poor');
   });
 });
+
+
+describe('issue #15: exhausted prompt sequence', () => {
+  it.each(['silent_after_greeting', 'stopped_responding'] as const)('flags %s as R1 without inventing evidence', (endedBy) => {
+    const result = analyse(input({ call: call({ conversation: { endedBy, at: NOW.toISOString(), noResponseEscalated: true } }), transcript: [], review: null }));
+    expect(result.detections).toHaveLength(1);
+    expect(result.detections[0]).toMatchObject({ rule: 'R1', urgency: 'emergency', noResponse: endedBy, evidence: [] });
+    expect(result.detections[0]!.summary).toContain('cause is unknown');
+  });
+  it('does not re-flag an emergency already handled during the call', () => {
+    const result = analyse(input({ call: call({ conversation: { endedBy: 'silent_after_greeting', at: NOW.toISOString(), noResponseEscalated: true }, emergency: { at: NOW.toISOString(), caseId: 'existing', quote: 'Help me' } }), transcript: [], review: null }));
+    expect(result.detections).toEqual([]);
+  });
+});
+
+
+it('does not duplicate an R1 no-response flag after staff have already handled it', () => {
+  const result = analyse(input({ call: call({ conversation: { endedBy: 'silent_after_greeting', at: NOW.toISOString(), noResponseEscalated: true, noResponseCaseId: 'already-flagged' } }), transcript: [], review: null }));
+  expect(result.detections).toEqual([]);
+});

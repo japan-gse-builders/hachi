@@ -18,7 +18,8 @@
     "test:emulator": "firebase emulators:exec --only firestore --project demo-hachi \"npm test\"",
     "typecheck": "tsc -p tsconfig.test.json",
     "build": "tsc -b",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "preview:silence": "npm run build && node scripts/silence-preview.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
