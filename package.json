@@ -19,7 +19,8 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "build": "tsc -b",
     "check": "npm run typecheck && npm run test",
-    "preview:local": "npm run build && node scripts/local-preview.mjs"
+    "preview:local": "npm run build && node scripts/local-preview.mjs",
+    "preview:silence": "npm run build && node scripts/silence-preview.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -179,7 +179,7 @@ export interface CaseDetail {
     /** Active, agreed to calls and not synthetic, so "Call now" can work (issue #13). Missing from older servers. */
     callable?: boolean;
   };
-  detections: { summary: string; detectedAt: string; evidence: Evidence[] }[];
+  detections: { summary: string; detectedAt: string; evidence: Evidence[]; noResponse?: 'silent_after_greeting' | 'stopped_responding' }[];
   calls: {
     id: string;
     startedAt: string;

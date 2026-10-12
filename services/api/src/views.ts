@@ -400,7 +400,9 @@ export async function buildCaseDetail(
     case: {
       id: c.id,
       rule: c.rule,
-      ruleName: RULE_NAMES[locale][c.rule],
+      ruleName: c.rule === 'R1' && c.detections.at(-1)?.noResponse
+        ? (locale === 'ja' ? '繰り返し確認しても応答がない' : 'No response after repeated checks')
+        : RULE_NAMES[locale][c.rule],
       urgency: effectiveUrgency(c),
       urgencyLabel: URGENCY_LABELS[locale][effectiveUrgency(c)],
       urgencyMeaning: URGENCY_MEANINGS[locale][effectiveUrgency(c)],

@@ -805,3 +805,14 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
     expect(d.glance.days.every((x: { domains: unknown }) => x.domains === null)).toBe(true);
   });
 });
+
+
+it('names a no-response R1 case as an observation of silence', async () => {
+  const { app, as, store } = setup();
+  await store.createResident(makeResident('res-1'));
+  await store.putCase(storedCase({ rule: 'R1', autoUrgency: 'emergency', detections: [detection({ rule: 'R1', urgency: 'emergency', noResponse: 'silent_after_greeting', evidence: [] })] }));
+  const detail = (await app.inject({ method: 'GET', url: '/api/cases/case-1?locale=en', ...as('staff') })).json();
+  expect(detail.case.ruleName).toBe('No response after repeated checks');
+  expect(detail.case.reason).toContain('never spoke');
+  expect(detail.case.reason).not.toContain('Reported acute symptoms');
+});

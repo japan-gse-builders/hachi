@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { emergencyCue, EMERGENCY_TOOL_GUIDANCE, openingCue, resumeCue, silenceCue, silenceFarewellCue, wrapUpCue } from '../src/prompt.js';
 import { callDoc, IDS, markMessage, mediaMessage, setup, startMessage, tick, wait } from './fixtures.js';
+import { NoResponseService } from '../src/noResponse.js';
 
 const loud24k = (n = 480) => new Int16Array(n).fill(6000);
 
@@ -13,6 +14,12 @@ async function started(opts: Parameters<typeof setup>[0] = {}) {
 async function endMark(ctx: Awaited<ReturnType<typeof started>>) {
   const marks = ctx.socket.ofType('mark').map((m) => m.mark.name as string);
   return marks[marks.length - 1]!;
+}
+
+async function playedTurn(ctx: Awaited<ReturnType<typeof started>>) {
+  ctx.gemini.h.audio(loud24k());
+  ctx.gemini.h.turnComplete();
+  await ctx.session.onMessage(markMessage(await endMark(ctx)));
 }
 
 describe('CallSession: stream start', () => {
@@ -260,8 +267,11 @@ describe('CallSession: transcript and ending', () => {
 
   it('checks on a resident who never speaks, then ends the call as such', async () => {
     const ctx = await started({ silence: { promptSec: 0.02, prompts: 2 } });
-    ctx.gemini.h.turnComplete();
-    await vi.waitFor(() => expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(2), { timeout: 2000 });
+    await playedTurn(ctx);
+    for (const n of [1, 2]) {
+      await vi.waitFor(() => expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(n), { timeout: 2000 });
+      await playedTurn(ctx);
+    }
     // The greeting and both prompts went unanswered, so Hachi says what happens next before hanging up.
     await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceFarewellCue('Maggie')), { timeout: 2000 });
     await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
@@ -271,8 +281,11 @@ describe('CallSession: transcript and ending', () => {
   it('separates going quiet partway through from never speaking at all', async () => {
     const ctx = await started({ silence: { promptSec: 0.02, prompts: 1 } });
     ctx.gemini.h.inputTranscript('Good morning');
-    ctx.gemini.h.turnComplete();
+    await playedTurn(ctx);
     await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceCue('Maggie', true)), { timeout: 2000 });
+    await playedTurn(ctx);
+    await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceCue('Maggie', true)), { timeout: 2000 });
+    await playedTurn(ctx);
     await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
     const call = (await ctx.store.getCall(IDS.residentId, IDS.callId))!;
     expect(call.conversation?.endedBy).toBe('stopped_responding');
@@ -282,7 +295,9 @@ describe('CallSession: transcript and ending', () => {
   it('does not count the quiet before a reconnect as a resident who never spoke', async () => {
     const transcript = [{ speaker: 'resident' as const, text: 'I am fine', startMs: 0, endMs: 900 }];
     const ctx = await started({ call: { transcript }, silence: { promptSec: 0.02, prompts: 1 } });
-    ctx.gemini.h.turnComplete();
+    await playedTurn(ctx);
+    await vi.waitFor(() => expect(ctx.gemini.texts).toContain(silenceCue('Maggie', true)), { timeout: 2000 });
+    await playedTurn(ctx);
     await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('stopped_responding');
   });
@@ -290,7 +305,7 @@ describe('CallSession: transcript and ending', () => {
   it('starts the silence clock again whenever the resident answers', async () => {
     const ctx = await started({ silence: { promptSec: 0.05, prompts: 1 } });
     for (let i = 0; i < 4; i++) {
-      ctx.gemini.h.turnComplete();
+      await playedTurn(ctx);
       await wait(30);
       ctx.gemini.h.inputTranscript(`Answer ${i}`);
     }
@@ -303,7 +318,7 @@ describe('CallSession: transcript and ending', () => {
     const ctx = await started({ silence: { promptSec: 0.02, prompts: 1 } });
     ctx.gemini.h.inputTranscript('I have terrible chest pain');
     await vi.waitFor(() => expect(ctx.emergency.raised).toHaveLength(1), { timeout: 2000 });
-    ctx.gemini.h.turnComplete();
+    await playedTurn(ctx);
     await wait(80);
     expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', true));
     const call = (await ctx.store.getCall(IDS.residentId, IDS.callId))!;
@@ -785,4 +800,94 @@ describe('CallSession: reporting whether the gateway works', () => {
     await vi.waitFor(() => expect(ctx.socket.closed).toBe(true));
     expect(ctx.emergency.raised).toHaveLength(1);
   });
+});
+
+
+describe('issue #15: stepped no-response checks', () => {
+  it('waits for playback, checks at 2.5/4/5 seconds, then flags continued silence', async () => {
+    vi.useFakeTimers();
+    const ctx = await started({ silence: { intervalsSec: [2.5, 4, 5], promptSec: 5, prompts: 3 } });
+    ctx.deps.noResponse = new NoResponseService({ store: ctx.store, appBaseUrl: 'https://app.example', newId: () => 'silence-case' });
+    try {
+      ctx.gemini.h.audio(loud24k());
+      ctx.gemini.h.turnComplete();
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(0);
+      await ctx.session.onMessage(markMessage(await endMark(ctx)));
+      for (const [i, sec] of [2.5, 4, 5].entries()) {
+        await vi.advanceTimersByTimeAsync(sec * 1000 - 1);
+        expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(i);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(ctx.gemini.texts.filter((t) => t === silenceCue('Maggie', false))).toHaveLength(i + 1);
+        await playedTurn(ctx);
+      }
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(ctx.gemini.texts).not.toContain(silenceFarewellCue('Maggie'));
+      await vi.advanceTimersByTimeAsync(151);
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).toMatchObject({ endedBy: 'silent_after_greeting', noResponseEscalated: true });
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.noResponseCaseId).toBe('silence-case');
+      expect((await ctx.store.listCasesByResident(IDS.residentId))[0]).toMatchObject({ rule: 'R1', autoUrgency: 'emergency' });
+      expect(ctx.emergency.raised).toHaveLength(0); // An R1 queue flag, not an invented medical symptom/bridge.
+    } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
+  });
+
+  it('cancels a pending silence ending when a late reply arrives', async () => {
+    vi.useFakeTimers();
+    const ctx = await started({ silence: { promptSec: 1, prompts: 1 } });
+    try {
+      await playedTurn(ctx);
+      await vi.advanceTimersByTimeAsync(1000);
+      await playedTurn(ctx);
+      await vi.advanceTimersByTimeAsync(1000);
+      ctx.gemini.h.inputTranscript('Yes, I can hear you');
+      await vi.advanceTimersByTimeAsync(200);
+      expect(ctx.session.currentState).toBe('active');
+      await ctx.session.finish('resident');
+      expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).not.toHaveProperty('noResponseEscalated');
+    } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
+  });
+
+  it('cancels the clock on audible input before its transcript arrives', async () => {
+    vi.useFakeTimers();
+    const ctx = await started({ silence: { promptSec: 1, prompts: 1 } });
+    try {
+      await playedTurn(ctx);
+      await vi.advanceTimersByTimeAsync(900);
+      for (let i = 0; i < 6; i++) await ctx.session.onMessage(mediaMessage(0x80));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', false));
+    } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
+  });
+});
+
+
+it('does not infer no response when a model turn has no audio to play', async () => {
+  vi.useFakeTimers();
+  const ctx = await started({ silence: { promptSec: 1, prompts: 1 } });
+  try {
+    ctx.gemini.h.turnComplete();
+    await ctx.session.onMessage(markMessage(await endMark(ctx)));
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(ctx.gemini.texts).not.toContain(silenceCue('Maggie', false));
+    expect(await ctx.store.listCasesByResident(IDS.residentId)).toEqual([]);
+  } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
+});
+
+it('does not let end_call skip the checks or erase an exhausted-silence ending', async () => {
+  vi.useFakeTimers();
+  const ctx = await started({ silence: { promptSec: 1, prompts: 1 } });
+  const end = { id: 'end-silence', name: 'end_call', args: { reason: 'completed' } };
+  try {
+    await playedTurn(ctx);
+    await vi.advanceTimersByTimeAsync(1000);
+    ctx.gemini.h.toolCalls([end]);
+    expect(ctx.gemini.tools.at(-1)!.response.status).toBe('error');
+    expect(ctx.session.currentState).toBe('active');
+    await playedTurn(ctx);
+    await vi.advanceTimersByTimeAsync(1000);
+    ctx.gemini.h.toolCalls([end]);
+    expect(ctx.gemini.tools.at(-1)!.response.status).toBe('ok');
+    await vi.advanceTimersByTimeAsync(151);
+    expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation).toMatchObject({ endedBy: 'silent_after_greeting', noResponseEscalated: true });
+  } finally { await ctx.session.finish('resident'); vi.useRealTimers(); }
 });
