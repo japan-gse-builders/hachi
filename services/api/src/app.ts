@@ -25,7 +25,7 @@ import { applyStaffUpdate } from './caseUpdate.js';
 import { decideContactRequest, NotFoundError, type Resident, type Store } from '@hachi/store';
 import { buildHeldRequests } from './contactRequests.js';
 import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
-import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, residentInputSchema, residentPatchSchema } from './schemas.js';
+import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, queueQuerySchema, residentInputSchema, residentPatchSchema } from './schemas.js';
 import {
   analysisGaps,
   buildCaseDetail,
@@ -318,13 +318,22 @@ export function buildApp(deps: AppDeps): FastifyInstance {
    */
   app.get('/api/queue', async (req) => {
     requireStaff(req);
-    const [cases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
+    const { includeClosed } = parse(queueQuerySchema, req.query);
+    const [openCases, residents] = await Promise.all([store.listOpenCases(), store.listResidents()]);
     const locale = localeOf(req);
     const t = now();
     // One read covers both lists: the unreached lookback is the longer window.
     const entries = await recentCalls(residents, new Date(t.getTime() - Math.max(UNREACHED_LOOKBACK_DAYS, INCOMPLETE_DAYS) * 86_400_000));
+    const byId = new Map(residents.map((r) => [r.id, r]));
+    const openItems = buildQueue(openCases, byId, t, locale);
+    const cases = includeClosed === 'true' ? (await Promise.all(residents.map((r) => store.listCasesByResident(r.id)))).flat() : null;
     return {
-      items: buildQueue(cases, new Map(residents.map((r) => [r.id, r])), t, locale),
+      items: cases ? buildQueue(cases, byId, t, locale) : openItems,
+      summary: {
+        needsAttention: openItems.filter((c) => c.urgency !== 'watch').length,
+        monitor: openItems.filter((c) => c.urgency === 'watch').length,
+        residents: residents.length,
+      },
       legend: urgencyLegend(locale),
       unreached: buildUnreached(entries, t, locale),
       incomplete: buildIncompleteAnalyses(entries, t, locale),

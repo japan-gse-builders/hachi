@@ -76,11 +76,22 @@ export interface QueueItem {
   status: string;
   statusLabel: string;
   notifications: StoredCase['notifications'];
+  residentFacts: string[];
+  householdNotes: string | null;
+  synthetic: boolean;
+}
+
+/** Recorded facts only; age is not currently collected by Hachi. */
+export function residentFacts(r: Resident, locale: Locale): string[] {
+  const v = r.vulnerability;
+  return locale === 'ja'
+    ? [v.livesAlone ? '一人暮らし' : '同居者あり', v.hasCloseSupporter ? '身近な支援者あり' : '身近な支援者なし', v.needsCare ? '介護が必要' : '介護の必要なしと記録']
+    : [v.livesAlone ? 'Lives alone' : 'Lives with others', v.hasCloseSupporter ? 'Has a close supporter' : 'No close supporter', v.needsCare ? 'Needs care' : 'No care needs recorded'];
 }
 
 /** The whole scale, in order, for a legend above the queue: a card only ever shows its own level. */
 export function urgencyLegend(locale: Locale) {
-  return URGENCIES.map((u) => ({ urgency: u, label: URGENCY_LABELS[locale][u], action: URGENCY_ACTIONS[locale][u] }));
+  return URGENCIES.map((u) => ({ urgency: u, label: URGENCY_LABELS[locale][u], action: URGENCY_ACTIONS[locale][u], meaning: URGENCY_MEANINGS[locale][u] }));
 }
 
 /** QUE-01 */
@@ -99,6 +110,9 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       caseId: c.id,
       residentId: c.residentId,
       residentName: residents.get(c.residentId)!.name,
+      residentFacts: residentFacts(residents.get(c.residentId)!, locale),
+      householdNotes: residents.get(c.residentId)!.householdNotes ?? null,
+      synthetic: residents.get(c.residentId)!.synthetic === true,
       rule: c.rule,
       urgency: p.urgency,
       urgencyLabel: URGENCY_LABELS[locale][p.urgency],
@@ -411,6 +425,8 @@ export async function buildCaseDetail(
       phone: r.phone,
       vulnerability: r.vulnerability,
       householdNotes: r.householdNotes ?? null,
+      facts: residentFacts(r, locale),
+      staff: { name: r.staff.name, phone: r.staff.phone, email: r.staff.email ?? null },
       // USR-04: the evidence carries this too, so a demo quote is never read as a real one.
       synthetic: r.synthetic === true,
       // Whether "Call now" can work at all (issue #13): the same conditions the daily call has.

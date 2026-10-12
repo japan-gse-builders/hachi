@@ -127,3 +127,4 @@ export const pushTokenSchema = z.object({ token: z.string().min(10).max(4096) })
 
 /** The decision on a message held because the resident read the number out over the phone. */
 export const contactDecisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
+export const queueQuerySchema = z.object({ includeClosed: z.enum(['true', 'false']).optional() });

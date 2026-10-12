@@ -231,7 +231,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(body.items[0].urgencyMeaning).toBe('Possible immediate danger to life or health. Act now.');
     // A card only ever shows its own level, so the queue carries the other three as well.
     expect(body.legend.map((l: { urgency: string }) => l.urgency)).toEqual(['emergency', 'urgent', 'action', 'watch']);
-    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now' });
+    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now', meaning: 'No action yet. Watch whether the change continues.' });
     const ja = (await app.inject({ method: 'GET', url: '/api/queue', ...as('staff') })).json();
     expect(ja.legend[0].label).toBe('緊急');
     expect(ja.items[0].urgencyMeaning).toContain('いま動く');
