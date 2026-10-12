@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { ResidentAvatar } from '../components/ResidentAvatar';
 import { CallNowButton } from '../components/CallNowButton';
 import { ScreeningCard } from '../components/ScreeningCard';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
@@ -67,7 +68,11 @@ export function CasePage() {
           {/* One case on the screen, so what the level asks for is written out rather than hidden in a tooltip. */}
           <span className="meta">{detail.case.urgencyMeaning}</span>
         </p>
-        <h1>{detail.resident.name}</h1>
+        <div className="resident-heading">
+          <ResidentAvatar id={detail.resident.id} name={detail.resident.name} />
+          <h1>{detail.resident.name}</h1>
+        </div>
+        {detail.resident.synthetic && <p className="meta">Synthetic demo resident, not a real person</p>}
         <p className="reason">{detail.case.reason}</p>
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
@@ -79,6 +84,16 @@ export function CasePage() {
 
       {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
       <div className="card stack case-column case-evidence">
+        <section className="card">
+          <h2>About this person</h2>
+          <dl className="person-context">
+            <div><dt>Household</dt><dd>{detail.resident.vulnerability.livesAlone ? 'Lives alone' : 'Lives with others'}{detail.resident.householdNotes ? ` · ${detail.resident.householdNotes}` : ''}</dd></div>
+            <div><dt>Support</dt><dd>{detail.resident.vulnerability.hasCloseSupporter ? 'Has a close supporter' : 'No close supporter recorded'}</dd></div>
+            <div><dt>Care needs</dt><dd>{detail.resident.vulnerability.needsCare ? 'Needs care' : 'No care needs recorded'}</dd></div>
+            <div><dt>Recorded conditions</dt><dd>{detail.resident.vulnerability.chronicConditions.join(', ') || 'None recorded'}</dd></div>
+            <div><dt>Assigned staff</dt><dd>{detail.resident.staff ? <>{detail.resident.staff.name} · <a href={`tel:${detail.resident.staff.phone}`}>{detail.resident.staff.phone}</a>{detail.resident.staff.email && <> · <a href={`mailto:${detail.resident.staff.email}`}>{detail.resident.staff.email}</a></>}</> : 'Not available'}</dd></div>
+          </dl>
+        </section>
         <section className="card">
           <h2 className="eyebrow">What was said</h2>
           {evidence.map((e, i) => (

@@ -13,12 +13,16 @@ export interface QueueItem {
   status: string;
   statusLabel: string;
   notifications: NotificationItem[];
+  residentFacts?: string[];
+  householdNotes?: string | null;
+  synthetic?: boolean;
 }
 
 export interface UrgencyLegendItem {
   urgency: string;
   label: string;
   action: string;
+  meaning?: string;
 }
 
 /** A resident nobody has spoken to. Wording is localized by the API, not here. */
@@ -61,6 +65,7 @@ export interface IncompleteAnalyses {
 export interface Queue {
   items: QueueItem[];
   legend: UrgencyLegendItem[];
+  summary?: { needsAttention: number; monitor: number; residents: number };
   /** Missing from servers older than the unreached list. */
   unreached?: { items: UnreachedResident[]; note: string | null };
   /** Missing from servers older than issue #11. */
@@ -168,6 +173,8 @@ export interface CaseDetail {
     phone: string;
     vulnerability: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
     householdNotes: string | null;
+    facts?: string[];
+    staff?: { name: string; phone: string; email: string | null };
     synthetic: boolean;
     /** Active, agreed to calls and not synthetic, so "Call now" can work (issue #13). Missing from older servers. */
     callable?: boolean;
