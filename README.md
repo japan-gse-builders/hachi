@@ -78,6 +78,10 @@ project rather than a detail of it:
 7. **Review.** Staff use the triage queue and case pages; family members see a read-only dashboard.
    Both are a React PWA on Firebase Hosting backed by the API on Cloud Run.
 
+The web header, browser tab, installed app and push notifications use the original Hachi artwork
+from [`japan-gse-builders/shutas-playground`](https://github.com/japan-gse-builders/shutas-playground).
+See the [branding asset sources](apps/web/public/branding/README.md) for the exact files and hashes.
+
 ## The four rules
 
 | Rule | What it looks for | Evidence | Urgency |
@@ -129,6 +133,17 @@ Urgency levels:
 
 See [docs/CONSENT_AND_PRIVACY.md](docs/CONSENT_AND_PRIVACY.md) for consent, retention and what is
 enforced in code versus handled operationally.
+
+The public `/privacy` page explains AI processing, recordings, sharing, retention and support without
+requiring sign-in. Before a resident's first call, staff read a short explanation and answer questions;
+the resident can simply say **“Yes, I agree.”** or give another clear affirmative reply. The full notice
+is available on the page and in an expandable section of the form. Staff record the explicit
+approval on **Add resident** or **Residents**. Details can be saved while approval is pending, but daily
+calls cannot start. Existing residents need this record too; no approvals are inferred or backfilled.
+Once recorded, approval is reused on later calls. **Pause calls** stops future check-ins; retention and
+deletion requests are handled by the care organisation. The short first-use explanation includes
+family updates about mood and loneliness, so there is no separate sharing checkbox. Previously
+recorded sharing choices remain unchanged.
 
 ## Running cost, and the ceiling on it
 
@@ -246,7 +261,9 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 - **Not a medical device.** It flags changes for people to check; it does not diagnose.
 - **A phone that never rings through is not followed up yet**: there is no automatic retry for
   no-answer (technical failures are retried). Picking up and not speaking is now R4.
-- **Consent and retention are operational**, not managed in the app yet (see the privacy doc).
+- **Consent is recorded by staff**, from the resident's explicit first-use approval. There is no
+  automated spoken withdrawal or repeated approval prompt. **Retention and deletion remain
+  operational** (see the privacy doc).
 - **The monthly AI budget has never actually been reached** in production. The ceiling and the
   degradation are covered by tests, and the numbers it counts are our estimate, not Google's
   invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
@@ -256,9 +273,15 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
   from a US number and only reach verified numbers. Production needs a Japanese 050 number. This is
   an account to buy, not a design decision: the phone channel itself is the point of the service.
 - Roadmap: more rules (medication, sleep, mood, falls, heat-stroke alerts), escalation and
-  acknowledgement of notifications, WhatsApp calling, consent and retention management in the app,
+  acknowledgement of notifications, WhatsApp calling, retention and deletion management in the app,
   Japanese conversations, and evaluation on consented real-world calls.
 
 ## License
 
 [Apache License 2.0](LICENSE)
+
+The web UI uses self-hosted **DM Serif Display** for headings, with the existing Avenir Next / Segoe UI
+body stack. The font is licensed separately under the
+[SIL Open Font License 1.1](apps/web/public/fonts/DMSerifDisplay-OFL.txt).
+See [Web typography](docs/TYPOGRAPHY.md) for the heading scale, font-loading behavior, contrast
+measurements and matched before/after screenshots.

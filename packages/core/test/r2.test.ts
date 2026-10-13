@@ -5,6 +5,34 @@ const poor = (date: string, reportedPoorDays?: number): IntakeObservation => ({ 
 const normal = (date: string): IntakeObservation => ({ date, status: 'normal' });
 const unknown = (date: string): IntakeObservation => ({ date, status: 'unknown' });
 
+/**
+ * Issue #11: a call the model could not review is recorded as `unknown`. It must never count as a
+ * day on which the resident ate, or one outage would quietly reset a run of days without food.
+ */
+describe('a day the model could not review (unknown)', () => {
+  it('is not the same as a day they ate: it does not end the run', () => {
+    expect(countPoorIntakeDays([poor('2026-09-30'), unknown('2026-10-01'), poor('2026-10-02')])).toBe(2);
+    expect(countPoorIntakeDays([poor('2026-09-30'), normal('2026-10-01'), poor('2026-10-02')])).toBe(1);
+    expect(assessR2([poor('2026-09-30'), unknown('2026-10-01'), poor('2026-10-02')]).urgency).toBe('urgent');
+  });
+
+  it('as the latest call, leaves the earlier poor day standing rather than clearing it', () => {
+    expect(countPoorIntakeDays([poor('2026-10-01'), unknown('2026-10-02')])).toBe(1);
+    expect(assessR2([poor('2026-10-01'), unknown('2026-10-02')])).toMatchObject({ urgency: 'watch', followUpNextCall: true });
+  });
+
+  it('is not counted as a poor day either', () => {
+    expect(countPoorIntakeDays([unknown('2026-10-01'), unknown('2026-10-02')])).toBe(0);
+    expect(assessR2([unknown('2026-10-02')]).urgency).toBeNull();
+  });
+
+  // Two missing days in a row are a gap the rule cannot bridge. Staff see those calls as not fully
+  // checked instead, which is the reason the gap is shown at all.
+  it('breaks the run when two days in a row are unknown', () => {
+    expect(countPoorIntakeDays([poor('2026-09-29'), unknown('2026-09-30'), unknown('2026-10-01'), poor('2026-10-02')])).toBe(1);
+  });
+});
+
 describe('countPoorIntakeDays (DET-04)', () => {
   it('is 0 with no observations or when the latest day was normal', () => {
     expect(countPoorIntakeDays([])).toBe(0);

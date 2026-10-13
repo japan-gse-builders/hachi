@@ -2,6 +2,8 @@ import {
   callReservationMicros,
   callTaskId,
   claimCall,
+  claimSlot,
+  hasCallConsent,
   isDue,
   liveCallMicros,
   localDate,
@@ -9,10 +11,12 @@ import {
   reserve,
   settle,
   spendMonth,
+  STAFF_REQUEST_HOLD_MS,
+  staffCallId,
 } from '@hachi/core';
 import type { CallRecord, CallStatus, Resident, Store } from '@hachi/store';
 import type { TelephonyConfig } from './config.js';
-import type { TaskQueue } from '@hachi/cloud';
+import { PLACE_CALL_PATH, type TaskQueue } from '@hachi/cloud';
 import { buildCallTwiml, TelephonyError, type TelephonyProvider } from './twilio.js';
 
 export interface CallDeps {
@@ -37,22 +41,33 @@ export interface CallDeps {
   newToken: () => string;
 }
 
-export const PLACE_CALL_PATH = '/tasks/place-call';
+export { PLACE_CALL_PATH } from '@hachi/cloud';
 /** Cloud Tasks redeliveries of a retryable Twilio error before this attempt is marked failed. */
 export const PLACEMENT_RETRIES = 3;
 /** Long enough for Twilio's "initiated" callback to record the Call SID if our own write was lost. */
 export const DIAL_LEASE_MS = 120_000;
 const DISPATCH_CONCURRENCY = 25;
+/** How soon a daily check-in that found the line busy looks again. */
+export const LINE_BUSY_RECHECK_SEC = 60;
 
 export interface PlaceCallInput {
   residentId: string;
   localDate: string;
   attempt: number;
+  /** Set when staff asked Hachi to call now (issue #13). `attempt` is then always 0 and unused. */
+  staff?: { seq: number; requestedBy: string };
 }
 
 export function callIdFor(localDate: string, attempt: number): string {
   return `${localDate}-${attempt}`;
 }
+
+/** The call document this task dials: the daily series, or the staff series for the day. */
+export function callIdOf(input: PlaceCallInput): string {
+  return input.staff ? staffCallId(input.localDate, input.staff.seq) : callIdFor(input.localDate, input.attempt);
+}
+
+const UID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export function parsePlaceCallInput(body: unknown, maxAttempts: number): PlaceCallInput | null {
   const b = body as Partial<PlaceCallInput> | null;
@@ -60,8 +75,13 @@ export function parsePlaceCallInput(body: unknown, maxAttempts: number): PlaceCa
   if (typeof b.residentId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(b.residentId)) return null;
   if (typeof b.localDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(b.localDate)) return null;
   if (!Number.isInteger(b.attempt) || b.attempt! < 0 || b.attempt! >= maxAttempts) return null;
-  return { residentId: b.residentId, localDate: b.localDate, attempt: b.attempt! };
+  if (b.staff === undefined) return { residentId: b.residentId, localDate: b.localDate, attempt: b.attempt! };
+  const st = b.staff as Partial<NonNullable<PlaceCallInput['staff']>> | null;
+  if (!st || !Number.isInteger(st.seq) || st.seq! < 1 || st.seq! > 999) return null;
+  if (typeof st.requestedBy !== 'string' || !UID.test(st.requestedBy) || b.attempt !== 0) return null;
+  return { residentId: b.residentId, localDate: b.localDate, attempt: 0, staff: { seq: st.seq!, requestedBy: st.requestedBy } };
 }
+
 
 export interface DispatchResult {
   checked: number;
@@ -82,6 +102,7 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
   const handle = async (r: Resident) => {
     try {
+      if (!hasCallConsent(r.callConsent)) return;
       if (!isDue(r.callTime, r.timeZone, windowStart, now)) return;
       const date = localDate(nextCallAt(r.callTime, r.timeZone, windowStart), r.timeZone);
       const outcome = await deps.queue.enqueue({
@@ -103,7 +124,20 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
 export type PlaceCallOutcome =
   | { outcome: 'placed'; providerCallId: string }
-  | { outcome: 'skipped'; reason: 'inactive' | 'already_handled' | 'budget_exhausted' | 'gateway_unavailable' }
+  | {
+      outcome: 'skipped';
+      reason:
+        | 'inactive'
+        | 'synthetic'
+        | 'consent_required'
+        | 'already_handled'
+        | 'budget_exhausted'
+        | 'gateway_unavailable'
+        | 'line_busy'
+        | 'request_lapsed';
+    }
+  /** The daily check-in found the line busy with another call and will look again shortly. */
+  | { outcome: 'deferred'; reason: 'line_busy' }
   | { outcome: 'retry_later'; reason: 'dial_in_progress' | 'provider_unavailable' }
   | { outcome: 'failed'; retryScheduled: boolean; code?: string };
 
@@ -149,6 +183,53 @@ async function claimGatewayForCall(deps: CallDeps): Promise<boolean> {
   return after !== null;
 }
 
+/** Longest a dialled call can hold the line: ringing, the whole call, and a minute for the callback. */
+const lineHoldMs = (deps: CallDeps) => (deps.config.ringTimeoutSec + deps.config.maxCallSec + 60) * 1000;
+
+/** Takes (or extends) the resident's line for this call, in one transaction on the resident. */
+async function claimLine(deps: CallDeps, residentId: string, callId: string): Promise<boolean> {
+  let claimed = false;
+  await deps.store.updateResident(residentId, (r) => {
+    const slot = claimSlot(r.callSlot, callId, deps.now(), lineHoldMs(deps));
+    claimed = slot !== null;
+    return slot ? { ...r, callSlot: slot } : r;
+  });
+  return claimed;
+}
+
+/**
+ * Frees the line once this call is over or will not happen. A failure here is not worth failing
+ * the request for: the slot's deadline frees the line anyway.
+ */
+export async function releaseLine(deps: CallDeps, residentId: string, callId: string): Promise<void> {
+  try {
+    await deps.store.updateResident(residentId, (r) => {
+      // Only the call that holds the line frees it: a late callback must not free someone else's.
+      if (r.callSlot?.callId !== callId) return r;
+      const { callSlot: _slot, ...rest } = r;
+      return rest;
+    });
+  } catch {
+    // Deleted resident, or a write that failed; nothing is held for longer than the deadline.
+  }
+}
+
+/**
+ * The daily check-in rang while staff had Hachi on the line to this resident. It is not a failed
+ * attempt and is not retried as one: the same task runs again in a minute, under a name of its own
+ * so Cloud Tasks does not take it for the one already running. The line's deadline bounds how many
+ * times this can happen.
+ */
+async function deferDaily(deps: CallDeps, input: PlaceCallInput): Promise<void> {
+  const now = deps.now().getTime();
+  await deps.queue.enqueue({
+    name: `${callTaskId(input.residentId, input.localDate, input.attempt)}-wait-${Math.floor(now / 60_000)}`,
+    path: PLACE_CALL_PATH,
+    body: input,
+    scheduleAt: new Date(now + LINE_BUSY_RECHECK_SEC * 1000),
+  });
+}
+
 export async function scheduleRetry(deps: CallDeps, input: PlaceCallInput): Promise<boolean> {
   const next = input.attempt + 1;
   if (next >= deps.config.maxAttempts) return false;
@@ -166,15 +247,81 @@ function withoutLease(c: CallRecord): CallRecord {
   return rest;
 }
 
+const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required' | 'request_lapsed', { code: string; message: string }> = {
+  inactive: { code: 'paused', message: 'Calls were paused for this resident before the call could be made' },
+  synthetic: { code: 'synthetic', message: 'A synthetic demo resident is never called' },
+  consent_required: { code: 'consent_required', message: 'The resident has not agreed to calls from Hachi' },
+  // The same code the API reports once the request's hold has run out, so both say the same thing.
+  request_lapsed: { code: 'not_placed', message: 'The request lapsed before the call could be made' },
+};
+
+/**
+ * A staff request is only good while it holds the line. After that the API has told staff the call
+ * did not start and let them ask again, so a task that arrives late (a Cloud Tasks backlog, an
+ * outage) must not ring the resident anyway, unseen by anyone. A newer request replaces it too.
+ */
+function staffRequestLapsed(r: Resident, callId: string, now: Date): boolean {
+  const asked = r.lastStaffCall;
+  return !asked || asked.callId !== callId || now.getTime() - Date.parse(asked.at) > STAFF_REQUEST_HOLD_MS;
+}
+
+/**
+ * A staff call refused before it was dialled still gets a record, so the member of staff following
+ * it reads why rather than "about to ring", and the line the request held is freed at once instead
+ * of keeping the daily check-in waiting. A record that already exists is left alone: the call was
+ * made, and this is a redelivered task.
+ */
+async function refuseStaffCall(
+  deps: CallDeps,
+  r: Resident,
+  input: PlaceCallInput & { staff: NonNullable<PlaceCallInput['staff']> },
+  reason: keyof typeof REFUSED,
+): Promise<PlaceCallOutcome> {
+  const callId = callIdOf(input);
+  const at = deps.now().toISOString();
+  const created = await deps.store.createCallIfAbsent({
+    id: callId,
+    residentId: r.id,
+    source: 'live',
+    status: 'failed',
+    channel: r.channel,
+    startedAt: at,
+    endedAt: at,
+    analysisPending: false,
+    createdAt: at,
+    trigger: 'staff',
+    requestedBy: input.staff.requestedBy,
+    localDate: input.localDate,
+    failure: { ...REFUSED[reason], retryable: false },
+  });
+  if (created) await releaseLine(deps, r.id, callId);
+  return { outcome: 'skipped', reason };
+}
+
 /**
  * Places one call attempt. Safe under Cloud Tasks at-least-once delivery: the call document is
  * created once, and a short lease ensures only one worker dials it.
  */
 export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetryCount: number): Promise<PlaceCallOutcome> {
   const r = await deps.store.getResident(input.residentId);
-  if (!r || !r.active) return { outcome: 'skipped', reason: 'inactive' };
+  if (!r) return { outcome: 'skipped', reason: 'inactive' };
+  const refused: keyof typeof REFUSED | null = !r.active
+    ? 'inactive'
+    : // Demo residents are not people; whatever number they carry is not theirs to be rung on.
+      r.synthetic
+      ? 'synthetic'
+      : !hasCallConsent(r.callConsent)
+        ? 'consent_required'
+        : null;
+  if (refused) return input.staff ? refuseStaffCall(deps, r, { ...input, staff: input.staff }, refused) : { outcome: 'skipped', reason: refused };
 
-  const callId = callIdFor(input.localDate, input.attempt);
+  const staff = input.staff;
+  const callId = callIdOf(input);
+  // Only before the call exists: once a run has created it, the request was taken up in time and a
+  // redelivered task carries on with it as usual.
+  if (staff && staffRequestLapsed(r, callId, deps.now()) && !(await deps.store.getCall(r.id, callId))) {
+    return refuseStaffCall(deps, r, { ...input, staff }, 'request_lapsed');
+  }
   const at = deps.now().toISOString();
   const token = deps.newToken();
   let streamToken = deps.newToken();
@@ -187,7 +334,7 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     startedAt: at,
     analysisPending: false,
     createdAt: at,
-    attempt: input.attempt,
+    ...(staff ? { trigger: 'staff' as const, requestedBy: staff.requestedBy } : { attempt: input.attempt }),
     localDate: input.localDate,
     dialLease: { token, at },
     streamToken,
@@ -202,6 +349,24 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     if (current.providerCallId || current.status !== 'scheduled') return { outcome: 'skipped', reason: 'already_handled' };
     if (current.dialLease?.token !== token) return { outcome: 'retry_later', reason: 'dial_in_progress' };
     streamToken = current.streamToken!;
+  }
+
+  // The line first: a call that cannot ring yet must take neither the gateway's trial call nor
+  // money from the month. Staff calls already hold it from the request; the daily check-in takes
+  // it here, and waits for a staff call that is still going rather than ringing into it.
+  if (!(await claimLine(deps, r.id, callId))) {
+    if (staff) {
+      await deps.store.updateCall(r.id, callId, (c) => ({
+        ...withoutLease(c),
+        status: 'failed',
+        endedAt: deps.now().toISOString(),
+        failure: { code: 'line_busy', message: 'Another call to this resident was already under way', retryable: false },
+      }));
+      return { outcome: 'skipped', reason: 'line_busy' };
+    }
+    await deps.store.updateCall(r.id, callId, (c) => (c.dialLease?.token === token ? withoutLease(c) : null));
+    await deferDaily(deps, input);
+    return { outcome: 'deferred', reason: 'line_busy' };
   }
 
   // Before the budget, because money reserved for a call that will not work is money the month
@@ -219,6 +384,7 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
         retryable: false,
       },
     }));
+    await releaseLine(deps, r.id, callId);
     return { outcome: 'skipped', reason: 'gateway_unavailable' };
   }
 
@@ -230,6 +396,7 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
       endedAt: deps.now().toISOString(),
       failure: { code: 'budget_exhausted', message: 'The monthly AI budget is used up; no new calls are being placed', retryable: false },
     }));
+    await releaseLine(deps, r.id, callId);
     return { outcome: 'skipped', reason: 'budget_exhausted' };
   }
 
@@ -269,7 +436,9 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
       endedAt: deps.now().toISOString(),
       failure: { ...(e.code ? { code: e.code } : {}), message: e.message, retryable: e.retryable },
     }));
-    const retryScheduled = e.retryable ? await scheduleRetry(deps, input) : false;
+    await releaseLine(deps, r.id, callId);
+    // Staff calls are not retried: the member of staff sees it failed and can ask again.
+    const retryScheduled = e.retryable && !staff ? await scheduleRetry(deps, input) : false;
     return { outcome: 'failed', retryScheduled, ...(e.code ? { code: e.code } : {}) };
   }
 }
@@ -332,6 +501,7 @@ export async function applyCallStatus(
   // a reservation that is already gone, which is what makes a repeated callback harmless.
   if (TERMINAL.has(updated.status)) {
     await settleCallSpend(deps, ids.residentId, ids.callId, updated.status === 'completed' ? updated.durationSec : 0);
+    await releaseLine(deps, ids.residentId, ids.callId);
   }
   let retryScheduled = false;
   if (becameFailed && updated.status === 'failed' && updated.attempt !== undefined && updated.localDate) {

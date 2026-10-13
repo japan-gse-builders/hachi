@@ -231,7 +231,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(body.items[0].urgencyMeaning).toBe('Possible immediate danger to life or health. Act now.');
     // A card only ever shows its own level, so the queue carries the other three as well.
     expect(body.legend.map((l: { urgency: string }) => l.urgency)).toEqual(['emergency', 'urgent', 'action', 'watch']);
-    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now' });
+    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now', meaning: 'No action yet. Watch whether the change continues.' });
     const ja = (await app.inject({ method: 'GET', url: '/api/queue', ...as('staff') })).json();
     expect(ja.legend[0].label).toBe('緊急');
     expect(ja.items[0].urgencyMeaning).toContain('いま動く');
@@ -627,13 +627,14 @@ describe('family dashboard (FAM-01..04)', () => {
       {
         startedAt: '2026-10-01T01:00:00.000Z',
         connected: true,
+        notesPending: false,
         durationSec: 240,
         summary: { health: 'A little tired', meals: 'Ate very little yesterday', topics: ['grandson'] },
         headline: 'Margaret Smithさんが通話中に話したことについて、Hachi がケアチームに連絡しました。ケアチームの対応：対応中。',
         domains: null,
         tags: [],
       },
-      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, durationSec: null, summary: null, headline: null, domains: null, tags: [] },
+      { startedAt: '2026-09-30T01:00:00.000Z', connected: false, notesPending: false, durationSec: null, summary: null, headline: null, domains: null, tags: [] },
     ]);
     expect(d.alerts).toEqual([
       {
@@ -690,9 +691,9 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
   const tagged = (id: string, date: string, ids: Parameters<typeof said>, extra: Parameters<typeof call>[0] = {}) =>
     call({ id, startedAt: at(date), localDate: date, wellbeing: wellbeing(said(...ids)), ...extra });
 
-  async function seeded() {
+  async function seeded(overrides: Partial<ReturnType<typeof makeResident>> = {}) {
     const ctx = setup();
-    await ctx.store.createResident(makeResident('res-1'));
+    await ctx.store.createResident({ ...makeResident('res-1'), ...overrides });
     const today = wellbeing(
       [
         ...said('food.ate_little', 'activity.stayed_in', 'body.feeling_well', 'practical.money_worry'),
@@ -721,6 +722,7 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
 
   it("shows the latest call's headline and six life domains, mood as a state only", async () => {
     const { d } = await dashboard();
+    expect(d.glance.shareMood).toBe(true);
     expect(d.glance.latest).toEqual({
       startedAt: at('2026-10-01'),
       headline: 'Maggie was in good spirits but has not eaten much today.',
@@ -736,6 +738,23 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
       ],
     });
   });
+
+  it.each([undefined, { shareMood: false, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' }])(
+    'withholds mood and generated free text without sharing approval: %j', async (consent) => {
+      const { app, as } = await seeded({ consent });
+      const res = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard?locale=en', ...as('familyPhone') });
+      expect(res.statusCode).toBe(200);
+      const d = res.json();
+      expect(d.glance.shareMood).toBe(false);
+      expect(d.glance.latest).toMatchObject({ headline: null, domains: { mood: 'unmentioned', food: 'concern', body: 'good' } });
+      expect(d.glance.days.every((day: { domains: { mood: string } | null }) => !day.domains || day.domains.mood === 'unmentioned')).toBe(true);
+      expect(d.calls.every((c: { summary: unknown; headline: unknown; domains: { mood: string } | null }) =>
+        c.summary === null && c.headline === null && (!c.domains || c.domains.mood === 'unmentioned'))).toBe(true);
+      expect(res.body).not.toContain('good spirits');
+      expect(d.calls[0].tags.map((t: { id: string }) => t.id)).toContain('food.ate_little');
+      expect(d.staff.name).toBe('Tanaka');
+    },
+  );
 
   it('builds 14 resident-local days, merging calls on one day and marking days without a connected call', async () => {
     const { d } = await dashboard();
@@ -778,7 +797,7 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
   });
 
   it("replaces the model's sentence on an emergency call with what the care team did", async () => {
-    const ctx = await seeded();
+    const ctx = await seeded({ consent: undefined });
     const r1 = detection({ rule: 'R1', urgency: 'emergency', evidence: [{ callId: 'today', quote: 'My chest hurts', startMs: 0, endMs: 1 }] });
     await ctx.store.putCase(storedCase({ id: 'r1', rule: 'R1', autoUrgency: 'emergency', status: 'in_progress', detections: [r1] }));
     const get = async (locale: string) =>
@@ -800,4 +819,15 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
     expect(d.glance.trends).toEqual([]);
     expect(d.glance.days.every((x: { domains: unknown }) => x.domains === null)).toBe(true);
   });
+});
+
+
+it('names a no-response R1 case as an observation of silence', async () => {
+  const { app, as, store } = setup();
+  await store.createResident(makeResident('res-1'));
+  await store.putCase(storedCase({ rule: 'R1', autoUrgency: 'emergency', detections: [detection({ rule: 'R1', urgency: 'emergency', noResponse: 'silent_after_greeting', evidence: [] })] }));
+  const detail = (await app.inject({ method: 'GET', url: '/api/cases/case-1?locale=en', ...as('staff') })).json();
+  expect(detail.case.ruleName).toBe('No response after repeated checks');
+  expect(detail.case.reason).toContain('never spoke');
+  expect(detail.case.reason).not.toContain('Reported acute symptoms');
 });

@@ -1,4 +1,5 @@
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
+import { PRIVACY_NOTICE } from '@hachi/core';
 import { EmergencyPresence, type EmergencyInput, type EmergencyRaiser } from '../src/emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, LiveSetup, ToolCall, ToolScheduling } from '../src/live.js';
 import { CallSession, type Logger, type RecordingSink, type SessionDeps, type TwilioSocket } from '../src/session.js';
@@ -20,6 +21,7 @@ export function resident(overrides: Partial<Resident> = {}): Resident {
     familyLookup: [],
     serviceStartedAt: '2026-09-01T00:00:00.000Z',
     active: true,
+    callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version, recordedAt: '2026-09-01T00:00:00.000Z', recordedBy: 'staff-1' },
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,

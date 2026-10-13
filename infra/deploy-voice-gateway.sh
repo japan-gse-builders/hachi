@@ -86,6 +86,13 @@ if [[ -n "${FORCE_LIVE_DROP:-}" ]]; then
   echo "!!  The next call to that resident will have its Gemini Live socket closed on purpose."
   echo "!!  No other resident is affected. Re-run this script without the variable to clear it."
 fi
+# Opt-in turn detection and the issue #15 no-response schedule. Colon separators do not
+# collide with gcloud's comma-separated environment list. Unset VAD fields retain model defaults.
+TURN_ENV=""
+for name in LIVE_SILENCE_MS LIVE_END_OF_SPEECH_SENSITIVITY SILENCE_PROMPT_INTERVALS_SEC SILENCE_PROMPT_SEC SILENCE_PROMPTS; do
+  value="${!name:-}"
+  if [[ -n "$value" ]]; then TURN_ENV+=",${name}=${value}"; fi
+done
 # Twilio cannot send Google credentials, so ingress is public; each stream must present the
 # per-call token stored in Firestore. CPU stays allocated because audio flows over an open
 # WebSocket between requests; the timeout bounds a single call.
@@ -95,7 +102,7 @@ fi
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 1Gi \
   --concurrency 20 --timeout 3600 --no-cpu-throttling --cpu-boost \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${BREAKER_ENV}${DROP_ENV}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${BREAKER_ENV}${DROP_ENV}${TURN_ENV}"
 
 GATEWAY_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
 echo "==> Health check"

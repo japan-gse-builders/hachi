@@ -44,25 +44,27 @@ export function ContactRequests() {
     <div className="stack">
       <h2>Asked for a phone call</h2>
       {error && <p className="error">{error}</p>}
-      {requests.map((r) => (
-        <div key={r.id} className="card">
-          <h2>{r.residentName}</h2>
-          <p>
-            Asked us to text <strong>{r.requestedFor}</strong> on <strong>{r.number}</strong>.
-          </p>
-          <p className="meta">Read the number back before you agree to it. Hachi heard it over the phone.</p>
-          <p className="quote">{r.body}</p>
-          <p className="meta">Asked {formatWhen(r.requestedAt)}</p>
-          <div className="row">
-            <button type="button" disabled={busy === r.id} onClick={() => void decide(r.id, 'approve')}>
-              Send it
-            </button>
-            <button type="button" className="ghost" disabled={busy === r.id} onClick={() => void decide(r.id, 'reject')}>
-              Do not send
-            </button>
-          </div>
+      <div className="tiles tiles-compact">
+        {requests.map((r) => (
+          <div key={r.id} className="card">
+            <h3>{r.residentName}</h3>
+            <p>
+              Asked us to text <strong>{r.requestedFor}</strong> on <strong>{r.number}</strong>.
+            </p>
+            <p className="meta">Read the number back before you agree to it. Hachi heard it over the phone.</p>
+            <p className="quote">{r.body}</p>
+            <p className="meta">Asked {formatWhen(r.requestedAt)}</p>
+            <div className="row">
+              <button type="button" disabled={busy === r.id} onClick={() => void decide(r.id, 'approve')}>
+                Send it
+              </button>
+              <button type="button" className="ghost" disabled={busy === r.id} onClick={() => void decide(r.id, 'reject')}>
+                Do not send
+              </button>
+            </div>
         </div>
       ))}
+      </div>
     </div>
   );
 }

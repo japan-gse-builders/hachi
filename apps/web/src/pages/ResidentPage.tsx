@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { CallConsentField } from '../components/CallConsentField';
+import { PRIVACY_NOTICE } from '../privacy';
 
 export function ResidentPage() {
   const { token } = useAuth();
@@ -29,6 +31,7 @@ export function ResidentPage() {
       },
       ...optional('householdNotes', 'householdNotes'),
       staff: { name: text('staffName'), phone: text('staffPhone'), ...optional('sms', 'staffSms'), ...optional('email', 'staffEmail') },
+      ...(form.get('callConsent') === 'on' ? { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version } } : {}),
       ...(hasFamily
         ? {
             family: {
@@ -53,8 +56,8 @@ export function ResidentPage() {
   };
 
   return (
-    <form className="card stack" onSubmit={(e) => void submit(e)}>
-      <h2>Add a resident</h2>
+    <form className="card stack narrow" onSubmit={(e) => void submit(e)}>
+      <h1>Add a resident</h1>
       <p className="meta">Phone numbers include the country code, such as +81 90 1234 5678.</p>
       {error && <p className="error">{error}</p>}
       <label>Full name<input name="name" required /></label>
@@ -85,6 +88,7 @@ export function ResidentPage() {
         <label>Family mobile<input name="familySms" placeholder="+819012345678" /></label>
         <label>Family email<input name="familyEmail" type="email" /></label>
       </fieldset>
+      <CallConsentField />
       <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save resident'}</button>
     </form>
   );

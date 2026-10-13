@@ -2,18 +2,38 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import type { Resident } from '../types';
+import type { IncompleteAnalyses, Resident } from '../types';
+import { CallConsentField } from '../components/CallConsentField';
+import { IncompleteAnalysisList } from '../components/IncompleteAnalyses';
+import { CallNowButton } from '../components/CallNowButton';
+import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
+
+/**
+ * A staff call holding the line now, so the page follows it instead of offering a second call.
+ * Daily calls are left out: at a shared call time they would start a poll for every resident on
+ * the page. Pressing "Call now" during one is refused with its id, and the button follows it then.
+ */
+const liveCall = (r: Resident) =>
+  r.callSlot && /-now-\d+$/.test(r.callSlot.callId) && Date.parse(r.callSlot.until) > Date.now() ? r.callSlot.callId : undefined;
 
 export function ResidentsPage() {
   const { token } = useAuth();
   const [residents, setResidents] = useState<Resident[] | null>(null);
   const [error, setError] = useState('');
   const [imported, setImported] = useState<Record<string, string>>({});
+  const [consentFor, setConsentFor] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [incomplete, setIncomplete] = useState<IncompleteAnalyses | null>(null);
   useEffect(() => {
     void token()
       .then((t) => api<{ residents: Resident[] }>('/api/residents', t))
       .then((data) => setResidents(data.residents))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load residents'));
+    // Secondary: the residents still show if this list cannot be loaded.
+    void token()
+      .then((t) => api<IncompleteAnalyses>('/api/incomplete-analyses?locale=en', t))
+      .then(setIncomplete)
+      .catch(() => setIncomplete(null));
   }, [token]);
 
   // USR-04: a JSON file of {"calls": [{startedAt, endedAt, transcript}]} for demos and baselines.
@@ -35,47 +55,76 @@ export function ResidentsPage() {
     }
   };
 
-  /**
-   * Recorded from what the resident said, so it is a thing staff tick after a conversation rather
-   * than a setting. Until it is ticked, the family is told nothing about how the resident is in
-   * themselves, however well meant that would be.
-   */
-  const setConsent = async (residentId: string, shareMood: boolean) => {
-    setResidents((prev) => prev?.map((r) => (r.id === residentId ? { ...r, consent: { ...r.consent, shareMood } } : r)) ?? prev);
+  /** Only reflect a permission or call-status change after the server has saved it. */
+  const updateResident = async (residentId: string, patch: object): Promise<boolean> => {
+    setError('');
+    setBusyId(residentId);
     try {
       const saved = await api<Resident>(`/api/residents/${residentId}`, await token(), {
         method: 'PATCH',
-        body: JSON.stringify({ shareMood }),
+        body: JSON.stringify(patch),
       });
       setResidents((prev) => prev?.map((r) => (r.id === residentId ? saved : r)) ?? prev);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that');
+      return false;
+    } finally {
+      setBusyId(null);
     }
   };
 
   return (
-    <div className="stack tiles">
+    <div className="stack">
       <div className="row">
-        <h2>Residents</h2>
+        <h1>Residents</h1>
         <Link className="button" to="/staff/residents/new">Add resident</Link>
       </div>
       {error && <p className="error">{error}</p>}
-      {residents?.map((r) => (
-        <article className="card" key={r.id}>
-          <h2>{r.name}</h2>
-          <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
-          <p className="meta">Resident {r.id}</p>
-          <label className="check">
-            <input type="checkbox" checked={Boolean(r.consent?.shareMood)} onChange={(e) => void setConsent(r.id, e.target.checked)} />
-            Agreed their family may be told how they are in themselves
-          </label>
-          <label className="file">Import past calls (JSON)
-            <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
-            <span className="button ghost">Choose a file</span>
-          </label>
-          {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
-        </article>
-      ))}
+      {residents && residents.length > 0 && (
+        <div className="tiles">
+          {residents.map((r) => (
+            <article className="card" key={r.id}>
+              <h2>{r.name}</h2>
+              <p className="meta">{[r.preferredName, r.phone, `daily call ${r.callTime}`, r.active ? 'active' : 'inactive'].filter(Boolean).join(' · ')}</p>
+              <p className="meta">Resident {r.id}</p>
+              {incomplete && <IncompleteAnalysisList items={incomplete.items.filter((i) => i.residentId === r.id)} showResident={false} />}
+              {hasCallConsent(r.callConsent) ? (
+                <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-GB')}.</p>
+              ) : (
+                <>
+                  <p role="status">Approval needed. Daily calls will wait until the resident agrees.</p>
+                  {consentFor !== r.id && <button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button>}
+                  {consentFor === r.id && (
+                    <form className="stack" onSubmit={(event) => {
+                      event.preventDefault();
+                      if (new FormData(event.currentTarget).get('callConsent') !== 'on') return;
+                      void updateResident(r.id, { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version } })
+                        .then((saved) => { if (saved) setConsentFor(null); });
+                    }}>
+                      <CallConsentField required />
+                      <div className="row">
+                        <button type="submit" disabled={busyId !== null}>{busyId === r.id ? 'Saving…' : 'Save approval'}</button>
+                        <button className="ghost" type="button" disabled={busyId !== null} onClick={() => setConsentFor(null)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
+              {r.active && hasCallConsent(r.callConsent) && (
+                <CallNowButton residentId={r.id} name={r.preferredName || r.name} phone={r.phone} busyCallId={liveCall(r)} />
+              )}
+              <p><button className="ghost" type="button" disabled={busyId !== null || (!r.active && !hasCallConsent(r.callConsent))}
+                onClick={() => void updateResident(r.id, { active: !r.active })}>{r.active ? 'Pause calls' : 'Resume calls'}</button></p>
+              <label className="file">Import past calls (JSON)
+                <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
+                <span className="button ghost">Choose a file</span>
+              </label>
+              {imported[r.id] && <p className="meta" role="status">{imported[r.id]}</p>}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

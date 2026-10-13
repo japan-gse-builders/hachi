@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import {
   classifyGatewayFailure,
+  hasCallConsent,
   itemsForCall,
   localDate,
   R1Monitor,
@@ -13,6 +14,7 @@ import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store'
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyPresence, EmergencyRaiser } from './emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, ToolCall } from './live.js';
+import type { NoResponseReporter } from './noResponse.js';
 import {
   buildSystemInstruction,
   priorContext,
@@ -52,13 +54,14 @@ export interface SessionDeps {
    * Absent wherever nothing is probing, which is every test that is not about the probe.
    */
   emergencies?: EmergencyPresence;
+  noResponse?: NoResponseReporter;
   recordings: RecordingSink;
   /** Without it the analysis worker's sweep picks the call up. */
   analysis?: AnalysisRequester;
   log: Logger;
   config: {
     maxConversationSec: number;
-    silence: { promptSec: number; prompts: number };
+    silence: { promptSec: number; prompts: number; intervalsSec?: number[] };
     /** See `GatewayConfig.forcedLiveDrop`. Absent in every deployment that is not being tested. */
     forcedLiveDrop?: { residentId: string; afterSec: number };
   };
@@ -134,6 +137,8 @@ export class CallSession {
   private previousTurns: Turn[] = [];
   private prior?: PriorContext;
   private items: readonly ScreenItem[] = [];
+  /** Staff asked for this call; it comes outside the daily schedule (issue #13). */
+  private unscheduled = false;
   private offsetMs = 0;
 
   private live?: LiveSession;
@@ -186,6 +191,11 @@ export class CallSession {
   /** Separate from `timers` because it is restarted every time either side stops speaking. */
   private silenceTimer?: NodeJS.Timeout;
   private silencePrompts = 0;
+  private silenceMark?: string;
+  private silenceEscalated = false;
+  private endGeneration = 0;
+  private voicedFrames = 0;
+  private turnHadAudio = false;
   private heardResident = false;
 
   constructor(
@@ -220,7 +230,7 @@ export class CallSession {
 
   /** Twilio closed the socket (the resident hung up or the call dropped). */
   async onSocketClosed(): Promise<void> {
-    await this.finish('resident');
+    await this.finish(this.endReason ?? 'resident');
   }
 
   private async onStart(msg: { start?: any; streamSid?: string }): Promise<void> {
@@ -235,7 +245,7 @@ export class CallSession {
     const [call, resident] = residentId && callId
       ? await Promise.all([this.deps.store.getCall(residentId, callId), this.deps.store.getResident(residentId)])
       : [null, null];
-    if (!call || !resident || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
+    if (!call || !resident?.active || !hasCallConsent(resident.callConsent) || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
       this.deps.log.warn({ residentId, callId }, 'rejected media stream');
       this.state = 'done';
       this.socket.close();
@@ -254,8 +264,10 @@ export class CallSession {
     // A reconnected stream must not treat the quiet after the drop as a resident who never spoke.
     this.heardResident = this.previousTurns.some((t) => t.speaker === 'resident');
     this.offsetMs = this.previousTurns.length ? this.previousTurns[this.previousTurns.length - 1]!.endMs + 1000 : 0;
+    this.unscheduled = call.trigger === 'staff';
     // The rotation runs on the calendar, so a resumed stream asks the same questions as the first.
-    this.items = itemsForCall(
+    // The set questions belong to the daily call; an extra call staff asked for is about now.
+    this.items = this.unscheduled ? [] : itemsForCall(
       resident.serviceStartedAt.slice(0, 10),
       call.localDate ?? localDate(new Date(), resident.timeZone),
     );
@@ -299,8 +311,10 @@ export class CallSession {
    */
   private armSilence(): void {
     this.clearSilence();
-    if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
-    this.silenceTimer = setTimeout(() => this.onSilence(), this.deps.config.silence.promptSec * 1000);
+    if (this.state !== 'active' || !this.live || this.endReason || this.emergencyActive) return;
+    const { intervalsSec, promptSec } = this.deps.config.silence;
+    const delay = intervalsSec?.[Math.min(this.silencePrompts, intervalsSec.length - 1)] ?? promptSec;
+    this.silenceTimer = setTimeout(() => this.onSilence(), delay * 1000);
   }
 
   private clearSilence(): void {
@@ -312,13 +326,14 @@ export class CallSession {
     this.silenceTimer = undefined;
     if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
     if (++this.silencePrompts <= this.deps.config.silence.prompts) {
-      this.live?.sendText(silenceCue(this.name, this.heardResident));
-      // Re-armed here as well as on turnComplete, so a model that answers with nothing still ends.
-      this.armSilence();
+      this.live?.sendText(silenceCue(this.name, this.heardResident, this.unscheduled));
+      // The next interval begins after this prompt is actually played. Missing model output
+      // or a missing playback acknowledgement must not become an R1 finding about the resident.
       return;
     }
     const reason: ConversationEnd = this.heardResident ? 'stopped_responding' : 'silent_after_greeting';
     this.deps.log.warn({ ...this.ids, reason, prompts: this.silencePrompts - 1 }, 'no answer from the resident');
+    this.silenceEscalated = true;
     this.live?.sendText(silenceFarewellCue(this.name));
     this.requestEnd(reason);
   }
@@ -340,6 +355,7 @@ export class CallSession {
         handle ? [] : [...this.previousTurns, ...this.transcript()],
         this.prior,
         this.items,
+        { unscheduled: this.unscheduled },
       ),
       ...(handle ? { resumeHandle: handle } : {}),
     });
@@ -433,7 +449,8 @@ export class CallSession {
         const name = `t${++this.markSeq}`;
         this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
         if (this.endReason) this.hangupMark = name;
-        else this.armSilence();
+        else if (this.turnHadAudio) this.silenceMark = name;
+        this.turnHadAudio = false;
       },
       toolCalls: (calls) => current() && calls.forEach((c) => this.onToolCall(c)),
       resumable: (handle) => {
@@ -463,6 +480,9 @@ export class CallSession {
         if (!current()) return;
         this.deps.log.warn({ ...this.ids, reason }, 'Gemini Live session closed unexpectedly');
         this.live = undefined;
+        this.clearSilence();
+        this.silenceMark = undefined;
+        this.turnHadAudio = false;
         this.liveFailure = reason;
         if (this.endReason) return void this.finish(this.endReason);
         // Vertex AI refusing the project closes the socket the same way a network blip does, and the
@@ -479,7 +499,14 @@ export class CallSession {
     if (this.state !== 'active' || !media?.payload || (media.track && media.track !== 'inbound')) return;
     const mulaw = Buffer.from(media.payload, 'base64');
     this.recorder.appendInbound(mulaw);
-    const pcm = this.up.process(decodeMuLaw(mulaw));
+    const decoded = decodeMuLaw(mulaw);
+    const rms = Math.sqrt(decoded.reduce((sum, n) => sum + n * n, 0) / Math.max(1, decoded.length));
+    // Do not treat Hachi's own voice echo during playback as a resident answering a prompt.
+    this.voicedFrames = this.silenceTimer && rms >= 328 ? this.voicedFrames + decoded.length : 0;
+    // 120 ms of audible input cancels the clock before a potentially late transcription arrives.
+    // This is a guard, not a medical inference or a replacement for Gemini's turn detection.
+    if (this.voicedFrames >= 960) this.residentActivity();
+    const pcm = this.up.process(decoded);
     if (!this.live) {
       this.pending.push(pcm);
       this.pendingSamples += pcm.length;
@@ -496,8 +523,11 @@ export class CallSession {
   }
 
   private onModelAudio(pcm24k: Int16Array): void {
+    this.clearSilence();
+    this.silenceMark = undefined;
     const mulaw = encodeMuLaw(this.down.process(pcm24k));
     if (!mulaw.length) return;
+    this.turnHadAudio = true;
     this.sendTwilio({ event: 'media', streamSid: this.streamSid, media: { payload: mulaw.toString('base64') } });
     this.recorder.appendOutbound(mulaw);
     // More speech after the goodbye: wait for the next turn to finish before hanging up.
@@ -505,7 +535,23 @@ export class CallSession {
   }
 
   private async onMark(name: unknown): Promise<void> {
+    if (typeof name === 'string' && name === this.silenceMark) {
+      this.silenceMark = undefined;
+      this.armSilence();
+    }
     if (this.endReason && typeof name === 'string' && name === this.hangupMark) await this.finish(this.endReason);
+  }
+
+  private residentActivity(): void {
+    this.clearSilence();
+    this.silenceMark = undefined;
+    this.silencePrompts = 0;
+    if (this.endReason === 'silent_after_greeting' || this.endReason === 'stopped_responding') {
+      this.endReason = undefined;
+      this.hangupMark = undefined;
+      this.endGeneration++;
+      this.silenceEscalated = false;
+    }
   }
 
   private appendTurn(speaker: Turn['speaker'], text: string): Turn {
@@ -527,8 +573,7 @@ export class CallSession {
 
   private onResidentText(text: string): void {
     this.heardResident = true;
-    this.clearSilence();
-    this.silencePrompts = 0;
+    this.residentActivity();
     if (this.turns[this.turns.length - 1]?.speaker !== 'resident') this.monitor.endTurn();
     const turn = this.appendTurn('resident', text);
     const [signal] = this.monitor.push(text, { startMs: turn.startMs, endMs: turn.endMs });
@@ -541,8 +586,12 @@ export class CallSession {
   private onToolCall(call: ToolCall): void {
     const live = this.live;
     if (call.name === 'end_call') {
+      if (this.silencePrompts > 0 && !this.silenceEscalated && !this.emergencyActive) {
+        live?.respondToTool(call, { status: 'error', retryable: false, message: 'The unanswered-check sequence is still running. Wait for the resident to answer; do not hang up yet.' }, 'SILENT');
+        return;
+      }
       live?.respondToTool(call, { status: 'ok', retryable: false, message: 'The call will end now.' }, 'SILENT');
-      if (!this.emergencyActive) this.requestEnd('agent');
+      if (!this.emergencyActive) this.requestEnd(this.silenceEscalated && this.endReason ? this.endReason : 'agent');
       return;
     }
     if (call.name === 'report_emergency') {
@@ -593,7 +642,10 @@ export class CallSession {
     const name = `end${++this.markSeq}`;
     this.hangupMark = name;
     this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
-    this.timer(fallbackMs, () => void this.finish(this.endReason ?? reason));
+    const generation = ++this.endGeneration;
+    this.timer(fallbackMs, () => {
+      if (generation === this.endGeneration && this.endReason) void this.finish(this.endReason);
+    });
   }
 
   private sendTwilio(msg: object): void {
@@ -630,12 +682,24 @@ export class CallSession {
       await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => ({
         ...c,
         transcript,
-        conversation: { endedBy: reason, at },
+        conversation: {
+          endedBy: reason, at,
+          ...(this.silenceEscalated && (reason === 'silent_after_greeting' || reason === 'stopped_responding') ? { noResponseEscalated: true } : {}),
+        },
         analysisPending: true,
       }));
       saved = true;
     } catch (err) {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save transcript');
+    }
+    if (saved && this.silenceEscalated && this.resident && this.deps.noResponse && (reason === 'silent_after_greeting' || reason === 'stopped_responding')) {
+      try {
+        const noResponseCaseId = await this.deps.noResponse.flag({ resident: this.resident, kind: reason, at });
+        await this.deps.store.updateCall(ids.residentId, ids.callId, (c) => ({ ...c, conversation: { ...c.conversation!, noResponseCaseId } }));
+      } catch (err) {
+        // The saved escalation marker lets post-call analysis make the flag if this write failed.
+        this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to flag the unanswered checks');
+      }
     }
     if (saved && this.deps.analysis) {
       try {

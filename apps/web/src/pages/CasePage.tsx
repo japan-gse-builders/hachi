@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { ResidentAvatar } from '../components/ResidentAvatar';
+import { CallNowButton } from '../components/CallNowButton';
 import { ScreeningCard } from '../components/ScreeningCard';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { audioAt, callStatusLabel, clock, deliveryLabel, eventLabel, formatWhen, minutes, speakerLabel, topicList, urgencyTone } from '../format';
@@ -66,16 +68,37 @@ export function CasePage() {
           {/* One case on the screen, so what the level asks for is written out rather than hidden in a tooltip. */}
           <span className="meta">{detail.case.urgencyMeaning}</span>
         </p>
-        <h2>{detail.resident.name}</h2>
+        <div className="resident-heading">
+          <ResidentAvatar id={detail.resident.id} name={detail.resident.name} />
+          <h1>{detail.resident.name}</h1>
+        </div>
+        {detail.resident.synthetic && <p className="meta">Synthetic demo resident, not a real person</p>}
         <p className="reason">{detail.case.reason}</p>
         <p className="meta">{detail.case.ruleName} · since {formatWhen(detail.case.firstDetectedAt)} · {detail.resident.phone}</p>
         {detail.resident.householdNotes && <p className="meta">{detail.resident.householdNotes}</p>}
+        {/* The next step after reading a case is often to hear from them again (issue #13). */}
+        {(detail.resident.callable ?? !detail.resident.synthetic) && (
+          <CallNowButton residentId={detail.resident.id} name={detail.resident.preferredName || detail.resident.name} phone={detail.resident.phone} />
+        )}
       </section>
 
       {/* On a laptop the evidence and the decision sit side by side with the case's own records. */}
-      <div className="stack case-evidence">
+      <div className="card stack case-column case-evidence">
         <section className="card">
-          <h2>What was said</h2>
+          <h2>About this person</h2>
+          <dl className="person-context">
+            <div><dt>Household</dt><dd>{detail.resident.vulnerability.livesAlone ? 'Lives alone' : 'Lives with others'}{detail.resident.householdNotes ? ` · ${detail.resident.householdNotes}` : ''}</dd></div>
+            <div><dt>Support</dt><dd>{detail.resident.vulnerability.hasCloseSupporter ? 'Has a close supporter' : 'No close supporter recorded'}</dd></div>
+            <div><dt>Care needs</dt><dd>{detail.resident.vulnerability.needsCare ? 'Needs care' : 'No care needs recorded'}</dd></div>
+            <div><dt>Recorded conditions</dt><dd>{detail.resident.vulnerability.chronicConditions.join(', ') || 'None recorded'}</dd></div>
+            <div><dt>Assigned staff</dt><dd>{detail.resident.staff ? <>{detail.resident.staff.name} · <a href={`tel:${detail.resident.staff.phone}`}>{detail.resident.staff.phone}</a>{detail.resident.staff.email && <> · <a href={`mailto:${detail.resident.staff.email}`}>{detail.resident.staff.email}</a></>}</> : 'Not available'}</dd></div>
+          </dl>
+        </section>
+        <section className="card">
+          <h2 className="eyebrow">What was said</h2>
+          {detail.detections.filter((d) => d.noResponse).map((d, i) => (
+            <p key={`no-response-${i}`}>{d.summary} This is an observation of silence; there is no resident quote.</p>
+          ))}
           {evidence.map((e, i) => (
             <blockquote className="quote" key={`${e.callId}-${i}`}>
               {/* The quote is what makes the case checkable, so it reads before the rule that found it. */}
@@ -137,9 +160,9 @@ export function CasePage() {
         </form>
       </div>
 
-      <div className="stack case-records">
+      <div className="card stack case-column case-records">
         <section className="card">
-          <h2>Notifications</h2>
+          <h2 className="eyebrow">Notifications</h2>
           {detail.case.notifications.length === 0 && <p className="meta">No notifications were sent for this case.</p>}
           {detail.case.notifications.map((n, i) => (
             <p key={i} className="meta">{formatWhen(n.sentAt)} · {n.recipient} · {n.channel} · {n.address} · {deliveryLabel(n.delivery)}</p>
@@ -147,11 +170,14 @@ export function CasePage() {
         </section>
   
         <section className="card">
-          <h2>Calls</h2>
+          <h2 className="eyebrow">Calls</h2>
           <div className="calls">
             {detail.calls.map((c) => (
               <article key={c.id}>
-                <p className="meta">{formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}</p>
+                <p className="meta">
+                  {formatWhen(c.startedAt)} · {callStatusLabel(c.status)}{c.durationSec !== null ? ` · ${minutes(c.durationSec)}` : ''}
+                  {c.trigger === 'staff' ? ' · Called at staff request' : ''}
+                </p>
                 {c.wellbeing && c.wellbeing.tags.length > 0 && (
                   <ul className="tag-list" aria-label="Wellbeing tags with the turn each came from">
                     {c.wellbeing.tags.map((t) => (
@@ -173,7 +199,7 @@ export function CasePage() {
   
         {detail.events.length > 0 && (
           <section className="card">
-            <h2>History</h2>
+            <h2 className="eyebrow">History</h2>
             {detail.events.map((event, i) => (
               <p key={i} className="meta">
                 {formatWhen(event.at)} · {eventLabel(event.type)}

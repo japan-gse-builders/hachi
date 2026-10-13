@@ -4,6 +4,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The parsed error body, for callers that act on more than the message. */
+    readonly body: unknown = null,
   ) {
     super(message);
   }
@@ -17,7 +19,7 @@ export async function api<T>(path: string, token: string, init: RequestInit = {}
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string; issues?: { message: string }[] } | null;
     const detail = body?.issues?.map((i) => i.message).join(' ') || body?.error;
-    throw new ApiError(detail || `Request failed (${res.status})`, res.status);
+    throw new ApiError(detail || `Request failed (${res.status})`, res.status, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

@@ -1,4 +1,4 @@
-import { extractSpeechSample } from '@hachi/core';
+import { extractSpeechSample, hasCallConsent } from '@hachi/core';
 import { normalizeEmail, normalizePhone } from './auth.js';
 import type { CallRecord, FamilyContact, Resident } from '@hachi/store';
 import type { CallImport, ResidentInput, ResidentPatch } from './schemas.js';
@@ -20,16 +20,21 @@ function toFamily(f: FamilyInput, previous?: FamilyContact): FamilyContact {
   };
 }
 
-export function buildResident(input: ResidentInput, id: string, now: Date): Resident {
+export function buildResident(input: ResidentInput, id: string, now: Date, staffUid = 'unknown'): Resident {
   const at = now.toISOString();
-  const { family, serviceStartedAt, ...rest } = input;
+  const { family, serviceStartedAt, callConsent, ...rest } = input;
   return {
     ...rest,
     id,
     staff: { ...input.staff, voice: input.staff.phone },
     ...(family ? { family: toFamily(family) } : {}),
+    ...(callConsent ? {
+      callConsent: { ...callConsent, recordedAt: at, recordedBy: staffUid },
+      consent: { shareMood: true, recordedAt: at, recordedBy: staffUid },
+    } : {}),
     familyLookup: familyLookup(family),
     serviceStartedAt: serviceStartedAt ?? at,
+    ...(!callConsent && !serviceStartedAt ? { serviceStartPending: true } : {}),
     active: true,
     createdAt: at,
     updatedAt: at,
@@ -37,11 +42,26 @@ export function buildResident(input: ResidentInput, id: string, now: Date): Resi
 }
 
 export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown'): Resident {
-  const { family, staff, shareMood, ...rest } = patch;
+  const { family, staff, shareMood, callConsent, ...rest } = patch;
   const next: Resident = { ...r, ...rest, updatedAt: now.toISOString() };
   if (staff) next.staff = { ...staff, voice: staff.phone };
   // Who heard it and when is the point of recording consent at all, so it is written here, not sent.
   if (shareMood !== undefined) next.consent = { shareMood, recordedAt: now.toISOString(), recordedBy: staffUid };
+  // Preserve the first approval, even when an old form is resubmitted or the notice has changed.
+  if (callConsent && !hasCallConsent(r.callConsent)) {
+    next.callConsent = { ...callConsent, recordedAt: now.toISOString(), recordedBy: staffUid };
+    // The current first-use explanation includes family mood/loneliness updates. Keep any
+    // previously recorded choice, including an opt-out, and any explicit sharing change.
+    if (shareMood === undefined && !r.consent) {
+      next.consent = { shareMood: true, recordedAt: now.toISOString(), recordedBy: staffUid };
+    }
+    // A delayed enrollment must still get its full baseline and first screening rotation.
+    // Legacy residents and explicitly backdated imports retain their existing service start.
+    if (r.serviceStartPending) {
+      next.serviceStartedAt = now.toISOString();
+      delete next.serviceStartPending;
+    }
+  }
   if (family === null) {
     delete next.family;
     next.familyLookup = [];

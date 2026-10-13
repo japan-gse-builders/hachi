@@ -7,11 +7,13 @@ import {
   describeTrend,
   detectR1,
   extractSpeechSample,
+  exhaustedPromptDetection,
   localDate,
   matchAnswer,
   normalizeUtterance,
   parseSpokenNumber,
   screenItem,
+  type AnalysisGap,
   type CallSpeechSample,
   type ContactRequest,
   type Detection,
@@ -41,6 +43,8 @@ export interface AnalysisInput {
   model?: string;
   modelError?: string;
   voiceError?: string;
+  /** What could not be done and why; recorded so staff see the call as not fully checked. */
+  incomplete?: AnalysisGap[];
   now: Date;
 }
 
@@ -248,6 +252,12 @@ function r4Detection(input: AnalysisInput): Detection | null {
   const { call, resident, history, now } = input;
   const ended = call.conversation?.endedBy;
   if (ended !== 'silent_after_greeting' && ended !== 'stopped_responding') return null;
+  // Issue #15's latest policy: exhausted prompts are an R1 flag. This records the observed
+  // silence, without fabricating symptoms or a quote. Older calls retain their R4 assessment.
+  if (call.conversation?.noResponseEscalated) {
+    if (call.emergency || call.conversation.noResponseCaseId) return null;
+    return exhaustedPromptDetection(resident.id, ended, call.conversation.at);
+  }
   const since = Date.parse(call.startedAt) - R4_HISTORY_DAYS * 86_400_000;
   const same = history.filter(
     (c) => c.id !== call.id && c.conversation?.endedBy === ended && Date.parse(c.startedAt) >= since && c.startedAt <= call.startedAt,
@@ -303,6 +313,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
         memory: review?.memory ?? EMPTY_MEMORY,
         ...(answers.length ? { answers } : {}),
         ...(contactRequest ? { contactRequest } : {}),
+        ...(input.incomplete?.length ? { incomplete: input.incomplete } : {}),
         ...(input.modelError ? { error: input.modelError } : {}),
         ...(input.voiceError ? { voiceError: input.voiceError } : {}),
       },

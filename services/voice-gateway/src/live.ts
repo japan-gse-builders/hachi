@@ -4,6 +4,7 @@ import {
   Modality,
   Type,
   type FunctionDeclaration,
+  type AutomaticActivityDetection,
   type GoogleGenAI,
   type LiveServerMessage,
   type Session,
@@ -134,6 +135,7 @@ export class GeminiLiveConnector implements LiveConnector {
     private readonly ai: Pick<GoogleGenAI, 'live'>,
     private readonly model: string,
     private readonly voice: string,
+    private readonly activityDetection?: AutomaticActivityDetection,
   ) {}
 
   async connect(setup: LiveSetup, handlers: LiveHandlers): Promise<LiveSession> {
@@ -147,6 +149,7 @@ export class GeminiLiveConnector implements LiveConnector {
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         tools: [{ functionDeclarations: TOOLS }],
+        ...(this.activityDetection ? { realtimeInputConfig: { automaticActivityDetection: this.activityDetection } } : {}),
         // Transparent, so the server reports how much of what we sent it actually kept. A dropped
         // websocket mid-call is then a gap of a second or two rather than a restarted conversation.
         sessionResumption: { transparent: true, ...(setup.resumeHandle ? { handle: setup.resumeHandle } : {}) },

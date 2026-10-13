@@ -1,5 +1,5 @@
-import { domainStates, type CallTag, type Case, type Detection, type SpendSettings } from '@hachi/core';
-import { buildApp } from '../src/app.js';
+import { domainStates, PRIVACY_NOTICE, type CallTag, type Case, type Detection, type SpendSettings } from '@hachi/core';
+import { buildApp, type AppDeps } from '../src/app.js';
 import type { TokenVerifier, VerifiedToken } from '../src/auth.js';
 import { MemoryStore, type CallRecord, type CallWellbeing, type Resident, type StoredCase } from '@hachi/store';
 import { buildResident } from '../src/residents.js';
@@ -44,7 +44,10 @@ export function residentInput(overrides: Record<string, unknown> = {}): Record<s
 }
 
 export function makeResident(id: string, overrides: Record<string, unknown> = {}): Resident {
-  return buildResident(residentInputSchema.parse(residentInput(overrides)) as ResidentInput, id, NOW);
+  return buildResident(residentInputSchema.parse(residentInput({
+    callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version },
+    ...overrides,
+  })) as ResidentInput, id, NOW, 'staff-1');
 }
 
 export function detection(overrides: Partial<Detection> = {}): Detection {
@@ -112,7 +115,7 @@ export function idGen(prefix = 'id'): () => string {
   return () => `${prefix}-${++n}`;
 }
 
-export function setup(opts: { spend?: SpendSettings } = {}) {
+export function setup(opts: { spend?: SpendSettings; gateway?: AppDeps['gateway']; calls?: AppDeps['calls'] } = {}) {
   const store = new MemoryStore();
   const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, now: () => NOW, newId: idGen(), ...opts });
   const as = (token: keyof typeof TOKENS | null) => ({ headers: token ? { authorization: `Bearer ${token}` } : {} });

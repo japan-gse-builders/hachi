@@ -1,15 +1,19 @@
 import {
+  ANALYSIS_FAILURE_LABELS,
   baselineFor,
   buildBaseline,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
   formatUsd,
   spendStatus,
+  STAFF_REQUEST_HOLD_MS,
   type SpendLedger,
   type SpendPolicy,
   combineStates,
+  describeAnalysisGaps,
   domainStatus,
   effectiveUrgency,
+  hasCallConsent,
   KIHON_DOMAIN_LABELS,
   LIFE_DOMAINS,
   localDate,
@@ -33,6 +37,7 @@ import {
   usualRange,
   visibleToFamily,
   wellbeingTag,
+  type AnalysisGap,
   type CheckInAttempt,
   type DomainState,
   type LifeDomain,
@@ -71,11 +76,22 @@ export interface QueueItem {
   status: string;
   statusLabel: string;
   notifications: StoredCase['notifications'];
+  residentFacts: string[];
+  householdNotes: string | null;
+  synthetic: boolean;
+}
+
+/** Recorded facts only; age is not currently collected by Hachi. */
+export function residentFacts(r: Resident, locale: Locale): string[] {
+  const v = r.vulnerability;
+  return locale === 'ja'
+    ? [v.livesAlone ? '一人暮らし' : '同居者あり', v.hasCloseSupporter ? '身近な支援者あり' : '身近な支援者なし', v.needsCare ? '介護が必要' : '介護の必要なしと記録']
+    : [v.livesAlone ? 'Lives alone' : 'Lives with others', v.hasCloseSupporter ? 'Has a close supporter' : 'No close supporter', v.needsCare ? 'Needs care' : 'No care needs recorded'];
 }
 
 /** The whole scale, in order, for a legend above the queue: a card only ever shows its own level. */
 export function urgencyLegend(locale: Locale) {
-  return URGENCIES.map((u) => ({ urgency: u, label: URGENCY_LABELS[locale][u], action: URGENCY_ACTIONS[locale][u] }));
+  return URGENCIES.map((u) => ({ urgency: u, label: URGENCY_LABELS[locale][u], action: URGENCY_ACTIONS[locale][u], meaning: URGENCY_MEANINGS[locale][u] }));
 }
 
 /** QUE-01 */
@@ -94,6 +110,9 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       caseId: c.id,
       residentId: c.residentId,
       residentName: residents.get(c.residentId)!.name,
+      residentFacts: residentFacts(residents.get(c.residentId)!, locale),
+      householdNotes: residents.get(c.residentId)!.householdNotes ?? null,
+      synthetic: residents.get(c.residentId)!.synthetic === true,
       rule: c.rule,
       urgency: p.urgency,
       urgencyLabel: URGENCY_LABELS[locale][p.urgency],
@@ -192,8 +211,11 @@ export function buildUnreached(
   locale: Locale,
 ): UnreachedView {
   const items: UnreachedResident[] = [];
-  for (const { resident: r, calls } of entries) {
-    if (!r.active) continue;
+  for (const { resident: r, calls: all } of entries) {
+    if (!r.active || !hasCallConsent(r.callConsent)) continue;
+    // A call staff asked for counts when somebody talked to the resident; one that did not connect is
+    // not a missed check-in, because the check-in is the daily call and it has its own attempts.
+    const calls = all.filter((c) => c.trigger !== 'staff' || (c.status === 'completed' && missedReason(attemptOf(c)) === null));
     const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
     const today = localDate(now, r.timeZone);
     const reached = calls.filter((c) => missedReason(attemptOf(c)) === null && c.status === 'completed');
@@ -222,6 +244,130 @@ export function buildUnreached(
   // Our own faults first: they are the ones where nothing at all is known about the resident.
   items.sort((a, b) => Number(b.ourFault) - Number(a.ourFault) || b.at.localeCompare(a.at));
   return { items, note: unreachedNote(items, locale) };
+}
+
+/**
+ * Days back a call whose analysis is incomplete stays on the queue. The same seven days R2 counts
+ * meals over: an unchecked call older than that no longer changes what the rule can see.
+ */
+export const INCOMPLETE_DAYS = 7;
+
+/**
+ * What a call's analysis could not do. Calls analysed before the categories existed carry only the
+ * raw messages, and still count: they are the calls this list was made to stop hiding.
+ */
+export function analysisGaps(c: CallRecord): AnalysisGap[] {
+  const a = c.analysis;
+  if (!a) return [];
+  if (a.incomplete?.length) return a.incomplete;
+  return [
+    ...(a.error ? [{ part: 'review' as const, failure: 'unknown' as const }] : []),
+    ...(a.voiceError ? [{ part: 'voice' as const, failure: 'unknown' as const }] : []),
+  ];
+}
+
+/** True while a pass staff asked for is waiting to run. */
+export function reanalysisRequested(c: CallRecord): boolean {
+  const asked = c.reanalysis?.requestedAt;
+  return c.analysisPending && !!asked && (!c.analysis || asked > c.analysis.at);
+}
+
+export interface IncompleteAnalysis {
+  residentId: string;
+  residentName: string;
+  callId: string;
+  startedAt: string;
+  localDate: string;
+  /** Which halves failed; categories only, never the provider's message. */
+  parts: AnalysisGap['part'][];
+  reasons: string[];
+  notChecked: string;
+  checked: string;
+  reanalysisRequested: boolean;
+}
+
+export interface IncompleteView {
+  items: IncompleteAnalysis[];
+  /** One sentence for the top of the list; null when every call was fully checked. */
+  note: string | null;
+}
+
+function incompleteNote(items: readonly IncompleteAnalysis[], locale: Locale): string | null {
+  if (!items.length) return null;
+  if (locale === 'ja') return `この ${INCOMPLETE_DAYS} 日間で ${items.length} 件の通話が最後まで解析できていません。「懸念なし」ではなく「未確認」です。`;
+  const calls = items.length === 1 ? '1 call' : `${items.length} calls`;
+  return `${calls} from the last ${INCOMPLETE_DAYS} days could not be fully checked. Treat them as unchecked, not as fine.`;
+}
+
+/**
+ * Calls whose analysis did not finish, so staff can tell them apart from calls in which nothing was
+ * found. Kept off the case list on purpose: a failed analysis is not a finding about the resident
+ * and must not be ranked with one or given an urgency.
+ */
+export function buildIncompleteAnalyses(
+  entries: readonly { resident: Resident; calls: readonly CallRecord[] }[],
+  now: Date,
+  locale: Locale,
+): IncompleteView {
+  const since = now.getTime() - INCOMPLETE_DAYS * 86_400_000;
+  const items: IncompleteAnalysis[] = [];
+  for (const { resident: r, calls } of entries) {
+    for (const c of calls) {
+      if (c.source === 'imported' || Date.parse(c.startedAt) < since) continue;
+      const gaps = analysisGaps(c);
+      const text = describeAnalysisGaps(gaps, locale);
+      if (!text) continue;
+      items.push({
+        residentId: r.id,
+        residentName: r.name,
+        callId: c.id,
+        startedAt: c.startedAt,
+        localDate: c.localDate ?? localDate(new Date(c.startedAt), r.timeZone),
+        parts: [...new Set(gaps.map((g) => g.part))],
+        reasons: [...new Set(gaps.map((g) => ANALYSIS_FAILURE_LABELS[locale][g.failure]))],
+        ...text,
+        reanalysisRequested: reanalysisRequested(c),
+      });
+    }
+  }
+  items.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  return { items, note: incompleteNote(items, locale) };
+}
+
+/**
+ * One call's progress, for the "Call now" button to follow (issue #13). Before the telephony
+ * service has created the call there is nothing stored yet, so it reads as `requested`, but only
+ * for as long as the request holds the line: a task that never reached the telephony service would
+ * otherwise read as "about to ring" for ever.
+ */
+export function callProgressView(callId: string, c: CallRecord | null, r: Resident, now: Date) {
+  if (!c) {
+    const asked = r.lastStaffCall?.callId === callId ? r.lastStaffCall : undefined;
+    if (!asked) return null;
+    const lapsed = now.getTime() - Date.parse(asked.at) > STAFF_REQUEST_HOLD_MS;
+    return {
+      id: callId,
+      status: lapsed ? ('failed' as const) : ('requested' as const),
+      trigger: 'staff' as const,
+      requestedBy: asked.requestedBy,
+      startedAt: asked.at,
+      endedAt: null,
+      durationSec: null,
+      endedBy: null,
+      failureCode: lapsed ? 'not_placed' : null,
+    };
+  }
+  return {
+    id: c.id,
+    status: c.status,
+    trigger: c.trigger ?? null,
+    requestedBy: c.requestedBy ?? null,
+    startedAt: c.startedAt,
+    endedAt: c.endedAt ?? null,
+    durationSec: c.durationSec ?? null,
+    endedBy: c.conversation?.endedBy ?? null,
+    failureCode: c.failure?.code ?? null,
+  };
 }
 
 /** Calls listed on the case page; the speech baseline may come from older ones. */
@@ -254,7 +400,9 @@ export async function buildCaseDetail(
     case: {
       id: c.id,
       rule: c.rule,
-      ruleName: RULE_NAMES[locale][c.rule],
+      ruleName: c.rule === 'R1' && c.detections.at(-1)?.noResponse
+        ? (locale === 'ja' ? '繰り返し確認しても応答がない' : 'No response after repeated checks')
+        : RULE_NAMES[locale][c.rule],
       urgency: effectiveUrgency(c),
       urgencyLabel: URGENCY_LABELS[locale][effectiveUrgency(c)],
       urgencyMeaning: URGENCY_MEANINGS[locale][effectiveUrgency(c)],
@@ -277,8 +425,12 @@ export async function buildCaseDetail(
       phone: r.phone,
       vulnerability: r.vulnerability,
       householdNotes: r.householdNotes ?? null,
+      facts: residentFacts(r, locale),
+      staff: { name: r.staff.name, phone: r.staff.phone, email: r.staff.email ?? null },
       // USR-04: the evidence carries this too, so a demo quote is never read as a real one.
       synthetic: r.synthetic === true,
+      // Whether "Call now" can work at all (issue #13): the same conditions the daily call has.
+      callable: r.active && !r.synthetic && hasCallConsent(r.callConsent),
     },
     detections: c.detections.map((d) => ({
       ...d,
@@ -288,6 +440,9 @@ export async function buildCaseDetail(
       id: x.id,
       startedAt: x.startedAt,
       status: x.status,
+      // Staff asked for this call (issue #13); null for the daily check-in.
+      trigger: x.trigger ?? null,
+      requestedBy: x.requestedBy ?? null,
       durationSec: x.durationSec ?? null,
       summary: x.summary ?? null,
       wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, x.transcript ?? [], locale) : null,
@@ -336,7 +491,7 @@ function screeningView(r: Resident, calls: CallRecord[], now: Date) {
     overall: overallStatus(answers, asOf),
     instruments: (['ULS-3', 'PHQ-2', 'FRAIL', 'STEADI'] as const).map((i) => scoreInstrument(i, answers, asOf)),
     loneliness: lonelinessFor(r, calls, asOf),
-    /** Whether the resident agreed their family may be told how they are in themselves. */
+    /** Whether family mood/loneliness updates are approved. */
     shareMood: Boolean(r.consent?.shareMood),
   };
 }
@@ -390,12 +545,15 @@ const EMERGENCY_HEADLINE: Record<Locale, (name: string, status: string) => strin
 function familyHeadline(r: Resident, c: CallRecord, cases: StoredCase[], locale: Locale): string | null {
   const emergency = cases.find((x) => x.rule === 'R1' && x.detections.some((d) => d.evidence.some((e) => e.callId === c.id)));
   if (emergency) return EMERGENCY_HEADLINE[locale](r.name, CASE_STATUS_LABELS[locale][emergency.status]);
-  return c.wellbeing?.headline ?? null;
+  // Generated free text can mention mood even when no mood tag was extracted.
+  return r.consent?.shareMood ? (c.wellbeing?.headline ?? null) : null;
 }
 
 type LifeStates = Record<LifeDomain, DomainState>;
 
 const perLifeDomain = (state: (d: LifeDomain) => DomainState) => Object.fromEntries(LIFE_DOMAINS.map((d) => [d, state(d)])) as LifeStates;
+const familyDomains = (r: Resident, state: (d: LifeDomain) => DomainState) =>
+  perLifeDomain((d) => d === 'mood' && !r.consent?.shareMood ? 'unmentioned' : state(d));
 const familyTagIds = (w: CallWellbeing) => w.tags.map((t) => t.id).filter(visibleToFamily);
 const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
@@ -414,7 +572,7 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
     return {
       date,
       tagged: tagged.length > 0,
-      domains: onDay.length ? perLifeDomain((d) => combineStates(tagged.map((w) => w.domains[d] ?? 'unmentioned'))) : null,
+      domains: onDay.length ? familyDomains(r, (d) => combineStates(tagged.map((w) => w.domains[d] ?? 'unmentioned'))) : null,
     };
   });
   const tagged = connected.flatMap((c) => (c.wellbeing ? [c.wellbeing] : []));
@@ -423,11 +581,12 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
     .map(({ id, ...counts }) => ({ ...describeTag(id, locale), ...counts }));
   const latest = connected[0];
   return {
+    shareMood: Boolean(r.consent?.shareMood),
     latest: latest
       ? {
           startedAt: latest.startedAt,
           headline: familyHeadline(r, latest, cases, locale),
-          domains: latest.wellbeing ? perLifeDomain((d) => latest.wellbeing!.domains[d] ?? 'unmentioned') : null,
+          domains: latest.wellbeing ? familyDomains(r, (d) => latest.wellbeing!.domains[d] ?? 'unmentioned') : null,
         }
       : null,
     days,
@@ -438,24 +597,28 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
 /**
  * FAM-02, FAM-03, FAM-04. Deliberately excludes recordings, transcripts, speech analysis and the
  * turns, basis and confidence behind tags, so residents can talk freely. Only `family` tags are
- * listed; mood is shown as a domain state only.
+ * listed; mood is shown as a domain state only with approval. Without it, free-text summaries
+ * and headlines are withheld too, since those can contain emotional information.
  */
 export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
   const finished = calls.filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress');
   return {
     resident: { id: r.id, name: r.name },
-    nextCallAt: r.active ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
+    nextCallAt: r.active && hasCallConsent(r.callConsent) ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
     glance: familyGlance(r, finished.filter((c) => c.status === 'completed'), cases, now, locale),
     calls: finished.map((c) => {
       const w = c.status === 'completed' ? c.wellbeing : undefined;
       return {
         startedAt: c.startedAt,
         connected: c.status === 'completed',
+        // Whether notes are still to come, and nothing about why: a missing note must not read as
+        // a quiet day, and the reason is a matter for staff (FAM-03).
+        notesPending: c.status === 'completed' && (c.analysisPending || analysisGaps(c).some((g) => g.part === 'review')),
         durationSec: c.status === 'completed' ? (c.durationSec ?? null) : null,
-        summary: c.status === 'completed' ? (c.familySummary ?? null) : null,
+        summary: c.status === 'completed' && r.consent?.shareMood ? (c.familySummary ?? null) : null,
         headline: c.status === 'completed' ? familyHeadline(r, c, cases, locale) : null,
-        domains: w ? perLifeDomain((d) => w.domains[d] ?? 'unmentioned') : null,
+        domains: w ? familyDomains(r, (d) => w.domains[d] ?? 'unmentioned') : null,
         tags: w ? familyTagIds(w).map((id) => describeTag(id, locale)) : [],
       };
     }),

@@ -9,6 +9,7 @@ import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { EmergencyPresence, EmergencyService } from './emergency.js';
 import { GeminiLiveConnector } from './live.js';
+import { NoResponseService } from './noResponse.js';
 import { GatewayProbe } from './probe.js';
 import type { RecordingSink } from './session.js';
 
@@ -38,13 +39,17 @@ const taskQueue = (queue: string, targetBaseUrl: string) =>
     serviceAccountEmail: config.tasks.invokerServiceAccount,
   });
 
-const live = new GeminiLiveConnector(ai, config.gemini.model, config.gemini.voice);
+const live = new GeminiLiveConnector(ai, config.gemini.model, config.gemini.voice, config.gemini.activityDetection);
 const emergencies = new EmergencyPresence();
 
 const app = buildApp({
   store,
   live,
   emergencies,
+  noResponse: new NoResponseService({
+    store, appBaseUrl: config.appBaseUrl, newId: () => crypto.randomUUID(),
+    ...(config.notifierBaseUrl ? { notifications: taskQueue(config.tasks.notifyQueue, config.notifierBaseUrl) } : {}),
+  }),
   emergency: new EmergencyService({
     store,
     queue: taskQueue(config.tasks.emergencyQueue, config.telephonyBaseUrl),

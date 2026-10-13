@@ -1,4 +1,4 @@
-import { gatewayVerdict } from '@hachi/core';
+import { gatewayVerdict, hasCallConsent } from '@hachi/core';
 import type { EmergencyLeg, Resident } from '@hachi/store';
 import { scheduleRetry, type CallDeps } from './calls.js';
 import { escapeXml, streamTwiml, TelephonyError } from './twilio.js';
@@ -50,6 +50,9 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
   const ended = call.conversation?.endedBy;
   if (ended && ended !== 'gateway_error') return HANGUP;
 
+  const resident = await deps.store.getResident(ids.residentId);
+  if (!resident?.active || !hasCallConsent(resident.callConsent)) return HANGUP;
+
   // The gateway records what went wrong before closing the stream, so this reads a verdict about
   // this very call. Reconnecting into a fault that meets every session identically costs nine Live
   // sessions and three rings a day for one resident, all of them ending in the same apology.
@@ -64,20 +67,25 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
     });
   }
 
+  // Only the daily check-in has a next attempt. A staff-requested call is not retried, so it must
+  // not promise a call back that nothing is going to make.
+  const retry = !down && call.attempt !== undefined && !!call.localDate;
   await deps.store.updateCall(ids.residentId, ids.callId, (c) => ({
     ...c,
     failure: {
       ...(down ? { code: 'gateway_unavailable' } : {}),
       message: 'The conversation could not be continued (Voice Gateway unavailable)',
-      retryable: !down,
+      retryable: retry,
     },
   }));
-  if (!down && call.attempt !== undefined && call.localDate) {
-    await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate, attempt: call.attempt });
+  if (retry) {
+    await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate!, attempt: call.attempt! });
   }
   const apology = down
     ? "I'm sorry, our system isn't working at the moment, so we can't talk today. Your care team can see that we could not reach you. Goodbye."
-    : "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye.";
+    : retry
+      ? "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye."
+      : "I'm sorry, we're having a technical problem, so we can't talk right now. Your care team can see that the call did not work. Goodbye.";
   return `<Response>${say(deps, apology)}<Hangup/></Response>`;
 }
 

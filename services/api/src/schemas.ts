@@ -1,4 +1,4 @@
-import { isValidTimeZone, URGENCIES } from '@hachi/core';
+import { isValidTimeZone, PRIVACY_NOTICE, URGENCIES } from '@hachi/core';
 import { z } from 'zod';
 
 const e164 = z
@@ -48,6 +48,12 @@ const residentFields = {
   staff: staffContactSchema,
 };
 
+/** Only the answer and the notice read are client input. Actor and time come from the server. */
+const callConsentSchema = z.object({
+  accepted: z.literal(true),
+  noticeVersion: z.literal(PRIVACY_NOTICE.version),
+}).strict();
+
 /** USR-01, USR-02, USR-03 */
 export const residentInputSchema = z.object({
   ...residentFields,
@@ -55,6 +61,7 @@ export const residentInputSchema = z.object({
   householdNotes: residentFields.householdNotes.optional(),
   family: familyContactSchema.optional(),
   serviceStartedAt: z.iso.datetime().optional(),
+  callConsent: callConsentSchema.optional(),
 });
 export type ResidentInput = z.infer<typeof residentInputSchema>;
 
@@ -66,6 +73,7 @@ export const residentPatchSchema = z
     active: z.boolean().optional(),
     /** Staff record what the resident told them; `recordedAt` and `recordedBy` are the server's. */
     shareMood: z.boolean().optional(),
+    callConsent: callConsentSchema.optional(),
   });
 export type ResidentPatch = z.infer<typeof residentPatchSchema>;
 
@@ -119,3 +127,4 @@ export const pushTokenSchema = z.object({ token: z.string().min(10).max(4096) })
 
 /** The decision on a message held because the resident read the number out over the phone. */
 export const contactDecisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
+export const queueQuerySchema = z.object({ includeClosed: z.enum(['true', 'false']).optional() });

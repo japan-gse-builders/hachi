@@ -1,3 +1,4 @@
+import { EndSensitivity, type AutomaticActivityDetection } from '@google/genai';
 import { parseGatewayPolicy, type GatewayPolicy } from '@hachi/core';
 
 export interface GatewayConfig {
@@ -8,6 +9,8 @@ export interface GatewayConfig {
     location: string;
     model: string;
     voice: string;
+    /** Omitted unless configured, preserving the model's automatic VAD defaults. */
+    activityDetection?: AutomaticActivityDetection;
   };
   recordingsBucket: string;
   /** Telephony service origin; emergency-transfer tasks are sent there. */
@@ -32,6 +35,8 @@ export interface GatewayConfig {
     promptSec: number;
     /** How many times it checks before accepting that nobody is answering. */
     prompts: number;
+    /** Successive waits after playback; the last wait also follows the final prompt. */
+    intervalsSec?: number[];
   };
   /**
    * Set only to find out whether session resumption works, by closing the Live socket mid-call the
@@ -77,6 +82,33 @@ function httpsOrigin(name: string, value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+function activityDetection(env: NodeJS.ProcessEnv): AutomaticActivityDetection | undefined {
+  const rawMs = env.LIVE_SILENCE_MS?.trim();
+  const rawSensitivity = env.LIVE_END_OF_SPEECH_SENSITIVITY?.trim().toLowerCase();
+  if (!rawMs && !rawSensitivity) return undefined;
+  const result: AutomaticActivityDetection = {};
+  if (rawMs) result.silenceDurationMs = int({ LIVE_SILENCE_MS: rawMs }, 'LIVE_SILENCE_MS', 500, 500, 2500);
+  if (rawSensitivity) {
+    if (rawSensitivity !== 'low' && rawSensitivity !== 'high') throw new Error('LIVE_END_OF_SPEECH_SENSITIVITY must be low or high');
+    result.endOfSpeechSensitivity = rawSensitivity === 'low' ? EndSensitivity.END_SENSITIVITY_LOW : EndSensitivity.END_SENSITIVITY_HIGH;
+  }
+  return result;
+}
+
+function silenceConfig(env: NodeJS.ProcessEnv): GatewayConfig['silence'] {
+  const raw = env.SILENCE_PROMPT_INTERVALS_SEC?.trim();
+  const legacy = Boolean(env.SILENCE_PROMPT_SEC?.trim() || env.SILENCE_PROMPTS?.trim());
+  if (legacy) {
+    if (raw) throw new Error('Use SILENCE_PROMPT_INTERVALS_SEC or SILENCE_PROMPT_SEC/SILENCE_PROMPTS, not both');
+    return { promptSec: int(env, 'SILENCE_PROMPT_SEC', 12, 5, 120), prompts: int(env, 'SILENCE_PROMPTS', 2, 1, 5) };
+  }
+  const intervalsSec = (raw ?? '2.5:4:5').split(':').map(Number);
+  if (intervalsSec.length < 1 || intervalsSec.length > 5 || intervalsSec.some((s) => !Number.isFinite(s) || s < 0.5 || s > 120)) {
+    throw new Error('SILENCE_PROMPT_INTERVALS_SEC must contain 1–5 colon-separated waits between 0.5 and 120 seconds');
+  }
+  return { promptSec: intervalsSec.at(-1)!, prompts: intervalsSec.length, intervalsSec };
+}
+
 function forcedLiveDrop(env: NodeJS.ProcessEnv): GatewayConfig['forcedLiveDrop'] {
   const raw = env.FORCE_LIVE_DROP?.trim();
   if (!raw) return undefined;
@@ -97,6 +129,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
   const notifier = env.NOTIFIER_BASE_URL?.trim();
   const analyzer = env.ANALYZER_BASE_URL?.trim();
   const drop = forcedLiveDrop(env);
+  const activity = activityDetection(env);
   if (!/^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/.test(bucket)) throw new Error('RECORDINGS_BUCKET is not a valid bucket name');
   return {
     port: int(env, 'PORT', 8080, 1, 65535),
@@ -105,6 +138,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
       location: env.GEMINI_LOCATION?.trim() || 'us-central1',
       model: env.GEMINI_MODEL?.trim() || 'gemini-3.8-live',
       voice: env.GEMINI_VOICE?.trim() || 'Aoede',
+      ...(activity ? { activityDetection: activity } : {}),
     },
     recordingsBucket: bucket,
     telephonyBaseUrl: httpsOrigin('TELEPHONY_BASE_URL', required(env, 'TELEPHONY_BASE_URL')),
@@ -119,12 +153,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
       invokerServiceAccount: required(env, 'TASKS_INVOKER_SA'),
     },
     maxConversationSec: int(env, 'MAX_CONVERSATION_SEC', 480, 90, 900),
-    silence: {
-      // Long enough that an older adult who needs a moment to find their words is not cut off, short
-      // enough that a call nobody is answering does not bill eight minutes of live audio.
-      promptSec: int(env, 'SILENCE_PROMPT_SEC', 12, 5, 120),
-      prompts: int(env, 'SILENCE_PROMPTS', 2, 1, 5),
-    },
+    silence: silenceConfig(env),
     ...(drop ? { forcedLiveDrop: drop } : {}),
     gateway: parseGatewayPolicy(env),
   };
