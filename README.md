@@ -253,6 +253,10 @@ node infra/set-staff-claim.mjs "$PROJECT_ID" staff@your-org.example
 Services run in `asia-northeast1` except the Voice Gateway, which runs in `us-central1` next to the
 Gemini Live API (so call audio is processed in the US). The scripts are safe to re-run.
 
+Every push to `main` deploys the web app and the Firestore rules and indexes through
+`.github/workflows/deploy-web.yml` (Cloud Run services still deploy with the scripts above). The
+workflow header lists the GitHub variables it needs.
+
 ## Limitations and roadmap
 
 - **English only**, residents in Japan only (SMS is limited to +81 numbers).
