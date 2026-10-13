@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { enablePush, isStandalone, pushState, type PushState } from '../push';
+import { LoadingCard } from './States';
 
 interface InstallPrompt extends Event {
   prompt: () => Promise<void>;
 }
 
+/** Nearly always shown at the foot of the family page, so it holds its place while the browser is asked what it supports. */
 export function AlertsCard() {
   const { token } = useAuth();
   const [state, setState] = useState<PushState | null>(null);
@@ -15,7 +17,7 @@ export function AlertsCard() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void pushState().then(setState);
+    void pushState().then(setState, () => setState('unsupported'));
     const onPrompt = (e: Event) => {
       e.preventDefault();
       setInstall(e as InstallPrompt);
@@ -33,13 +35,14 @@ export function AlertsCard() {
       setState('on');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Could not turn on alerts');
-      setState(await pushState());
+      setState(await pushState().catch((): PushState => 'unsupported'));
     } finally {
       setBusy(false);
     }
   };
 
-  if (state === null || state === 'unconfigured') return null;
+  if (state === null) return <LoadingCard label="Alerts on this phone" action />;
+  if (state === 'unconfigured') return null;
 
   return (
     <section className="card stack">

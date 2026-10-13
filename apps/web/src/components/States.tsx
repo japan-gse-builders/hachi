@@ -1,6 +1,8 @@
+import '../styles/loading.css';
+
 type Layout = 'queue' | 'tiles' | 'detail' | 'narrow';
 
-const Block = ({ h, w }: { h: number; w?: string }) => <span className="skeleton-block" style={{ height: h, width: w }} />;
+const Block = ({ h, w }: { h: number; w?: string }) => <span className="skeleton-block" aria-hidden="true" style={{ height: h, width: w }} />;
 
 function Tile() {
   return (
@@ -42,8 +44,33 @@ export function Loading({ layout = 'narrow', label = 'Loading…' }: { layout?: 
   );
 }
 
-/** A load that failed says what happened and offers the way back, rather than leaving a dead page. */
-export function LoadError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+/**
+ * Holds the place of a box that loads after the page around it, in roughly its final size,
+ * so nothing below it moves when it arrives. Only for boxes that nearly always appear.
+ */
+export function LoadingCard({ label, lines = 2, action = false }: { label: string; lines?: number; action?: boolean }) {
+  return (
+    <section className="card skeleton skeleton-slot" aria-busy="true" aria-label={label}>
+      <Block h={28} w="55%" />
+      {Array.from({ length: lines }, (_, i) => <Block key={i} h={20} w={i === lines - 1 ? '70%' : undefined} />)}
+      {action && <Block h={48} w="min(100%, 12rem)" />}
+    </section>
+  );
+}
+
+/**
+ * A load that failed says what happened and offers the way back, rather than leaving a dead page.
+ * `compact` is one line for a box beside the main content, so a failure there does not shout over the page.
+ */
+export function LoadError({ message, onRetry, compact = false }: { message: string; onRetry?: () => void; compact?: boolean }) {
+  if (compact) {
+    return (
+      <p className="error load-error-compact" role="alert">
+        <span>{message}</span>
+        {onRetry && <button type="button" className="ghost" onClick={onRetry}>Try again</button>}
+      </p>
+    );
+  }
   return (
     <div className="error stack" role="alert">
       <p><strong>This could not be loaded.</strong> {message}</p>
