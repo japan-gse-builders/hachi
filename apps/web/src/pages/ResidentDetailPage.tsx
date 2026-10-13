@@ -7,7 +7,7 @@ import { ResidentAvatar } from '../components/ResidentAvatar';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
 import { atLeast, type Member } from '../orgs';
-import { FAMILY_ACCESS_MAX, ownerName, ownershipOf } from '../ownership';
+import { FAMILY_ACCESS_MAX, mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { useDocumentTitle } from '../title';
 import type { FamilyAccess, Resident } from '../types';
 
@@ -70,7 +70,9 @@ export function ResidentDetailPage() {
 
 /** What is on record and who gets contacted, with the way to change it for whoever may. */
 function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
+  const { current } = useAccount();
   const ownership = ownershipOf(resident, uid);
+  const canEdit = mayEditDetails(resident, uid, current?.role);
   const who = resident.preferredName || resident.name;
   const v = resident.vulnerability;
   const staff = resident.staff;
@@ -80,7 +82,7 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
     <section className="card stack details-card" aria-labelledby="details-heading">
       <div className="row details-head">
         <h2 id="details-heading">Details and contacts</h2>
-        {ownership === 'mine' && <Link className="button ghost" to={`/staff/residents/${encodeURIComponent(resident.id)}/edit`}>Edit details</Link>}
+        {canEdit && <Link className="button ghost" to={`/staff/residents/${encodeURIComponent(resident.id)}/edit`}>Edit details</Link>}
       </div>
       <dl className="person-context">
         <div>
@@ -107,8 +109,14 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
           <dd>{family ? [family.name, family.relationship, phone(family.sms), family.email].filter(Boolean).join(' · ') : 'None recorded'}</dd>
         </div>
       </dl>
-      {ownership === 'theirs' && <p className="meta">Only {ownerName(resident.owner!)} can change {who}’s details.</p>}
-      {ownership === 'unassigned' && <p className="meta">Take {who} on to change their details.</p>}
+      {!canEdit && ownership === 'theirs' && <p className="meta">Only {ownerName(resident.owner!)} or an admin can change {who}’s details.</p>}
+      {!canEdit && ownership === 'unassigned' && <p className="meta">Take {who} on to change their details.</p>}
+      {canEdit && ownership !== 'mine' && (
+        <p className="meta">
+          {ownership === 'theirs' ? `${ownerName(resident.owner!)} is responsible for ${who}.` : `Nobody is responsible for ${who} yet.`}
+          {' '}As an admin you can still change their details and contacts.
+        </p>
+      )}
     </section>
   );
 }
@@ -140,7 +148,7 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
       <h2 id="responsible-heading">Responsible staff member</h2>
       {ownership === 'mine' && (
         <>
-          <p>You are responsible for {who} since {date(resident.owner!.since)}. Only you can change their details and who in their family can see their calls.</p>
+          <p>You are responsible for {who} since {date(resident.owner!.since)}. Only you can change who in their family can see their calls; you and the admins can change their details.</p>
           {!confirming && <p><button className="ghost" type="button" onClick={() => { setError(''); setConfirming(true); }}>Hand over</button></p>}
           {confirming && (
             <div className="stack confirm notice">

@@ -20,7 +20,7 @@ import {
 } from '@hachi/core';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
-import { auditEntry, requireRole, staffRef, type AuditInput } from './accounts.js';
+import { atLeast, auditEntry, requireRole, staffRef, type AuditInput } from './accounts.js';
 import { registerAccountRoutes } from './accountRoutes.js';
 import { familyContacts, toIdentity, type AuthAdmin, type FamilyPrincipal, type StaffPrincipal, type TokenVerifier } from './auth.js';
 import { ID, ORG_HEADER, parse, requireIdentity, requireVerifiedEmail } from './request.js';
@@ -126,6 +126,12 @@ function assertOwner(r: Resident, staffUid: string): void {
   if (!r.owner) throw new HttpError(403, 'Nobody is responsible for this resident yet. Take them on first.', 'unassigned');
   const who = r.owner.name ?? r.owner.email ?? 'another member of staff';
   throw new HttpError(403, `Only the staff member responsible for ${r.name} (${who}) can change this.`, 'not_owner');
+}
+
+/** Admins can correct any resident's record, whoever is responsible; family access stays with the owner. */
+function assertMayEdit(r: Resident, staff: StaffPrincipal): void {
+  if (atLeast(staff.role, 'admin')) return;
+  assertOwner(r, staff.uid);
 }
 
 function localeOf(req: FastifyRequest): Locale {
@@ -286,14 +292,20 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.patch<{ Params: { id: string } }>('/api/residents/:id', async (req) => {
     const staff = await requireStaff(req);
     const patch = parse(residentPatchSchema, req.body);
+    let owner: Resident['owner'];
     const saved = await updateOwnResident(req.params.id, staff, (r) => {
-      assertOwner(r, staff.uid);
+      assertMayEdit(r, staff);
+      owner = r.owner;
       return patchResident(r, patch, now(), staff.uid);
     });
+    const ownerUid = (owner as Resident['owner'])?.uid;
     await auditAs(req, staff, {
       action: 'resident.updated',
       target: { type: 'resident', id: saved.id, label: saved.name },
-      detail: { fields: Object.keys(patch).sort().join(',') },
+      detail: {
+        fields: Object.keys(patch).sort().join(','),
+        ...(ownerUid !== staff.uid ? { asAdmin: true, owner: ownerUid ?? null } : {}),
+      },
     });
     return saved;
   });

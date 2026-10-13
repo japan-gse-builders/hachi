@@ -81,7 +81,7 @@ export const ROLE_LABEL: Record<OrgRole, string> = { owner: 'Owner', admin: 'Adm
 
 export const ROLE_MEANING: Record<OrgRole, string> = {
   owner: 'Everything an admin can do, plus managing owners and billing.',
-  admin: 'Invites and manages staff, reassigns patients, sees the activity log.',
+  admin: 'Invites and manages staff, reassigns patients and edits their details, sees the activity log.',
   member: 'Works with patients and the queue.',
 };
 

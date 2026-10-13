@@ -701,7 +701,7 @@ describe('who is responsible for a resident, and which family can see them (FAM-
   async function seeded() {
     const ctx = setup();
     await ctx.store.createResident(makeResident('res-1'));
-    const inject = (who: 'staff' | 'otherStaff' | 'relative' | 'unverifiedRelative' | 'familyPhone', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
+    const inject = (who: 'staff' | 'otherStaff' | 'admin' | 'relative' | 'unverifiedRelative' | 'familyPhone', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
       ctx.app.inject({ method, url, ...ctx.as(who), ...(payload ? { payload } : {}) });
     const grant = (email: string, who: 'staff' | 'otherStaff' = 'staff') => inject(who, 'POST', '/api/residents/res-1/family-access', { email });
     return { ...ctx, inject, grant };
@@ -722,11 +722,34 @@ describe('who is responsible for a resident, and which family can see them (FAM-
     expect((await store.getResident('res-1'))?.active).toBe(true);
   });
 
+  it('lets an admin change the details of a resident someone else is responsible for, and logs it', async () => {
+    const { inject, store } = await seeded();
+    const saved = await inject('admin', 'PATCH', '/api/residents/res-1', { preferredName: 'Peggy', family: null });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ preferredName: 'Peggy', owner: { uid: 'staff-1' } });
+    expect(saved.json().family).toBeUndefined();
+    const [entry] = await store.listAudit('org-1', { limit: 1 });
+    expect(entry).toMatchObject({ action: 'resident.updated', actor: { uid: 'staff-3' }, detail: { fields: 'family,preferredName', asAdmin: true, owner: 'staff-1' } });
+
+    await store.updateResident('res-1', (r) => ({ ...r, owner: undefined }));
+    expect((await inject('admin', 'PATCH', '/api/residents/res-1', { callTime: '09:30' })).json().callTime).toBe('09:30');
+    expect((await store.listAudit('org-1', { limit: 1 }))[0]?.detail).toMatchObject({ asAdmin: true, owner: null });
+
+    expect((await inject('admin', 'POST', '/api/residents/res-1/family-access', { email: 'bob@example.org' })).statusCode).toBe(403);
+  });
+
+  it('does not mark the responsible staff member’s own changes as an admin’s', async () => {
+    const { inject, store } = await seeded();
+    expect((await inject('staff', 'PATCH', '/api/residents/res-1', { callTime: '11:00' })).statusCode).toBe(200);
+    const [entry] = await store.listAudit('org-1', { limit: 1 });
+    expect(entry?.detail).toEqual({ fields: 'callTime' });
+  });
+
   it('takes on unassigned residents, refuses someone else’s, and hands over', async () => {
     const { inject, store } = await seeded();
     await store.updateResident('res-1', (r) => ({ ...r, owner: undefined }));
 
-    const unassigned = await inject('staff', 'PATCH', '/api/residents/res-1', { active: false });
+    const unassigned = await inject('otherStaff', 'PATCH', '/api/residents/res-1', { active: false });
     expect(unassigned.statusCode).toBe(403);
     expect(unassigned.json().reason).toBe('unassigned');
 

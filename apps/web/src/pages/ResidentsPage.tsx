@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { useAccount } from '../account';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import type { IncompleteAnalyses, Queue, Resident } from '../types';
@@ -10,7 +11,7 @@ import { ResidentAvatar } from '../components/ResidentAvatar';
 import { IndicatorBar, SeverityChip, SignalsLegend } from '../components/Signals';
 import { LoadError, Loading } from '../components/States';
 import { phoneDisplay } from '../format';
-import { ownerName, ownershipOf } from '../ownership';
+import { mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
 import { knownSignals, needsAttention, residentChips } from '../queue';
 import { bySeverity, uncheckedFor, worstSeverity } from '../signals';
@@ -37,6 +38,7 @@ function glanceOf(r: Resident, queue: Queue | null, incomplete: IncompleteAnalys
 export function ResidentsPage() {
   useDocumentTitle('Patients');
   const { token, user } = useAuth();
+  const { current } = useAccount();
   const location = useLocation();
   const navigate = useNavigate();
   const [added] = useState((location.state as { added?: string } | null)?.added);
@@ -200,7 +202,7 @@ export function ResidentsPage() {
           <p className="meta">
             <Link to={`/staff/residents/${r.id}`}>Details and family access{r.familyAccess?.length ? ` (${r.familyAccess.length})` : ''}</Link>
           </p>
-          {mine && <p className="meta"><Link to={`/staff/residents/${r.id}/edit`}>Edit details and contacts</Link></p>}
+          {mayEditDetails(r, user?.uid, current?.role) && <p className="meta"><Link to={`/staff/residents/${r.id}/edit`}>Edit details and contacts</Link></p>}
         </div>
         <div className="tile-actions residents-actions">
           {r.active && hasCallConsent(r.callConsent) && (

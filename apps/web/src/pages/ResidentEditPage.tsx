@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { readResidentForm, ResidentFields } from '../components/ResidentFields';
 import { LoadError, Loading } from '../components/States';
-import { ownerName, ownershipOf } from '../ownership';
+import { mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { useDocumentTitle } from '../title';
 import type { Resident } from '../types';
 
-/** The responsible staff member changing a resident's details and who is contacted about them. */
+/** The responsible staff member, or an admin, changing a resident's details and who is contacted about them. */
 export function ResidentEditPage() {
   const { id = '' } = useParams();
   const { token, user } = useAuth();
+  const { current } = useAccount();
   const navigate = useNavigate();
   const [resident, setResident] = useState<Resident | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -58,7 +60,7 @@ export function ResidentEditPage() {
   if (!resident) return <div className="stack page narrow">{back}<Loading layout="detail" label="Loading patient…" /></div>;
 
   const ownership = ownershipOf(resident, user?.uid);
-  if (ownership !== 'mine') {
+  if (!mayEditDetails(resident, user?.uid, current?.role)) {
     return (
       <div className="stack page narrow">
         {back}
@@ -66,7 +68,7 @@ export function ResidentEditPage() {
           <h1>Edit {resident.name}</h1>
           <p>
             {ownership === 'theirs'
-              ? `Only ${ownerName(resident.owner!)}, who is responsible for ${resident.preferredName || resident.name}, can change these details.`
+              ? `Only ${ownerName(resident.owner!)}, who is responsible for ${resident.preferredName || resident.name}, or an admin can change these details.`
               : `Nobody is responsible for ${resident.preferredName || resident.name} yet. Take them on to change these details.`}
           </p>
           <p><Link to={detailLink}>Go to {resident.name}</Link></p>
@@ -81,6 +83,13 @@ export function ResidentEditPage() {
       <form className="card stack resident-form" autoComplete="off" onSubmit={(e) => void submit(e)}>
         <h1>Edit {resident.name}</h1>
         <p className="meta">Changes apply from the next call and the next alert. Phone numbers include the country code, such as +81 90 1234 5678.</p>
+        {ownership !== 'mine' && (
+          <p className="notice" role="note">
+            {ownership === 'theirs'
+              ? `You are changing these as an admin. ${ownerName(resident.owner!)} is responsible for ${resident.preferredName || resident.name}; the change is recorded in the activity log.`
+              : `You are changing these as an admin. Nobody is responsible for ${resident.preferredName || resident.name} yet; the change is recorded in the activity log.`}
+          </p>
+        )}
         <ResidentFields resident={resident} />
         {error && <p ref={errorRef} className="error" role="alert" tabIndex={-1}>{error}</p>}
         <div className="row form-actions">
