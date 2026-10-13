@@ -63,6 +63,8 @@ export interface FamilyAccess {
 
 export interface Resident {
   id: string;
+  /** The organization whose staff look after this resident. Fixed at registration. */
+  orgId: string;
   name: string;
   preferredName: string;
   phone: string;
@@ -270,6 +272,8 @@ export interface OutboxEntry extends OutboxMessage {
   /** SHA-256 of the idempotency key. */
   id: string;
   residentId: string;
+  /** Copied from the resident, so one organization's held messages can be listed on their own. */
+  orgId: string;
   status: OutboxStatus;
   attempts: number;
   createdAt: string;
@@ -293,6 +297,8 @@ export interface CaseOutcome {
 }
 
 export interface StoredCase extends Case {
+  /** Copied from the resident, so one organization's queue can be listed on its own. */
+  orgId: string;
   /** QUE-03: staff adjustment added to the computed priority score. */
   staffScoreOffset?: number;
   outcome?: CaseOutcome;

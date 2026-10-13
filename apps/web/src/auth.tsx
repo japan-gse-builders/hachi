@@ -1,7 +1,10 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
+  EmailAuthProvider,
   getAuth,
   GoogleAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
   isSignInWithEmailLink,
   onAuthStateChanged,
   sendEmailVerification,
@@ -78,6 +81,12 @@ interface Session {
   isSignInLink: (href: string) => boolean;
   storedLinkEmail: () => string | null;
   finishSignInLink: (email: string, href: string) => Promise<void>;
+  /** Whether the account can sign in with a password at all (not only Google or email links). */
+  hasPassword: boolean;
+  /** Firebase asks for the current password again before changing it. */
+  changePassword: (current: string, next: string) => Promise<void>;
+  /** Picks up a verification done in another tab, so the next request carries it. */
+  reloadUser: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -104,13 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void migrateSharedSession().then(() => {
       if (stopped) return;
       unsubscribe = ROLES.map((side) =>
+        // The side decides the role: whether a staff account belongs to an organization, and
+        // which, is the API's answer (`/api/me`), not a claim on the token.
         onAuthStateChanged(auths[side], (next) => {
-          const settle = (role: Role | null) => setSides((prev) => ({ ...prev, [side]: { user: next, role, ready: true } }));
-          if (!next) return settle(null);
-          void next
-            .getIdTokenResult()
-            .then((t) => settle(t.claims.role === 'staff' ? 'staff' : 'family'))
-            .catch(() => settle('family'));
+          setSides((prev) => ({ ...prev, [side]: { user: next, role: next ? side : null, ready: true } }));
         }),
       );
     });
@@ -120,6 +126,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   return <Ctx.Provider value={sides}>{children}</Ctx.Provider>;
+}
+
+/** The staff session whatever page is shown, for what follows it everywhere: which organization it acts for. */
+export function useStaffSession() {
+  const sides = useContext(Ctx);
+  if (!sides) throw new Error('AuthProvider is missing');
+  const { user } = sides.staff;
+  const token = useCallback(async () => {
+    if (!user) throw new Error('Sign in first');
+    return user.getIdToken();
+  }, [user]);
+  const signOutStaff = useCallback(async () => {
+    if (auths) await signOut(auths.staff);
+  }, []);
+  return { user, ready: sides.staff.ready && sides.family.ready, token, signOut: signOutStaff };
 }
 
 /** The session for the page being shown; pages outside both sections use whichever is signed in. */
@@ -166,13 +187,26 @@ export function useAuth(): Session {
     confirmEmail: async () => {
       const current = requireAuth(side).currentUser;
       if (!current) throw new Error('Sign in first');
-      await sendEmailVerification(current, { url: `${window.location.origin}/family` });
+      await sendEmailVerification(current, { url: `${window.location.origin}${side === 'staff' ? '/staff/welcome' : '/family'}` });
     },
     isSignInLink: (href) => Boolean(auths && isSignInWithEmailLink(auths[side], href)),
     storedLinkEmail: () => window.localStorage.getItem(LINK_EMAIL_KEY),
     finishSignInLink: async (email, href) => {
       await signInWithEmailLink(requireAuth(side), email, href);
       window.localStorage.removeItem(LINK_EMAIL_KEY);
+    },
+    hasPassword: Boolean(user?.providerData.some((p) => p.providerId === 'password')),
+    changePassword: async (current, next) => {
+      const account = requireAuth(side).currentUser;
+      if (!account?.email) throw new Error('Sign in first');
+      await reauthenticateWithCredential(account, EmailAuthProvider.credential(account.email, current));
+      await updatePassword(account, next);
+    },
+    reloadUser: async () => {
+      const account = requireAuth(side).currentUser;
+      if (!account) return;
+      await account.reload();
+      await account.getIdToken(true);
     },
     signOut: async () => {
       if (auths) await signOut(auths[side]);

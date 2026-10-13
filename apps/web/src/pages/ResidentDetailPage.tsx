@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
+import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
+import { atLeast, type Member } from '../orgs';
 import { FAMILY_ACCESS_MAX, ownerName, ownershipOf } from '../ownership';
 import { useDocumentTitle } from '../title';
 import type { FamilyAccess, Resident } from '../types';
@@ -60,6 +62,7 @@ export function ResidentDetailPage() {
 
 function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: string; onSaved: (r: Resident) => void }) {
   const { token } = useAuth();
+  const { current } = useAccount();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -110,7 +113,69 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
         </div>
       )}
       {error && <p className="error" role="alert">{error}</p>}
+      {atLeast(current?.role, 'admin') && <AssignOwner resident={resident} onSaved={onSaved} />}
     </section>
+  );
+}
+
+/** Admins decide who is responsible when the owner is away or has left, or to rebalance work. */
+function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: Resident) => void }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [choice, setChoice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const who = resident.preferredName || resident.name;
+
+  const start = async () => {
+    setOpen(true);
+    setError('');
+    try {
+      const res = await api<{ members: Member[] }>('/api/organization/members', await token());
+      const active = res.members.filter((m) => m.status === 'active' && m.uid !== resident.owner?.uid);
+      setMembers(active);
+      setChoice(active[0]?.uid ?? '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the team');
+    }
+  };
+
+  const assign = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      onSaved(await api<Resident>(`/api/residents/${encodeURIComponent(resident.id)}/owner`, await token(), { method: 'PUT', body: JSON.stringify({ uid: choice }) }));
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign them');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return <p><button type="button" className="subtle" onClick={() => void start()}>As an admin: make someone else responsible</button></p>;
+  }
+  return (
+    <form className="stack confirm notice" onSubmit={(e) => void assign(e)}>
+      {!members && !error && <p className="meta">Loading the team…</p>}
+      {members && members.length === 0 && <p>There is nobody else active in the organization to make responsible.</p>}
+      {members && members.length > 0 && (
+        <label>
+          Make responsible for {who}
+          <select value={choice} onChange={(e) => setChoice(e.target.value)}>
+            {members.map((m) => <option key={m.uid} value={m.uid}>{m.name ? `${m.name} (${m.email})` : m.email}</option>)}
+          </select>
+        </label>
+      )}
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="row">
+        {members && members.length > 0 && <button type="submit" disabled={busy || !choice}>{busy ? 'Saving…' : 'Make responsible'}</button>}
+        <button type="button" className="ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
   );
 }
 

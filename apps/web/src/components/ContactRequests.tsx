@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api';
+import { useLocation } from 'react-router';
+import { api, getActiveOrg } from '../api';
 import { useAuth } from '../auth';
 import { formatWhen } from '../format';
 import type { ContactRequest } from '../types';
@@ -19,7 +20,9 @@ const lastShown = new Map<string, ContactRequest[]>();
  */
 export function ContactRequests() {
   const { token, user } = useAuth();
-  const uid = user?.uid ?? '';
+  // Family decide as family, staff for the organization they are working in.
+  const base = useLocation().pathname.startsWith('/family') ? '/api/family/contact-requests' : '/api/contact-requests';
+  const uid = `${base}:${getActiveOrg() ?? ''}:${user?.uid ?? ''}`;
   const [loaded, setLoaded] = useState<{ uid: string; requests: ContactRequest[] } | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -28,10 +31,10 @@ export function ContactRequests() {
   const requests = (loaded?.uid === uid ? loaded.requests : lastShown.get(uid)) ?? [];
 
   const load = useCallback(async () => {
-    const data = await api<{ requests: ContactRequest[] }>('/api/contact-requests', await token());
+    const data = await api<{ requests: ContactRequest[] }>(base, await token());
     lastShown.set(uid, data.requests);
     setLoaded({ uid, requests: data.requests });
-  }, [token, uid]);
+  }, [token, uid, base]);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,7 +54,7 @@ export function ContactRequests() {
     setError('');
     setDone('');
     try {
-      await api(`/api/contact-requests/${id}`, await token(), { method: 'POST', body: JSON.stringify({ decision }) });
+      await api(`${base}/${encodeURIComponent(id)}`, await token(), { method: 'POST', body: JSON.stringify({ decision }) });
       setDone(decision === 'approve' ? 'Decision saved: send the message.' : 'Decision saved: do not send the message.');
       await refresh();
     } catch (err) {

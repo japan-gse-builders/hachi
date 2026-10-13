@@ -17,7 +17,7 @@ async function stop() { if (current) await current.session.finish('resident'); }
 async function start() {
   await stop();
   const store = new MemoryStore(), at = new Date().toISOString();
-  const resident = { id: 'local-silence-resident', name: 'Margaret Ellis', preferredName: 'Margaret', phone: '+819000000001',
+  const resident = { id: 'local-silence-resident', orgId: 'local-demo', name: 'Margaret Ellis', preferredName: 'Margaret', phone: '+819000000001',
     channel: 'pstn', callTime: '10:00', timeZone: 'Asia/Tokyo', vulnerability: {livesAlone: true, hasCloseSupporter: true, needsCare: false, chronicConditions: []},
     staff: {name: 'Demo care team', phone: '+81300000000', email: 'staff@example.invalid'},
     familyLookup: [], serviceStartedAt: at, active: true, synthetic: true,

@@ -9,6 +9,7 @@ export const IDS = { residentId: 'res-1', callId: '2026-10-02-0' };
 export function resident(overrides: Partial<Resident> = {}): Resident {
   return {
     id: IDS.residentId,
+    orgId: 'org-1',
     name: 'Margaret Smith',
     preferredName: 'Maggie',
     phone: '+819000000001',

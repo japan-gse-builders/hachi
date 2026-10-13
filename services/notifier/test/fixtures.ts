@@ -1,6 +1,6 @@
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
 import { notificationKey } from '@hachi/core';
-import { MemoryStore, outboxId, type OutboxEntry, type StoredCase } from '@hachi/store';
+import { MemoryStore, outboxId, type Organization, type OutboxEntry, type StoredCase } from '@hachi/store';
 import { DeliveryError, type ChannelSender, type Senders } from '../src/channels.js';
 import type { WorkerDeps } from '../src/worker.js';
 
@@ -13,6 +13,7 @@ export function entry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
     idempotencyKey: key,
     caseId: 'case-1',
     residentId: 'res-1',
+    orgId: 'org-1',
     urgency: 'emergency',
     recipient: 'family',
     channel: 'sms',
@@ -31,6 +32,7 @@ export function storedCase(overrides: Partial<StoredCase> = {}): StoredCase {
   return {
     id: 'case-1',
     residentId: 'res-1',
+    orgId: 'org-1',
     rule: 'R1',
     autoUrgency: 'emergency',
     status: 'open',
@@ -38,6 +40,23 @@ export function storedCase(overrides: Partial<StoredCase> = {}): StoredCase {
     firstDetectedAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
     notifications: [],
+    ...overrides,
+  };
+}
+
+/** Verified unless the test says otherwise, so messages go out as they do for a real care company. */
+export function organization(id: string, overrides: Partial<Organization> = {}): Organization {
+  return {
+    id,
+    name: 'Sakura Care',
+    timeZone: 'Asia/Tokyo',
+    status: 'active',
+    verifiedAt: '2026-09-01T00:00:00.000Z',
+    verifiedBy: 'migration',
+    billing: { plan: 'internal', email: 'billing@example.org', limits: { residents: 50, members: 10 } },
+    createdAt: '2026-09-01T00:00:00.000Z',
+    createdBy: 'migration',
+    updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -74,8 +93,9 @@ export class FakeQueue implements TaskQueue {
 export const retryable = () => new DeliveryError('Twilio 503: unavailable', true, '20500');
 export const permanent = () => new DeliveryError('Twilio 400: invalid To', false, '21211');
 
-export async function setup(opts: { entries?: OutboxEntry[]; senders?: Senders; now?: () => Date } = {}) {
+export async function setup(opts: { entries?: OutboxEntry[]; senders?: Senders; now?: () => Date; organization?: Partial<Organization> } = {}) {
   const store = new MemoryStore();
+  store.seedAccounts({ organizations: [organization('org-1', opts.organization)] });
   await store.putCase(storedCase());
   await store.enqueueOutbox(opts.entries ?? [entry()]);
   const sms = new FakeSender();

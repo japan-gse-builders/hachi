@@ -1,5 +1,5 @@
 import { gatewayVerdict, hasCallConsent } from '@hachi/core';
-import type { EmergencyLeg, Resident } from '@hachi/store';
+import { orgMayContactPeople, type EmergencyLeg, type Resident } from '@hachi/store';
 import { scheduleRetry, type CallDeps } from './calls.js';
 import { escapeXml, streamTwiml, TelephonyError } from './twilio.js';
 
@@ -126,7 +126,7 @@ function alertTwiml(deps: CallDeps, r: Resident, ids: CallIds): string {
 }
 
 export type TransferOutcome =
-  | { outcome: 'skipped'; reason: 'no_emergency' | 'no_contacts' }
+  | { outcome: 'skipped'; reason: 'no_emergency' | 'no_contacts' | 'organization_unverified' }
   | { outcome: 'placed'; legs: EmergencyLeg[] }
   | { outcome: 'retry_later'; legs: EmergencyLeg[] };
 
@@ -137,6 +137,8 @@ export type TransferOutcome =
 export async function emergencyTransfer(deps: CallDeps, ids: CallIds): Promise<TransferOutcome> {
   const [resident, call] = await Promise.all([deps.store.getResident(ids.residentId), deps.store.getCall(ids.residentId, ids.callId)]);
   if (!resident || !call?.emergency) return { outcome: 'skipped', reason: 'no_emergency' };
+  // A call only starts for a verified organization; this holds whatever else comes to create one.
+  if (!(await orgMayContactPeople(deps.store, resident.orgId))) return { outcome: 'skipped', reason: 'organization_unverified' };
   const targets = emergencyTargets(resident);
   if (!targets.length) return { outcome: 'skipped', reason: 'no_contacts' };
 

@@ -19,7 +19,7 @@ fixtures.queue.items.push({caseId: 'case-5', residentId: 'res-5', residentName: 
 
 const verifier = {
   async verify(token) {
-    if (token === 'demo-staff') return {uid: 'demo-staff', role: 'staff', email: 'demo@example.invalid', emailVerified: true, name: 'Aiko Tanaka'};
+    if (token === 'demo-staff') return {uid: 'demo-staff', email: 'demo@example.invalid', emailVerified: true, name: 'Aiko Tanaka', authTime: Math.floor(Date.now() / 1000)};
     if (token === 'demo-family') return {uid: 'demo-family', email: 'family@example.invalid', emailVerified: true};
     throw new Error('Unknown local preview account');
   },
@@ -27,10 +27,35 @@ const verifier = {
 
 const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka'};
 
+const ORG = 'org-sakura';
+
+/** The demo account owns one organization and helps out at a second, so the switcher shows. */
+function seedAccounts(store, now) {
+  const joined = new Date(now.getTime() - 60 * 86400_000).toISOString();
+  // The internal organization is verified; the trial one is not, so its calls and alerts are off.
+  const org = (id, name, plan) => ({
+    id, name, timeZone: 'Asia/Tokyo', status: 'active',
+    ...(plan === 'internal' ? {verifiedAt: joined, verifiedBy: 'migration'} : {}),
+    billing: {plan, email: 'billing@example.invalid', limits: plan === 'internal' ? {residents: 1000, members: 200} : {residents: 20, members: 10}},
+    createdAt: joined, createdBy: 'demo-staff', updatedAt: joined,
+  });
+  const member = (orgId, uid, email, name, role) => ({orgId, uid, email, name, role, status: 'active', joinedAt: joined, updatedAt: joined});
+  store.seedAccounts({
+    organizations: [org(ORG, 'Sakura Home Care', 'internal'), org('org-midori', 'Midori Day Service', 'trial')],
+    memberships: [
+      member(ORG, 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'owner'),
+      member(ORG, 'demo-colleague', 'colleague@example.invalid', 'Yuki Sato', 'member'),
+      member(ORG, 'demo-nurse', 'nurse@example.invalid', 'Kenji Mori', 'admin'),
+      member('org-midori', 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'admin'),
+    ],
+  });
+}
+
 async function makeApi() {
   const store = new MemoryStore();
   const now = new Date();
   const at = new Date(now.getTime() - 30 * 60_000).toISOString();
+  seedAccounts(store, now);
   for (let i = 0; i < fixtures.queue.items.length; i++) {
     const item = fixtures.queue.items[i];
     const input = residentInputSchema.parse({
@@ -47,7 +72,7 @@ async function makeApi() {
     });
     // One resident belongs to a colleague, so the read-only view can be tried too.
     const owner = i === 2 ? {uid: 'demo-colleague', email: 'colleague@example.invalid', name: 'Yuki Sato'} : demoStaff;
-    const resident = {...buildResident(input, item.residentId, now, owner), synthetic: true};
+    const resident = {...buildResident(input, item.residentId, ORG, now, owner), synthetic: true};
     await store.createResident(resident);
     const calls = Array.from({length: 14}, (_, day) => {
       const startedAt = new Date(Date.parse(at) - day * 86400_000).toISOString();
@@ -71,7 +96,7 @@ async function makeApi() {
     });
     await store.addCalls(calls);
     await store.putCase({
-      id: item.caseId, residentId: resident.id, rule: item.rule, autoUrgency: item.urgency,
+      id: item.caseId, orgId: ORG, residentId: resident.id, rule: item.rule, autoUrgency: item.urgency,
       status: 'open', firstDetectedAt: at, updatedAt: at,
       detections: [{residentId: resident.id, rule: item.rule, urgency: item.urgency,
         confidence: 0.9, summary: item.summary, detectedAt: at,
@@ -89,7 +114,7 @@ async function makeApi() {
     staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
   });
   // Nobody responsible yet, as residents registered before ownership existed can be.
-  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', now, demoStaff);
+  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', ORG, now, demoStaff);
   await store.createResident({...pendingResident, synthetic: true});
   const original = (await store.listCasesByResident('res-2'))[0];
   await store.putCase({...original, id: 'closed-case', status: 'closed', detections: [{...original.detections[0], summary: 'Earlier speech concern, now resolved.'}], outcome: {anomalyConfirmed: true, note: 'Spoke with her son; she is sleeping better now.'}});
@@ -105,17 +130,22 @@ export const firebaseApp = null;
 export const AuthProvider = ({children}) => children;
 const noop = async () => {};
 const token = async () => location.pathname.startsWith('/family') ? 'demo-family' : 'demo-staff';
+const staffUser = {uid: 'demo-staff', email: 'demo@example.invalid', emailVerified: true, providerData: [{providerId: 'password'}]};
+const staffToken = async () => 'demo-staff';
+const signOut = async () => {location.href = '/privacy';};
+export const useStaffSession = () => ({user: staffUser, ready: true, token: staffToken, signOut});
 export const useAuth = () => ({
- user: location.pathname === '/privacy' ? null : {uid: location.pathname.startsWith('/family') ? 'demo-family' : 'demo-staff', email: 'demo@example.invalid', emailVerified: true},
+ user: location.pathname === '/privacy' ? null : location.pathname.startsWith('/family') ? {uid: 'demo-family', email: 'family@example.invalid', emailVerified: true} : staffUser,
  role: location.pathname.startsWith('/family') ? 'family' : 'staff', ready: true, token,
- signOut: async () => {location.href = '/privacy';}, confirmEmail: noop, signIn: noop,
+ signOut, confirmEmail: noop, signIn: noop,
  signInWithGoogle: noop, sendPasswordReset: noop, sendSignInLink: noop, finishSignInLink: noop,
  isSignInLink: () => false, storedLinkEmail: () => null,
+ hasPassword: true, changePassword: noop, reloadUser: noop,
 });`;
 
 const banner = `<aside style="padding:12px 20px;background:#dcebe1;color:#1f4d3a;font:16px/1.5 system-ui;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
 <strong>Local demo · Fictional data · No calls or messages</strong>
-<a href="/staff">Staff queue</a><a href="/staff/residents">Residents</a>
+<a href="/staff">Staff queue</a><a href="/staff/residents">Residents</a><a href="/staff/team">Team</a>
 <a href="/family/residents/res-1">Family view</a><a href="/privacy">Privacy</a>
 <button type="button" onclick="fetch('/__preview/reset',{method:'POST'}).then(r=>{if(r.ok)location.reload()})" style="font:inherit;padding:6px 12px">Reset demo</button></aside>`;
 

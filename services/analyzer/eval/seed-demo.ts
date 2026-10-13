@@ -7,8 +7,10 @@
  * Names and household notes are made up (`demo-names.json`). Gemini results cached by `eval:r3`
  * are reused.
  *
- *   npm run seed:demo -w @hachi/analyzer -- [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
+ *   npm run seed:demo -w @hachi/analyzer -- --org <orgId> [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
  *     [--family-login-of <residentId>]
+ *
+ * --org is the organization whose staff will see the demo residents.
  *
  * --reset first deletes those demo residents (only if marked synthetic) with their calls, cases
  * and recordings, so the demo can be rebuilt with today's dates and current code.
@@ -41,8 +43,11 @@ const { values: args } = parseArgs({
     'dry-run': { type: 'boolean', default: false },
     reset: { type: 'boolean', default: false },
     'family-login-of': { type: 'string' },
+    org: { type: 'string' },
   },
 });
+const orgId: string = args.org?.trim() ?? '';
+if (!orgId) throw new Error('Pass --org <organization id>: the demo residents belong to that organization’s staff');
 
 const CACHE = join(import.meta.dirname, '.cache');
 const demoNames = JSON.parse(await readFile(join(import.meta.dirname, 'demo-names.json'), 'utf8')) as {
@@ -187,6 +192,9 @@ async function seedPerson({ profile: p, calls }: (typeof people)[number]): Promi
     vulnerability: { livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: [] },
     householdNotes: named.householdNotes,
     staff: { name: demoNames.staff, phone: '' },
+    orgId,
+    // As family access, so the API keeps them whenever it recomputes `familyLookup`.
+    familyAccess: familyLogins.filter((c) => c.includes('@')).map((email) => ({ email, addedAt: serviceStartedAt, addedBy: 'seed-demo' })),
     familyLookup: familyLogins,
     serviceStartedAt,
     active: false,

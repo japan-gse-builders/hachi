@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { useAccount } from '../account';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { CallConsentField } from '../components/CallConsentField';
@@ -9,6 +10,7 @@ import { useDocumentTitle } from '../title';
 export function ResidentPage() {
   useDocumentTitle('Add a resident');
   const { token } = useAuth();
+  const { current } = useAccount();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,7 +27,7 @@ export function ResidentPage() {
       preferredName: text('preferredName'),
       phone: text('phone'),
       callTime: text('callTime'),
-      timeZone: 'Asia/Tokyo',
+      timeZone: current?.timeZone ?? 'Asia/Tokyo',
       vulnerability: {
         livesAlone: form.get('livesAlone') === 'on',
         hasCloseSupporter: form.get('hasCloseSupporter') === 'on',

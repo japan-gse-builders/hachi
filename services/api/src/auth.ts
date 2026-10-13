@@ -1,12 +1,14 @@
 import type { Auth } from 'firebase-admin/auth';
+import type { Organization, OrgRole } from '@hachi/store';
 
 export interface VerifiedToken {
   uid: string;
-  role?: unknown;
   phoneNumber?: string;
   email?: string;
   emailVerified?: boolean;
   name?: string;
+  /** When the person last signed in, in seconds; refreshing a token does not change it. */
+  authTime?: number;
 }
 
 export interface TokenVerifier {
@@ -14,9 +16,35 @@ export interface TokenVerifier {
   verify(idToken: string): Promise<VerifiedToken>;
 }
 
-export type Principal =
-  | { kind: 'staff'; uid: string; email?: string; name?: string }
-  | { kind: 'family'; uid: string; contacts: string[] };
+/** Who Firebase says signed in. On its own it grants nothing: staff need a membership, family a verified contact. */
+export interface Identity {
+  uid: string;
+  /** Normalized. */
+  email?: string;
+  emailVerified: boolean;
+  /** Normalized. */
+  phoneNumber?: string;
+  name?: string;
+  /** Milliseconds. */
+  authTime?: number;
+}
+
+export interface StaffPrincipal {
+  kind: 'staff';
+  uid: string;
+  /** Verified and normalized. */
+  email: string;
+  name?: string;
+  orgId: string;
+  role: OrgRole;
+  org: Organization;
+}
+
+export interface FamilyPrincipal {
+  kind: 'family';
+  uid: string;
+  contacts: string[];
+}
 
 export function normalizePhone(phone: string): string {
   const trimmed = phone.trim();
@@ -28,19 +56,32 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+export function toIdentity(t: VerifiedToken): Identity {
+  return {
+    uid: t.uid,
+    emailVerified: t.emailVerified === true,
+    ...(t.email ? { email: normalizeEmail(t.email) } : {}),
+    ...(t.phoneNumber ? { phoneNumber: normalizePhone(t.phoneNumber) } : {}),
+    ...(t.name ? { name: t.name } : {}),
+    ...(t.authTime !== undefined ? { authTime: t.authTime * 1000 } : {}),
+  };
+}
+
 /**
- * Staff are identified by the `role: "staff"` custom claim (set by an admin script).
- * Anyone else may act as family, but only through contacts Firebase has verified (FAM-01);
- * which residents they can see is decided per request by matching those contacts.
+ * The contacts Firebase has verified, which is all a family account is known by (FAM-01): which
+ * residents it may see is decided per request by matching them against `familyLookup`.
  */
-export function toPrincipal(t: VerifiedToken): Principal | null {
-  if (t.role === 'staff') {
-    return { kind: 'staff', uid: t.uid, ...(t.email ? { email: normalizeEmail(t.email) } : {}), ...(t.name ? { name: t.name } : {}) };
-  }
-  const contacts: string[] = [];
-  if (t.phoneNumber) contacts.push(normalizePhone(t.phoneNumber));
-  if (t.email && t.emailVerified) contacts.push(normalizeEmail(t.email));
-  return contacts.length ? { kind: 'family', uid: t.uid, contacts } : null;
+export function familyContacts(id: Identity): string[] {
+  return [id.phoneNumber, id.emailVerified ? id.email : undefined].filter((c): c is string => Boolean(c));
+}
+
+/** The account management Firebase does for us. Optional so that tests and the local preview need no Firebase. */
+export interface AuthAdmin {
+  setDisplayName(uid: string, name: string): Promise<void>;
+  /** Revokes refresh tokens, so no device can get a new ID token without signing in again. */
+  revokeSessions(uid: string): Promise<void>;
+  /** Epoch ms before which Firebase considers the account's sign-ins revoked (revocation, password change). */
+  sessionsValidAfter(uid: string): Promise<number | undefined>;
 }
 
 export class FirebaseTokenVerifier implements TokenVerifier {
@@ -50,11 +91,28 @@ export class FirebaseTokenVerifier implements TokenVerifier {
     const d = await this.auth.verifyIdToken(idToken);
     return {
       uid: d.uid,
-      role: d.role,
       phoneNumber: d.phone_number,
       email: d.email,
       emailVerified: d.email_verified,
       name: typeof d.name === 'string' ? d.name : undefined,
+      authTime: d.auth_time,
     };
+  }
+}
+
+export class FirebaseAuthAdmin implements AuthAdmin {
+  constructor(private readonly auth: Auth) {}
+
+  async setDisplayName(uid: string, name: string): Promise<void> {
+    await this.auth.updateUser(uid, { displayName: name });
+  }
+
+  async revokeSessions(uid: string): Promise<void> {
+    await this.auth.revokeRefreshTokens(uid);
+  }
+
+  async sessionsValidAfter(uid: string): Promise<number | undefined> {
+    const after = (await this.auth.getUser(uid)).tokensValidAfterTime;
+    return after ? Date.parse(after) : undefined;
   }
 }

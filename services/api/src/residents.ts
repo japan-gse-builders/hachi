@@ -49,12 +49,13 @@ function toFamily(f: FamilyInput, previous?: FamilyContact): FamilyContact {
 }
 
 /** Whoever registers a resident is responsible for them until they hand them over. */
-export function buildResident(input: ResidentInput, id: string, now: Date, staff: StaffActor): Resident {
+export function buildResident(input: ResidentInput, id: string, orgId: string, now: Date, staff: StaffActor): Resident {
   const at = now.toISOString();
   const { family, serviceStartedAt, callConsent, ...rest } = input;
   return {
     ...rest,
     id,
+    orgId,
     staff: { ...input.staff, voice: input.staff.phone },
     ...(family ? { family: toFamily(family) } : {}),
     ...(callConsent ? {
@@ -104,6 +105,12 @@ export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staf
 
 export function claimResident(r: Resident, staff: StaffActor, now: Date): Resident {
   return { ...r, owner: ownerOf(staff, now.toISOString()), updatedAt: now.toISOString() };
+}
+
+/** An admin deciding who is responsible, whoever was before. */
+export function assignResident(r: Resident, to: StaffActor, now: Date): Resident {
+  if (isOwner(r, to.uid)) return r;
+  return claimResident(r, to, now);
 }
 
 export function releaseResident(r: Resident, now: Date): Resident {

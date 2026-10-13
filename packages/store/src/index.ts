@@ -1,4 +1,5 @@
 export * from './model.js';
+export * from './accounts.js';
 export * from './types.js';
 export * from './detections.js';
 export * from './delivery.js';

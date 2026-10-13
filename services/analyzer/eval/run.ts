@@ -196,6 +196,7 @@ for (const person of scenario.people) {
   const p = person.profile;
   const resident: Resident = {
     id: p.id,
+    orgId: 'eval',
     name: `${p.name} (synthetic)`,
     preferredName: p.name,
     phone: '',

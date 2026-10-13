@@ -20,8 +20,16 @@ async function held(request: Partial<ContactRequest> = {}) {
   return { ...s, entry };
 }
 
+const FAMILY = new Set(['familyPhone', 'familyEmail', 'stranger']);
+
+/** Staff decide on the staff route, family on their own. */
 const decide = (app: ReturnType<typeof setup>['app'], id: string, token: string, decision: string) =>
-  app.inject({ method: 'POST', url: `/api/contact-requests/${id}`, headers: { authorization: `Bearer ${token}` }, payload: { decision } });
+  app.inject({
+    method: 'POST',
+    url: `${FAMILY.has(token) ? '/api/family' : '/api'}/contact-requests/${id}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { decision },
+  });
 
 describe('groupNumber', () => {
   it('groups a Japanese number the way it is read aloud', () => {
@@ -53,15 +61,38 @@ describe('contact requests the resident made by phone (NTF-05)', () => {
 
   it('shows the resident\u2019s own family the request too, since they often know the number', async () => {
     const { app, as } = await held();
-    const res = await app.inject({ method: 'GET', url: '/api/contact-requests', ...as('familyPhone') });
+    const res = await app.inject({ method: 'GET', url: '/api/family/contact-requests', ...as('familyPhone') });
     expect(res.json().requests).toHaveLength(1);
+    // The staff route is for staff only.
+    expect((await app.inject({ method: 'GET', url: '/api/contact-requests', ...as('familyPhone') })).statusCode).toBe(403);
   });
 
   it('shows nothing to someone who is not connected to the resident', async () => {
     const { app, as } = await held();
-    const res = await app.inject({ method: 'GET', url: '/api/contact-requests', ...as('stranger') });
+    const res = await app.inject({ method: 'GET', url: '/api/family/contact-requests', ...as('stranger') });
     expect(res.statusCode).toBe(200);
     expect(res.json().requests).toEqual([]);
+  });
+
+  it('shows staff of another organization nothing, and lets them decide nothing', async () => {
+    const { app, as, store, entry } = await held();
+    const res = await app.inject({ method: 'GET', url: '/api/contact-requests', ...as('outsider') });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().requests).toEqual([]);
+    expect((await decide(app, entry.id, 'outsider', 'approve')).statusCode).toBe(404);
+    expect((await store.getOutbox(entry.id))!.status).toBe('awaiting_approval');
+  });
+
+  it('records a staff decision in the organization\u2019s activity log', async () => {
+    const { app, store, entry } = await held();
+    await decide(app, entry.id, 'otherStaff', 'approve');
+    const [logged] = await store.listAudit('org-1', { limit: 1 });
+    expect(logged).toMatchObject({
+      action: 'resident.contact_request_decided',
+      actor: { uid: 'staff-2' },
+      target: { type: 'resident', id: 'res-1', label: 'Margaret Smith' },
+      detail: { decision: 'approve', outcome: 'approved' },
+    });
   });
 
   it('queues the message once staff agree to it', async () => {
@@ -79,6 +110,19 @@ describe('contact requests the resident made by phone (NTF-05)', () => {
     const after = (await store.getOutbox(entry.id))!;
     expect(after.status).toBe('pending');
     expect(after.approval?.by).toBe('family');
+    // The resident's organization sees who released it.
+    const [logged] = await store.listAudit('org-1', { limit: 1 });
+    expect(logged).toMatchObject({ action: 'resident.contact_request_decided', target: { id: 'res-1' }, detail: { decision: 'approve', outcome: 'approved', by: 'family' } });
+  });
+
+  it('still shows the family their requests while a resident without an organization is visible to them', async () => {
+    const { app, as, store } = await held();
+    // Registered before organizations existed, and not migrated yet.
+    const { orgId: _none, ...legacy } = makeResident('res-legacy', { phone: '+819000000099' });
+    await store.createResident(legacy as never);
+    const res = await app.inject({ method: 'GET', url: '/api/family/contact-requests', ...as('familyPhone') });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().requests).toHaveLength(1);
   });
 
   it('never sends a rejected message, and keeps who said no', async () => {
@@ -114,7 +158,7 @@ describe('contact requests the resident made by phone (NTF-05)', () => {
     const { store, entry } = await held({ who: 'my daughter Alice', number: undefined, confirmed: false });
     expect(entry.status).toBe('pending');
     expect(entry.recipient).toBe('family');
-    const listed = await store.listOutboxAwaitingApproval(10);
+    const listed = await store.listOutboxAwaitingApproval('org-1', 10);
     expect(listed).toEqual([]);
   });
 

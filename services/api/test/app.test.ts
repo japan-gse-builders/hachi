@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { CASE_CALLS } from '../src/views.js';
 import { MemoryStore } from '@hachi/store';
-import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, setup, storedCase, wellbeing } from './helpers.js';
+import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, seedAccounts, setup, storedCase, wellbeing } from './helpers.js';
 
 describe('health and authentication', () => {
   it('serves /healthz and /health without a token', async () => {
@@ -48,9 +48,19 @@ describe('health and authentication', () => {
   });
 
   it('keeps staff and family routes apart', async () => {
-    const { app, as } = setup();
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    // A family account is not staff, whatever it can see as family.
+    const fam = await app.inject({ method: 'GET', url: '/api/queue', ...as('familyEmail') });
+    expect(fam.statusCode).toBe(403);
+    expect(fam.json().reason).toBe('no_organization');
     expect((await app.inject({ method: 'GET', url: '/api/queue', ...as('familyPhone') })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: '/api/family/residents', ...as('staff') })).statusCode).toBe(403);
+    // Staff on the family side see only residents whose family they are themselves: being staff
+    // grants nothing there.
+    const staffAsFamily = await app.inject({ method: 'GET', url: '/api/family/residents', ...as('staff') });
+    expect(staffAsFamily.statusCode).toBe(200);
+    expect(staffAsFamily.json().residents).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('staff') })).statusCode).toBe(404);
   });
 
   it('sets no-store and nosniff headers', async () => {
@@ -62,6 +72,7 @@ describe('health and authentication', () => {
 
   it('hides internal error details', async () => {
     const store = new MemoryStore();
+    seedAccounts(store);
     store.listResidents = async () => {
       throw new Error('secret database detail');
     };

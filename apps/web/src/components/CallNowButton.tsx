@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { callProgressLine, isUnderWay, type CallProgress } from '../callNow';
@@ -13,6 +14,7 @@ const POLL_MS = 3000;
  */
 export function CallNowButton({ residentId, name, phone, busyCallId }: { residentId: string; name: string; phone: string; busyCallId?: string }) {
   const { token } = useAuth();
+  const { current } = useAccount();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -64,6 +66,9 @@ export function CallNowButton({ residentId, name, phone, busyCallId }: { residen
   };
 
   const underWay = progress ? isUnderWay(progress.status) : !!callId;
+  if (current && !current.verified && !callId) {
+    return <p className="meta call-now">Calling from here starts once Hachi has verified your organization.</p>;
+  }
   return (
     <div className="stack call-now">
       {progress && (

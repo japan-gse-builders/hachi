@@ -1,7 +1,16 @@
 import { domainStates, PRIVACY_NOTICE, type CallTag, type Case, type Detection, type SpendSettings } from '@hachi/core';
-import { buildApp, type AppDeps } from '../src/app.js';
-import type { TokenVerifier, VerifiedToken } from '../src/auth.js';
-import { MemoryStore, type CallRecord, type CallWellbeing, type Resident, type StoredCase } from '@hachi/store';
+import { buildApp, ORG_HEADER, type AppDeps } from '../src/app.js';
+import type { AuthAdmin, TokenVerifier, VerifiedToken } from '../src/auth.js';
+import {
+  MemoryStore,
+  type CallRecord,
+  type CallWellbeing,
+  type Membership,
+  type Organization,
+  type OrgRole,
+  type Resident,
+  type StoredCase,
+} from '@hachi/store';
 import { buildResident } from '../src/residents.js';
 import type { ResidentInput } from '../src/schemas.js';
 import { residentInputSchema } from '../src/schemas.js';
@@ -9,9 +18,23 @@ import type { MediaSigner } from '../src/views.js';
 
 export const NOW = new Date('2026-10-01T03:00:00.000Z'); // 12:00 JST
 
+/** When every test token's holder signed in, in seconds as Firebase reports it: an hour before NOW. */
+export const SIGNED_IN = NOW.getTime() / 1000 - 3600;
+
 export const TOKENS: Record<string, VerifiedToken> = {
-  staff: { uid: 'staff-1', role: 'staff', email: 'staff@example.org', emailVerified: true },
-  otherStaff: { uid: 'staff-2', role: 'staff', email: 'sato@example.org', emailVerified: true, name: 'Sato' },
+  /** Owner of org-1. */
+  staff: { uid: 'staff-1', email: 'staff@example.org', emailVerified: true, authTime: SIGNED_IN },
+  /** The same person, signed in again at NOW. */
+  staffSignedInAgain: { uid: 'staff-1', email: 'staff@example.org', emailVerified: true, authTime: NOW.getTime() / 1000 },
+  /** Member of org-1. */
+  otherStaff: { uid: 'staff-2', email: 'sato@example.org', emailVerified: true, name: 'Sato', authTime: SIGNED_IN },
+  /** Admin of org-1. */
+  admin: { uid: 'staff-3', email: 'ito@example.org', emailVerified: true, name: 'Ito', authTime: SIGNED_IN },
+  /** Owner of org-2, a different care company. */
+  outsider: { uid: 'staff-9', email: 'boss@elsewhere.org', emailVerified: true, name: 'Kimura', authTime: SIGNED_IN },
+  /** Signed up, belongs nowhere yet. */
+  newcomer: { uid: 'new-1', email: 'kato@example.org', emailVerified: true, name: 'Kato', authTime: SIGNED_IN },
+  unverifiedNewcomer: { uid: 'new-2', email: 'mori@example.org', emailVerified: false, authTime: SIGNED_IN },
   relative: { uid: 'fam-3', email: 'bob@example.org', emailVerified: true },
   unverifiedRelative: { uid: 'fam-4', email: 'bob@example.org', emailVerified: false },
   familyPhone: { uid: 'fam-1', phoneNumber: '+819000000002' },
@@ -50,7 +73,7 @@ export function makeResident(id: string, overrides: Record<string, unknown> = {}
   return buildResident(residentInputSchema.parse(residentInput({
     callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version },
     ...overrides,
-  })) as ResidentInput, id, NOW, { uid: 'staff-1', email: 'staff@example.org' });
+  })) as ResidentInput, id, 'org-1', NOW, { uid: 'staff-1', email: 'staff@example.org' });
 }
 
 export function detection(overrides: Partial<Detection> = {}): Detection {
@@ -67,8 +90,9 @@ export function detection(overrides: Partial<Detection> = {}): Detection {
 }
 
 export function storedCase(overrides: Partial<StoredCase> = {}): StoredCase {
-  const base: Case = {
+  const base: Case & { orgId: string } = {
     id: 'case-1',
+    orgId: 'org-1',
     residentId: 'res-1',
     rule: 'R2',
     autoUrgency: 'watch',
@@ -118,9 +142,82 @@ export function idGen(prefix = 'id'): () => string {
   return () => `${prefix}-${++n}`;
 }
 
-export function setup(opts: { spend?: SpendSettings; gateway?: AppDeps['gateway']; calls?: AppDeps['calls'] } = {}) {
+const JOINED = '2026-09-01T00:00:00.000Z';
+
+export function organization(id: string, overrides: Partial<Organization> = {}): Organization {
+  return {
+    id,
+    name: id === 'org-1' ? 'Sakura Care' : 'Elsewhere Care',
+    timeZone: 'Asia/Tokyo',
+    status: 'active',
+    verifiedAt: JOINED,
+    verifiedBy: 'migration',
+    billing: { plan: 'internal', email: 'billing@example.org', limits: { residents: 50, members: 10 } },
+    createdAt: JOINED,
+    createdBy: 'migration',
+    updatedAt: JOINED,
+    ...overrides,
+  };
+}
+
+export function membership(orgId: string, token: keyof typeof TOKENS, role: OrgRole, overrides: Partial<Membership> = {}): Membership {
+  const t = TOKENS[token]!;
+  return {
+    orgId,
+    uid: t.uid,
+    email: t.email!.toLowerCase(),
+    ...(t.name ? { name: t.name } : {}),
+    role,
+    status: 'active',
+    joinedAt: JOINED,
+    updatedAt: JOINED,
+    ...overrides,
+  };
+}
+
+/** org-1: staff (owner), admin, otherStaff (member). org-2: outsider (owner). */
+export function seedAccounts(store: MemoryStore): void {
+  store.seedAccounts({
+    organizations: [organization('org-1'), organization('org-2')],
+    memberships: [
+      membership('org-1', 'staff', 'owner'),
+      membership('org-1', 'admin', 'admin'),
+      membership('org-1', 'otherStaff', 'member'),
+      membership('org-2', 'outsider', 'owner'),
+    ],
+  });
+}
+
+export interface FakeAuthAdmin extends AuthAdmin {
+  names: Map<string, string>;
+  revoked: string[];
+  validAfter: Map<string, number>;
+}
+
+export function fakeAuthAdmin(): FakeAuthAdmin {
+  const names = new Map<string, string>();
+  const revoked: string[] = [];
+  const validAfter = new Map<string, number>();
+  return {
+    names,
+    revoked,
+    validAfter,
+    setDisplayName: async (uid, name) => void names.set(uid, name),
+    revokeSessions: async (uid) => {
+      revoked.push(uid);
+      validAfter.set(uid, Math.floor(NOW.getTime() / 1000) * 1000);
+    },
+    sessionsValidAfter: async (uid) => validAfter.get(uid),
+  };
+}
+
+export function setup(opts: { spend?: SpendSettings; gateway?: AppDeps['gateway']; calls?: AppDeps['calls']; now?: () => Date } = {}) {
   const store = new MemoryStore();
-  const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, now: () => NOW, newId: idGen(), ...opts });
-  const as = (token: keyof typeof TOKENS | null) => ({ headers: token ? { authorization: `Bearer ${token}` } : {} });
-  return { store, app, as };
+  seedAccounts(store);
+  const authAdmin = fakeAuthAdmin();
+  const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, authAdmin, now: () => NOW, newId: idGen(), ...opts });
+  const as = (token: keyof typeof TOKENS | null, org?: string) => ({
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(org ? { [ORG_HEADER]: org } : {}) },
+  });
+  return { store, app, as, authAdmin };
 }

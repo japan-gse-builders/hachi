@@ -17,8 +17,8 @@ export function LoginPage() {
   return (
     <SignInCard
       title="Staff sign in"
-      intro="Use the staff email for this care team."
-      notice={user ? 'You are signed in as a family contact. Signing in here replaces that session.' : undefined}
+      intro="Use the email your organization invited, or the one you set it up with."
+      notice="New to Hachi? Continue with Google, or email yourself a sign-in link, to create an account. You can then set up your organization or join one you were invited to."
       footer={<p className="meta">Family member? <Link to="/family/login">Sign in here</Link>.</p>}
     />
   );

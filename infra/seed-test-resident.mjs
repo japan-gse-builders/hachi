@@ -2,7 +2,8 @@
 // deployed pipeline places a real call end to end. Each resident is called at most once a day,
 // so every run creates a new resident and deactivates the previous test residents.
 // Test residents get made-up names from services/analyzer/eval/demo-names.json, in order.
-// Usage: node infra/seed-test-resident.mjs <project-id> <phone E.164> [HH:mm|now] [family phone E.164]
+// Usage: node infra/seed-test-resident.mjs <project-id> --org <org-id> <phone E.164> [HH:mm|now] [family phone E.164]
+// --org is the organization whose staff will see the resident (and its cases).
 // The family phone receives emergency SMS and alert calls (a Verified Caller ID on a Twilio trial).
 // Requires `gcloud auth application-default login`.
 import { readFile } from 'node:fs/promises';
@@ -10,9 +11,12 @@ import { initializeApp } from 'firebase-admin/app';
 import { FieldPath, getFirestore } from 'firebase-admin/firestore';
 
 const E164 = /^\+[1-9]\d{6,14}$/;
-const usage = 'Usage: node infra/seed-test-resident.mjs <project-id> <phone E.164> [HH:mm|now] [family phone E.164]';
-const [projectId, phone, time, familyPhone] = process.argv.slice(2);
-if (!projectId || !E164.test(phone ?? '') || (familyPhone && !E164.test(familyPhone)) || (time && time !== 'now' && !/^\d{2}:\d{2}$/.test(time))) {
+const usage = 'Usage: node infra/seed-test-resident.mjs <project-id> --org <org-id> <phone E.164> [HH:mm|now] [family phone E.164]';
+const args = process.argv.slice(2);
+const orgFlag = args.indexOf('--org');
+const orgId = orgFlag >= 0 ? args.splice(orgFlag, 2)[1] : undefined;
+const [projectId, phone, time, familyPhone] = args;
+if (!projectId || !orgId || !E164.test(phone ?? '') || (familyPhone && !E164.test(familyPhone)) || (time && time !== 'now' && !/^\d{2}:\d{2}$/.test(time))) {
   console.error(usage);
   process.exit(1);
 }
@@ -26,6 +30,14 @@ const id = `test-${stamp}`;
 
 const db = getFirestore(initializeApp({ projectId }));
 const now = new Date().toISOString();
+const org = await db.collection('organizations').doc(orgId).get();
+if (!org.exists) {
+  console.error(`No organization ${orgId} in ${projectId}.`);
+  process.exit(1);
+}
+if (!org.data().verifiedAt) {
+  console.warn(`Note: ${orgId} is not verified, so Hachi will not ring this resident. See infra/verify-organization.mjs.`);
+}
 
 const earlier = await db.collection('residents').where(FieldPath.documentId(), '>=', 'test-').where(FieldPath.documentId(), '<', 'test.').get();
 const previous = earlier.docs.filter((d) => d.data().active === true);
@@ -36,6 +48,7 @@ const name = names.testResidents[earlier.size % names.testResidents.length];
 const surname = name.split(' ').at(-1);
 await db.collection('residents').doc(id).create({
   id,
+  orgId,
   name,
   preferredName: 'there',
   phone,

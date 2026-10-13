@@ -160,6 +160,7 @@ function residentFor(c: ScriptedCase): Resident {
   const at = c.calls[0]!.startedAt;
   return {
     id: c.residentId,
+    orgId: 'eval',
     name: `${c.name} (synthetic)`,
     preferredName: c.name,
     phone: '',
