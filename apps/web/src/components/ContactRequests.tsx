@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { formatWhen } from '../format';
@@ -20,11 +20,6 @@ const lastShown = new Map<string, ContactRequest[]>();
 export function ContactRequests() {
   const { token, user } = useAuth();
   const uid = user?.uid ?? '';
-  // useAuth hands out a new token function on every render, so loading follows the person instead.
-  const tokenRef = useRef(token);
-  useEffect(() => {
-    tokenRef.current = token;
-  });
   const [loaded, setLoaded] = useState<{ uid: string; requests: ContactRequest[] } | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -33,10 +28,10 @@ export function ContactRequests() {
   const requests = (loaded?.uid === uid ? loaded.requests : lastShown.get(uid)) ?? [];
 
   const load = useCallback(async () => {
-    const data = await api<{ requests: ContactRequest[] }>('/api/contact-requests', await tokenRef.current());
+    const data = await api<{ requests: ContactRequest[] }>('/api/contact-requests', await token());
     lastShown.set(uid, data.requests);
     setLoaded({ uid, requests: data.requests });
-  }, [uid]);
+  }, [token, uid]);
 
   const refresh = useCallback(async () => {
     try {
