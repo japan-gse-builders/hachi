@@ -1,3 +1,5 @@
+import { parseGatewayPolicy, type GatewayPolicy } from '@hachi/core';
+
 export interface GatewayConfig {
   port: number;
   project: string;
@@ -42,6 +44,13 @@ export interface GatewayConfig {
    * by whoever runs the test, not by whoever is on the phone.
    */
   forcedLiveDrop?: { residentId: string; afterSec: number };
+  /**
+   * The breaker, read here as well as in telephony. Telephony reads it to decide whether a phone
+   * may ring; this service reads it to decide how often to find out whether it still should be
+   * tripped, and the two have to agree on the cooldown or one of them is testing against a window
+   * the other is not honouring.
+   */
+  gateway: GatewayPolicy;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -117,5 +126,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): GatewayConfig {
       prompts: int(env, 'SILENCE_PROMPTS', 2, 1, 5),
     },
     ...(drop ? { forcedLiveDrop: drop } : {}),
+    gateway: parseGatewayPolicy(env),
   };
 }

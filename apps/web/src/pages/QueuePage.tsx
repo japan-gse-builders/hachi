@@ -46,18 +46,21 @@ export function QueuePage() {
       )}
       {/* Above the cases on purpose: a resident with no case at all may be the one to worry about. */}
       {queue?.unreached && queue.unreached.items.length > 0 && (
-        <div className="card card-emergency stack">
+        <div className="card card-emergency stack wide">
           <p>
             <strong>Nobody has been reached.</strong> {queue.unreached.note}
           </p>
-          <ul className="legend" aria-label="Residents nobody has spoken to">
+          <ul className="unreached" aria-label="Residents nobody has spoken to">
             {queue.unreached.items.map((u) => (
               <li key={`${u.residentId}-${u.localDate}`}>
-                <Link to={`/staff/residents/${u.residentId}`}>{u.residentName}</Link>{' '}
-                <span className="badge watch">{u.reasonLabel}</span> {u.meaning}
-                <span className="meta">
+                <p className="row">
+                  <Link to={`/staff/residents/${u.residentId}`}>{u.residentName}</Link>
+                  <span className="badge watch">{u.reasonLabel}</span>
+                </p>
+                <p>{u.meaning}</p>
+                <p className="meta">
                   {u.localDate} · {u.tried}
-                </span>
+                </p>
               </li>
             ))}
           </ul>

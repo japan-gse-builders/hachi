@@ -549,6 +549,21 @@ describe('residents nobody reached (QUE-01)', () => {
     await ctx.store.addCalls([attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } })]);
     expect((await ctx.get()).items).toEqual([]);
   });
+
+  it('tells a budget that ran out apart from a fault, because the answer is a different one', async () => {
+    // Both are ours and neither is about the resident, but one is fixed by raising a ceiling and
+    // the other by fixing something, and the staff member reading this is the one who has to ask.
+    const ctx = await unreached('/api/queue?locale=en');
+    await ctx.store.addCalls([
+      attempt('res-1', 1, { failure: { code: 'budget_exhausted', message: 'x', retryable: false } }),
+      attempt('res-2', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } }),
+    ]);
+    const { items } = await ctx.get();
+    expect(items.map((i: { reason: string }) => i.reason).sort()).toEqual(['budget', 'service_fault']);
+    const money = items.find((i: { reason: string }) => i.reason === 'budget');
+    expect(money).toMatchObject({ reasonLabel: 'AI budget cap', ourFault: true });
+    expect(money.meaning).toContain("This month's AI budget is used up");
+  });
 });
 
 describe('family dashboard (FAM-01..04)', () => {

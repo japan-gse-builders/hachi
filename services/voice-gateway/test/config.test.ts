@@ -20,6 +20,7 @@ describe('loadConfig', () => {
       tasks: { location: 'asia-northeast1', emergencyQueue: 'emergency-calls', notifyQueue: 'notifications', analysisQueue: 'call-analysis', invokerServiceAccount: base.TASKS_INVOKER_SA },
       maxConversationSec: 480,
       silence: { promptSec: 12, prompts: 2 },
+      gateway: { transientFailures: 3, cooldownMs: 900_000, probeStaleMs: 3_600_000 },
     });
   });
 

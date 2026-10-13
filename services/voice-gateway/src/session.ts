@@ -11,7 +11,7 @@ import {
 } from '@hachi/core';
 import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
-import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
+import type { EmergencyInput, EmergencyPresence, EmergencyRaiser } from './emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, ToolCall } from './live.js';
 import {
   buildSystemInstruction,
@@ -47,6 +47,11 @@ export interface SessionDeps {
   store: Store;
   live: LiveConnector;
   emergency: EmergencyRaiser;
+  /**
+   * Where this call announces that somebody is being reached, so the gateway probe holds off.
+   * Absent wherever nothing is probing, which is every test that is not about the probe.
+   */
+  emergencies?: EmergencyPresence;
   recordings: RecordingSink;
   /** Without it the analysis worker's sweep picks the call up. */
   analysis?: AnalysisRequester;
@@ -173,6 +178,7 @@ export class CallSession {
   private readonly turns: Turn[] = [];
 
   private emergency: 'none' | 'raising' | 'raised' | 'failed' = 'none';
+  private announced = false;
   private endReason?: ConversationEnd;
   private hangupMark?: string;
   private markSeq = 0;
@@ -554,6 +560,11 @@ export class CallSession {
   private async raiseEmergency(input: Omit<EmergencyInput, 'resident' | 'callId'>): Promise<void> {
     if (this.emergencyActive || !this.resident || !this.ids) return;
     this.emergency = 'raising';
+    // Announced from here rather than once it succeeds, and kept until the call is over even if
+    // recording it fails: the resident has already said the thing, and that is what makes this a
+    // bad moment for the process to go and open sessions of its own.
+    this.announced = true;
+    this.deps.emergencies?.enter();
     this.clearSilence();
     this.deps.log.warn({ ...this.ids, category: input.category }, 'EMERGENCY detected during call');
     for (let attempt = 0; attempt < this.t.emergencyAttempts; attempt++) {
@@ -597,6 +608,10 @@ export class CallSession {
     if (this.state === 'finishing' || this.state === 'done') return;
     const started = this.state === 'active';
     this.state = 'finishing';
+    if (this.announced) {
+      this.announced = false;
+      this.deps.emergencies?.leave();
+    }
     for (const t of this.timers) clearTimeout(t);
     this.clearSilence();
     this.liveGeneration++;

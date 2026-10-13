@@ -73,6 +73,12 @@ fi
 # --set-env-vars replaces the whole environment: a hook set by hand would be erased by the next
 # deploy, and — more usefully — a hook set here is erased by the next deploy that does not ask for
 # it. There is no state to remember to clean up.
+# Both services read the breaker and have to agree on its cooldown: telephony honours it before
+# dialing, the gateway tests against it. Passed through only when set, so the shared default lives
+# in one place (parseGatewayPolicy) instead of being copied into two shell scripts that can drift.
+BREAKER_ENV=""
+[[ -n "${GATEWAY_COOLDOWN_SEC:-}" ]] && BREAKER_ENV=",GATEWAY_COOLDOWN_SEC=${GATEWAY_COOLDOWN_SEC}"
+[[ -n "${GATEWAY_TRANSIENT_FAILURES:-}" ]] && BREAKER_ENV="${BREAKER_ENV},GATEWAY_TRANSIENT_FAILURES=${GATEWAY_TRANSIENT_FAILURES}"
 DROP_ENV=""
 if [[ -n "${FORCE_LIVE_DROP:-}" ]]; then
   DROP_ENV=",FORCE_LIVE_DROP=${FORCE_LIVE_DROP}"
@@ -89,7 +95,7 @@ fi
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 1Gi \
   --concurrency 20 --timeout 3600 --no-cpu-throttling --cpu-boost \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${DROP_ENV}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${BREAKER_ENV}${DROP_ENV}"
 
 GATEWAY_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
 echo "==> Health check"
