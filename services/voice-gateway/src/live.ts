@@ -21,6 +21,15 @@ export type ToolScheduling = 'INTERRUPT' | 'WHEN_IDLE' | 'SILENT';
 
 /** Events from the model, already decoded. */
 export interface LiveHandlers {
+  /**
+   * The server accepted the session and will take audio.
+   *
+   * Optional because only a probe has to know the moment itself. A call learns the same thing a
+   * second later, when the model greets the resident, and a call that never gets that far has a
+   * close reason explaining why. A probe has neither: it sends no audio and expects no speech, so
+   * this is the only evidence it can have that a conversation would have been possible.
+   */
+  ready?(): void;
   audio(pcm24k: Int16Array): void;
   inputTranscript(text: string): void;
   outputTranscript(text: string): void;
@@ -173,6 +182,7 @@ export class GeminiLiveConnector implements LiveConnector {
 }
 
 export function dispatch(m: LiveServerMessage, h: LiveHandlers): void {
+  if (m.setupComplete) h.ready?.();
   const c = m.serverContent;
   if (c) {
     if (c.inputTranscription?.text) h.inputTranscript(c.inputTranscription.text);

@@ -1,4 +1,4 @@
-import { recordGatewayFailure } from '@hachi/core';
+import { claimProbe, recordGatewayFailure } from '@hachi/core';
 import type { CallRecord } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { afterStream, alertResponse, conferenceName, emergencyTargets, emergencyTransfer, holdTwiml } from '../src/bridge.js';
@@ -109,9 +109,20 @@ describe('afterStream when the gateway is known to be broken', () => {
     expect(await afterStream(deps, IDS)).toContain(`>${conferenceName(IDS)}</Conference>`);
   });
 
-  it('reconnects again once the cooldown lets a call through', async () => {
+  it('keeps the stream closed for as long as the fault is being tested without a phone on it', async () => {
+    const { deps, store, clock } = await broken();
+    // What the voice gateway does to a tripped breaker every cooldown: a Live session with no call
+    // attached, and the result written down. Two hours of it, and the resident is still not rung.
+    for (let n = 1; n <= 8; n++) {
+      clock.now = new Date(NOW.getTime() + n * deps.config.gateway.cooldownMs);
+      await store.mutateGatewayBreaker((b) => recordGatewayFailure(claimProbe(b, clock.now, deps.config.gateway)!, SPEND_CAP, clock.now));
+      expect(await afterStream(deps, IDS)).not.toContain('<Stream');
+    }
+  });
+
+  it('reconnects again once nothing has tested the fault for an hour', async () => {
     const { deps, clock } = await broken();
-    clock.now = new Date(NOW.getTime() + deps.config.gateway.cooldownMs);
+    clock.now = new Date(NOW.getTime() + deps.config.gateway.probeStaleMs);
     expect(await afterStream(deps, IDS)).toContain('<Stream url="wss://gw.example/twilio/stream">');
   });
 });

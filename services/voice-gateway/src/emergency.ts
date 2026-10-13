@@ -21,6 +21,35 @@ export interface EmergencyRaiser {
   raise(input: EmergencyInput): Promise<void>;
 }
 
+/**
+ * How many calls on this instance are in the middle of getting somebody help.
+ *
+ * Read by the gateway probe, which is the only work this service does that nobody asked for and
+ * that loses nothing by waiting. The two overlap in one narrow case: the Live socket dying
+ * systemically while the model is telling a resident that help is on its way. That trips the
+ * breaker, and a probe would then open a fresh session against the same refusing Vertex AI while
+ * the call that matters is still trying to finish a sentence.
+ *
+ * Per process, because that is as far as it can see — a call on another instance is a websocket
+ * this one cannot reach. The point is not isolation, it is not choosing to add load of our own
+ * while somebody is being reached.
+ */
+export class EmergencyPresence {
+  private count = 0;
+
+  get active(): boolean {
+    return this.count > 0;
+  }
+
+  enter(): void {
+    this.count++;
+  }
+
+  leave(): void {
+    if (this.count > 0) this.count--;
+  }
+}
+
 const SUMMARY: Record<R1Category, string> = {
   chest_pain: 'Reported chest pain or pressure during the call',
   breathing: 'Reported trouble breathing during the call',

@@ -14,6 +14,12 @@
  * the state here is built from observed outcomes, and the cost of learning is bounded instead of
  * eliminated.
  *
+ * The cost of learning whether it is *over* is bounded differently. A Live session can be opened
+ * with nothing on the other end of it, so finding out costs a websocket rather than a resident's
+ * morning, and the voice gateway does exactly that while this is tripped. What is left here is the
+ * case where nothing is testing at all — an older gateway, or one that is not running — because a
+ * breaker with no way back is a check-in service that has quietly switched itself off.
+ *
  * It lives in the store rather than in each process because telephony and the voice gateway are
  * separate Cloud Run services, each of which scales to several instances: a fault one instance saw
  * is useless to the instance that dials next unless it is written down somewhere both can read.
@@ -44,7 +50,11 @@ export interface GatewayBreaker {
   since?: string;
   /** ISO. */
   lastFailedAt?: string;
-  /** ISO, when a call was last let through to find out whether the fault is over. */
+  /**
+   * ISO, when the fault was last tested — ordinarily by a Live session with no phone call attached
+   * to it. Kept across a test that failed as well as one that passed, because what telephony reads
+   * it for is whether anything is still testing, not what the last test found.
+   */
   probedAt?: string;
   updatedAt: string;
 }
@@ -57,16 +67,31 @@ export interface GatewayPolicy {
    */
   transientFailures: number;
   /**
-   * How long a fault is believed before one call is allowed through to test it. Long enough that a
-   * day's worth of residents are not each spent finding out the same thing, short enough that a
-   * fault fixed in the morning does not cost everybody their afternoon check-in.
+   * How long a fault is believed before it is tested again. Short enough that a fault fixed in the
+   * morning does not cost everybody their afternoon check-in, long enough that the test is not a
+   * loop: it opens a billable session against the same API the fault is in.
    */
   cooldownMs: number;
+  /**
+   * How long a fault may go untested before a resident's call is spent testing it.
+   *
+   * The synthetic test runs in the voice gateway and is the only thing that moves `probedAt`, so a
+   * `probedAt` that has stopped moving means no gateway is testing: an older revision, or one that
+   * is not running. Ringing somebody to find out is the thing this file exists to avoid, and it is
+   * still the lesser evil against a breaker that tripped once and never reopens.
+   */
+  probeStaleMs: number;
 }
+
+/** Cooldowns a fault may go untested before telephony stops assuming anything is testing it. */
+const UNTESTED_COOLDOWNS = 4;
+
+const DEFAULT_COOLDOWN_MS = 15 * 60_000;
 
 export const DEFAULT_GATEWAY_POLICY: GatewayPolicy = {
   transientFailures: 3,
-  cooldownMs: 15 * 60_000,
+  cooldownMs: DEFAULT_COOLDOWN_MS,
+  probeStaleMs: UNTESTED_COOLDOWNS * DEFAULT_COOLDOWN_MS,
 };
 
 /** The state a gateway nobody has had trouble with is in. */
@@ -117,14 +142,19 @@ export function recordGatewayFailure(b: GatewayBreaker, reason: string | undefin
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
     since: b.failures === 0 || !b.since ? at : b.since,
     lastFailedAt: at,
+    // A test that found the fault still there is evidence that something is testing, which is a
+    // separate question from whether it passed. Dropping it here would read, within the hour, as
+    // nobody having looked, and would put a resident's phone back on the job.
+    ...(b.probedAt ? { probedAt: b.probedAt } : {}),
     updatedAt: at,
   };
 }
 
 /**
- * A call that held a conversation. The run of failures is dropped rather than decremented: a call
- * that worked is proof the fault is over, and counting down from it would keep calls stopped after
- * the evidence for stopping them had gone.
+ * A session the Live API accepted — a call that held a conversation, or a probe it answered. The
+ * run of failures is dropped rather than decremented: one session that worked is proof the fault
+ * is over, and counting down from it would keep calls stopped after the evidence for stopping
+ * them had gone.
  */
 export function recordGatewaySuccess(b: GatewayBreaker, now: Date): GatewayBreaker {
   if (b.failures === 0 && !b.probedAt) return b;
@@ -133,7 +163,9 @@ export function recordGatewaySuccess(b: GatewayBreaker, now: Date): GatewayBreak
 
 /**
  * `working`: dial.
- * `probe`: dial, and this is the one call spent on finding out whether the fault is over.
+ * `probe`: dial, and this is the one call spent on finding out whether the fault is over. Reached
+ * only when nothing has tested the fault for `probeStaleMs`, which during an outage the voice
+ * gateway is doing every cooldown without anybody's phone.
  * `down`: do not dial. We already know how this call ends.
  */
 export type GatewayVerdict = 'working' | 'probe' | 'down';
@@ -143,18 +175,25 @@ function tripped(b: GatewayBreaker, policy: GatewayPolicy): boolean {
   return b.fault === 'systemic' || b.failures >= policy.transientFailures;
 }
 
+/**
+ * How long since anything found out how this fault behaves — a call that met it, or a session
+ * opened to see. The later of the two, so a test that also failed starts the wait again rather
+ * than letting everything through on the strength of one expired cooldown.
+ */
+function untestedMs(b: GatewayBreaker, now: Date): number {
+  const last = Math.max(Date.parse(b.lastFailedAt ?? b.updatedAt), b.probedAt ? Date.parse(b.probedAt) : 0);
+  return now.getTime() - last;
+}
+
 export function gatewayVerdict(b: GatewayBreaker | null | undefined, now: Date, policy: GatewayPolicy): GatewayVerdict {
   if (!b || !tripped(b, policy)) return 'working';
-  // Measured from the later of the two, so a probe that also failed starts the wait again rather
-  // than letting every subsequent dial through on the strength of one expired cooldown.
-  const last = Math.max(Date.parse(b.lastFailedAt ?? b.updatedAt), b.probedAt ? Date.parse(b.probedAt) : 0);
-  return now.getTime() - last >= policy.cooldownMs ? 'probe' : 'down';
+  return untestedMs(b, now) >= policy.probeStaleMs ? 'probe' : 'down';
 }
 
 /**
- * Takes the one trial call a cooldown allows, or refuses. Pure, so the caller runs it inside
- * whatever transaction its store provides; two workers that both read "the cooldown is over" would
- * otherwise both ring somebody. Same reason `reserve` is shaped this way.
+ * Takes the one trial call an untested fault allows, or refuses. Pure, so the caller runs it
+ * inside whatever transaction its store provides; two workers that both read "nothing has tested
+ * this" would otherwise both ring somebody. Same reason `reserve` is shaped this way.
  *
  * Returns the breaker to write, or null when the call must not be placed.
  */
@@ -170,6 +209,20 @@ export function claimCall(b: GatewayBreaker | null | undefined, now: Date, polic
   }
 }
 
+/**
+ * Takes the one test a cooldown allows, for a caller that can open a Live session without a phone
+ * call on the end of it. Pure for the same reason `claimCall` is: the voice gateway runs several
+ * instances, each with its own clock, and a cooldown read outside the transaction that claims it
+ * is not a cooldown.
+ *
+ * Returns the breaker to write, or null when there is nothing to find out — either the gateway is
+ * not known to be broken, or the fault has already been tested within the cooldown.
+ */
+export function claimProbe(b: GatewayBreaker | null | undefined, now: Date, policy: GatewayPolicy): GatewayBreaker | null {
+  if (!b || !tripped(b, policy) || untestedMs(b, now) < policy.cooldownMs) return null;
+  return { ...b, probedAt: now.toISOString(), updatedAt: now.toISOString() };
+}
+
 export function parseGatewayPolicy(env: Record<string, string | undefined>): GatewayPolicy {
   const raw = env.GATEWAY_COOLDOWN_SEC;
   const sec = raw === undefined || raw.trim() === '' ? DEFAULT_GATEWAY_POLICY.cooldownMs / 1000 : Number(raw);
@@ -181,5 +234,5 @@ export function parseGatewayPolicy(env: Record<string, string | undefined>): Gat
   if (!Number.isInteger(failures) || failures < 1 || failures > 20) {
     throw new Error('GATEWAY_TRANSIENT_FAILURES must be an integer between 1 and 20');
   }
-  return { transientFailures: failures, cooldownMs: sec * 1000 };
+  return { transientFailures: failures, cooldownMs: sec * 1000, probeStaleMs: sec * 1000 * UNTESTED_COOLDOWNS };
 }

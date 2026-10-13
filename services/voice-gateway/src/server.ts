@@ -7,9 +7,10 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
-import { EmergencyService } from './emergency.js';
+import { EmergencyPresence, EmergencyService } from './emergency.js';
 import { GeminiLiveConnector } from './live.js';
 import { NoResponseService } from './noResponse.js';
+import { GatewayProbe } from './probe.js';
 import type { RecordingSink } from './session.js';
 
 const config = loadConfig(process.env);
@@ -38,9 +39,13 @@ const taskQueue = (queue: string, targetBaseUrl: string) =>
     serviceAccountEmail: config.tasks.invokerServiceAccount,
   });
 
+const live = new GeminiLiveConnector(ai, config.gemini.model, config.gemini.voice, config.gemini.activityDetection);
+const emergencies = new EmergencyPresence();
+
 const app = buildApp({
   store,
-  live: new GeminiLiveConnector(ai, config.gemini.model, config.gemini.voice, config.gemini.activityDetection),
+  live,
+  emergencies,
   noResponse: new NoResponseService({
     store, appBaseUrl: config.appBaseUrl, newId: () => crypto.randomUUID(),
     ...(config.notifierBaseUrl ? { notifications: taskQueue(config.tasks.notifyQueue, config.notifierBaseUrl) } : {}),
@@ -75,8 +80,16 @@ const app = buildApp({
 
 await app.listen({ port: config.port, host: '0.0.0.0' });
 
+// Only this service can open a Live session, so only this service can say whether the conversation
+// half of a call works. It does nothing at all until the breaker is tripped, and one session per
+// cooldown after that. `--min-instances 1` is what makes a timer here reliable rather than a thing
+// that happens when traffic happens to arrive.
+const probe = new GatewayProbe({ store, live, emergencies, policy: config.gateway, log: app.log });
+probe.start();
+
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
+    probe.stop();
     void app.close().then(() => process.exit(0));
   });
 }

@@ -1,6 +1,6 @@
 import { MemoryStore, type CallRecord, type Resident } from '@hachi/store';
 import { PRIVACY_NOTICE } from '@hachi/core';
-import type { EmergencyInput, EmergencyRaiser } from '../src/emergency.js';
+import { EmergencyPresence, type EmergencyInput, type EmergencyRaiser } from '../src/emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, LiveSetup, ToolCall, ToolScheduling } from '../src/live.js';
 import { CallSession, type Logger, type RecordingSink, type SessionDeps, type TwilioSocket } from '../src/session.js';
 
@@ -169,6 +169,7 @@ export async function setup(
   await store.createCallIfAbsent(callDoc(opts.call));
   const live = new FakeLive();
   const emergency = new FakeEmergency();
+  const emergencies = new EmergencyPresence();
   const recordings = new FakeRecordings();
   const socket = new FakeSocket();
   const logged = recordingLog();
@@ -176,6 +177,7 @@ export async function setup(
     store,
     live,
     emergency,
+    emergencies,
     recordings,
     log: logged.log,
     // Far longer than any test takes, so only the tests that ask for it see the silence timer.
@@ -187,7 +189,7 @@ export async function setup(
     timing: { endFallbackMs: 150, emergencyFallbackMs: 150, liveRetryDelayMs: 1, emergencyRetryDelayMs: 1, ...opts.timing },
   };
   const session = new CallSession(deps, socket);
-  return { store, live, emergency, recordings, socket, session, deps, logged: logged.lines };
+  return { store, live, emergency, emergencies, recordings, socket, session, deps, logged: logged.lines };
 }
 
 export function startMessage(params: Record<string, string> = {}, callSid = 'CA1') {

@@ -1,4 +1,4 @@
-import { callReservationMicros, committedMicros, liveCallMicros, parseSpendSettings, recordGatewayFailure, recordGatewaySuccess, spendMonth, USD } from '@hachi/core';
+import { callReservationMicros, claimProbe, committedMicros, liveCallMicros, parseSpendSettings, recordGatewayFailure, recordGatewaySuccess, spendMonth, USD } from '@hachi/core';
 import { MemoryStore, NotFoundError } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { emergencyTransfer } from '../src/bridge.js';
@@ -210,10 +210,29 @@ describe('a Voice Gateway that is known to be broken', () => {
     expect(telephony.calls).toHaveLength(0);
   });
 
-  it('lets exactly one resident through after the cooldown to find out whether it is fixed', async () => {
+  it('keeps every phone silent while the voice gateway is testing the fault itself', async () => {
     const { deps, store, telephony, clock } = await broken();
     for (const id of ['res-2', 'res-3']) await store.createResident(resident(id));
-    clock.now = new Date(NOW.getTime() + deps.config.gateway.cooldownMs);
+    // Twenty cooldowns is five hours. The gateway tests the fault on this cadence with a session
+    // nobody is on, and none of those tests may become a phone ringing: a resident cannot tell a
+    // broken service from a real emergency callback, and before this that was thirty of them.
+    for (let n = 1; n <= 20; n++) {
+      clock.now = new Date(NOW.getTime() + n * deps.config.gateway.cooldownMs);
+      await store.mutateGatewayBreaker((b) => recordGatewayFailure(claimProbe(b, clock.now, deps.config.gateway)!, SPEND_CAP, clock.now));
+      const results = await Promise.all(
+        ['res-1', 'res-2', 'res-3'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),
+      );
+      expect(results.every((r) => r.outcome === 'skipped')).toBe(true);
+    }
+    expect(telephony.calls).toHaveLength(0);
+  });
+
+  it('lets exactly one resident through once nothing has tested the fault for an hour', async () => {
+    // The gateway that should be testing it is not: an older revision, or one that is not running.
+    // A ring an hour is a poor way to test a Live session and a better one than never reopening.
+    const { deps, store, telephony, clock } = await broken();
+    for (const id of ['res-2', 'res-3']) await store.createResident(resident(id));
+    clock.now = new Date(NOW.getTime() + deps.config.gateway.probeStaleMs);
     const results = await Promise.all(
       ['res-1', 'res-2', 'res-3'].map((residentId) => placeCall(deps, { ...INPUT, residentId }, 0)),
     );

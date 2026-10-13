@@ -427,6 +427,29 @@ describe('CallSession: emergencies', () => {
     await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.conversation?.endedBy).toBe('emergency');
   });
+
+  it('says that somebody is being reached, so the gateway probe holds off until the call is over', async () => {
+    const ctx = await started();
+    expect(ctx.emergencies.active).toBe(false);
+    ctx.gemini.h.inputTranscript('My chest hurts so much.');
+    // From the words, not from the write: the moment this process has anything better to do than
+    // open sessions of its own is the moment the resident says it, not the moment Firestore agrees.
+    expect(ctx.emergencies.active).toBe(true);
+    await vi.waitFor(() => expect(ctx.session.currentState).toBe('done'), { timeout: 2000 });
+    expect(ctx.emergencies.active).toBe(false);
+  });
+
+  it('stops saying so even when the emergency could not be recorded', async () => {
+    const ctx = await started({ timing: { emergencyAttempts: 1 } });
+    ctx.emergency.failures = 1;
+    ctx.gemini.h.inputTranscript("I can't breathe");
+    await wait(30);
+    expect(ctx.emergency.raised).toHaveLength(0);
+    expect(ctx.emergencies.active).toBe(true);
+    await ctx.session.finish('resident');
+    // A counter that only ever goes up would stop this instance probing for as long as it lives.
+    expect(ctx.emergencies.active).toBe(false);
+  });
 });
 
 describe('CallSession: reconnects', () => {
