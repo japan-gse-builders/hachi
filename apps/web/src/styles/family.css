@@ -1,0 +1,154 @@
+/*
+ * Family dashboard. Colours come from the --sev-* tokens in signals.css: each cell or tile carries a
+ * `sev-<severity>` class for its colour and a `tone-<tone>` class for its shape, so missed, no call
+ * and not yet called differ by border and symbol as well as by word.
+ */
+@layer screens {
+  .family-page { width: 100%; max-width: 1320px; margin-inline: auto; }
+  .family-page .skeleton-columns { grid-template-columns: minmax(0, 1fr); }
+
+  /* ---------- Layout ---------- */
+
+  /* One column on phones, in reading order: how she is, today, the two weeks, then the rest. From
+     960px the columns hold themselves, so neither waits on the other's height. */
+  .family-layout { display: grid; gap: var(--flow-2); min-width: 0; }
+  .family-col { display: contents; }
+  .family-latest { order: 1; }
+  .family-weeks { order: 2; }
+  .family-alerts-card { order: 3; }
+  .family-care { order: 4; }
+  .family-trends-card { order: 5; }
+  .family-notes { order: 6; }
+  @container page (min-width: 960px) {
+    .family-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); align-items: start; }
+    .family-col { display: grid; gap: var(--flow-2); align-content: start; min-width: 0; }
+    .family-page .skeleton-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); }
+  }
+
+  /* ---------- How she is ---------- */
+
+  .family-status { display: grid; gap: var(--space-3); border-inline-start: 6px solid var(--sev-fill); }
+  .family-status:is(.sev-none, .sev-system) { border-inline-start: 6px var(--sev-line-style) var(--sev-line); }
+  .family-name { margin: 0; font-size: var(--heading-section); color: var(--ink-muted); }
+  .family-status-grid { display: grid; gap: var(--space-4) var(--space-6); }
+  @container card (min-width: 720px) {
+    .family-status-grid { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+    .family-status-side { justify-items: end; }
+    .family-facts { justify-content: flex-end; }
+  }
+  .family-state { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+  .family-state-mark {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    border: 2px var(--sev-line-style) var(--sev-line);
+    border-radius: 999px;
+    background: var(--sev-fill);
+    color: var(--sev-on);
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .family-state-title { font-size: clamp(22px, 1cqi + 18px, 30px); font-weight: 700; line-height: 1.2; }
+  .family-state-body { font-size: var(--text-md); line-height: 1.4; }
+  .family-status-side { display: grid; gap: var(--space-3); justify-items: start; min-width: 0; }
+  .family-facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; }
+  .family-next { color: var(--ink-muted); font-size: var(--text-sm); }
+
+  /* ---------- Cells ---------- */
+
+  .family-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 100%;
+    max-inline-size: 2.5rem;
+    aspect-ratio: 1;
+    margin-inline: auto;
+    border: 1.5px var(--sev-line-style) var(--sev-line);
+    border-radius: 5px;
+    background: var(--sev-fill);
+    color: var(--sev-on);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .family-cell.tone-quiet { border-color: transparent; background: #ece7dc; color: var(--ink-muted); }
+  .family-cell.tone-nocall { border: 1.5px dashed var(--line-control); background: transparent; color: var(--ink-muted); }
+  .family-cell.tone-missed { border: 1.5px solid var(--line-control); background: repeating-linear-gradient(135deg, #e6dfd2 0 3px, var(--surface) 3px 7px); color: var(--ink); }
+  .family-cell.tone-notyet { border: 1.5px dashed var(--ink-muted); background: var(--surface); color: var(--ink-muted); }
+
+  /* ---------- Latest call ---------- */
+
+  .family-latest h2 { margin-bottom: var(--space-3); }
+  .family-areas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  @container card (min-width: 560px) { .family-areas { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+  .family-area {
+    display: grid;
+    align-content: start;
+    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-1);
+    border: 1.5px var(--sev-line-style) var(--sev-line);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--sev-fill) 14%, var(--surface));
+    text-align: center;
+  }
+  .family-area.tone-quiet { border: 1px solid var(--line); background: var(--surface); }
+  .family-area .family-cell { inline-size: 2.25rem; border-radius: var(--radius-inner); font-size: 18px; }
+  .family-area-name { font-size: var(--text-sm); font-weight: 700; }
+  .family-area-word { font-size: var(--text-xs); font-weight: 600; line-height: 1.25; }
+  .family-area.tone-quiet :is(.family-area-name, .family-area-word) { color: var(--ink-muted); font-weight: 400; }
+  .family-area.tone-quiet .family-area-name { font-weight: 600; }
+
+  /* ---------- Two weeks ---------- */
+
+  .family-weeks { display: grid; gap: var(--space-3); }
+  .family-weeks h2 { margin: 0; }
+  .family-grid { inline-size: 100%; max-inline-size: 44rem; table-layout: fixed; border-collapse: separate; border-spacing: 3px 0; }
+  /* Every day column is the same width, so both weeks line up on a phone. The "Today" tab sits above
+     its column and may be wider than it, which the caption's bottom padding makes room for. */
+  .family-grid caption { padding-bottom: 22px; color: var(--ink-muted); font-size: var(--text-xs); text-align: start; }
+  .family-grid col.family-grid-label { width: 4rem; }
+  .family-grid :is(th, td) { padding: 2px 0; }
+  .family-grid thead th { padding-block: 0 4px; color: var(--ink-muted); font-size: 12px; font-weight: 600; text-align: center; vertical-align: bottom; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
+  .family-grid th[scope="row"] { padding-inline-end: var(--space-1); overflow: hidden; color: var(--ink); font-size: var(--text-xs); font-weight: 700; text-align: start; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+  .family-grid .is-today { border-inline: 2px solid var(--ink); background: var(--surface-sunken); }
+  .family-grid thead .is-today { position: relative; padding-block: 3px; border-block-start: 2px solid var(--ink); color: var(--ink); font-weight: 800; }
+  .family-today-tab { position: absolute; inset-block-end: 100%; inset-inline-end: -2px; padding: 1px 6px; border-radius: 6px 6px 0 0; background: var(--ink); color: #fff; font-size: 12px; font-weight: 800; line-height: 1.4; white-space: nowrap; }
+  .family-grid .is-today.is-end { border-block-end: 2px solid var(--ink); border-end-start-radius: var(--radius-inner); border-end-end-radius: var(--radius-inner); }
+  .family-grid .family-gap { position: relative; }
+  .family-cell.is-tall { position: absolute; inset: 2px 0; aspect-ratio: auto; font-size: 16px; }
+  .family-grid-split { display: grid; gap: var(--space-3); }
+  @container card (min-width: 470px) { .family-grid-split { display: none; } }
+  @container card (max-width: 469.98px) { .family-grid-wide { display: none; } }
+  .family-today-note { font-weight: 600; }
+
+  .family-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; color: var(--ink-muted); font-size: var(--text-xs); list-style: none; }
+  .family-legend li { display: flex; align-items: center; gap: 6px; }
+  .family-legend .family-cell { inline-size: 1.25rem; margin: 0; font-size: 11px; }
+
+  /* ---------- What keeps coming up ---------- */
+
+  .family-trends { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+  .family-trends li { display: grid; gap: var(--space-1); }
+  @container card (min-width: 600px) { .family-trends li { grid-template-columns: 13em 1fr; align-items: center; gap: var(--space-3); } }
+  .family-trend-name { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+  .family-trend-name .family-cell { flex: none; inline-size: 1.4rem; margin: 0; }
+  .family-trend-detail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
+  .family-bars { display: flex; gap: 3px; }
+  .family-bars span { inline-size: 18px; block-size: 10px; border-radius: 2px; background: #ece7dc; }
+  .family-bars.good .on { background: var(--sev-good-edge); }
+  .family-bars.concern .on { background: var(--sev-today-edge); }
+  .family-trends .is-muted .family-trend-name { color: var(--ink-muted); font-weight: 400; }
+  .family-trends .is-muted .family-bars .on { opacity: 0.55; }
+  .family-turn { margin-inline-end: 4px; color: var(--sev-line); font-weight: 800; }
+
+  /* ---------- Alerts ---------- */
+
+  .family-alerts { display: grid; margin: 0; padding: 0; list-style: none; }
+  .family-alerts li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding-block: var(--space-2); border-top: 1px solid var(--line); }
+  .family-alerts li:first-child { padding-top: 0; border-top: 0; }
+}

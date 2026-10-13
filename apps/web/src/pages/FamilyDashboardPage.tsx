@@ -6,6 +6,7 @@ import { AlertsCard } from '../components/AlertsCard';
 import { ContactRequests } from '../components/ContactRequests';
 import { FamilyDashboardView } from '../components/FamilyDashboardView';
 import { LoadError, Loading } from '../components/States';
+import '../styles/family.css';
 import { useDocumentTitle } from '../title';
 import type { FamilyDashboard } from '../types';
 
@@ -23,22 +24,22 @@ export function FamilyDashboardPage() {
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load'));
   }, [id, token, attempt]);
 
-  if (error) {
-    return (
-      <div className="stack page narrow centered">
-        <LoadError message={error} onRetry={() => { setError(''); setAttempt((n) => n + 1); }} />
-      </div>
-    );
-  }
-  if (!data) return <div className="page narrow centered"><Loading layout="narrow" label="Loading daily calls…" /></div>;
+  const body = error ? (
+    <LoadError message={error} onRetry={() => { setError(''); setAttempt((n) => n + 1); }} />
+  ) : data ? (
+    <FamilyDashboardView data={data} now={new Date()} />
+  ) : (
+    <Loading layout="detail" label="Loading daily calls…" />
+  );
 
+  // Phone-call requests load alongside the dashboard and sit below it, so neither pushes the other down.
   return (
-    <div className="stack page narrow centered">
+    <div className="stack page family-page">
+      {body}
       <ContactRequests />
-      <FamilyDashboardView data={data} now={new Date()} />
-      {data.receivesAlerts === false
+      {data && (data.receivesAlerts === false
         ? <p className="meta">Urgent alerts go to the family contact the care team has on record. You can see them here.</p>
-        : <AlertsCard />}
+        : <AlertsCard />)}
     </div>
   );
 }
