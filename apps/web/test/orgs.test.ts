@@ -63,7 +63,7 @@ describe('the activity log, in words', () => {
 
   it('describes each kind of change', () => {
     expect(describeAudit(entry('member.role_changed', { from: 'member', to: 'admin' }))).toBe('Changed Sato from Member to Admin');
-    expect(describeAudit(entry('member.removed', { residentsUnassigned: 2 }))).toBe('Removed Sato; 2 resident(s) now unassigned');
+    expect(describeAudit(entry('member.removed', { residentsUnassigned: 2 }))).toBe('Removed Sato; 2 patient(s) now unassigned');
     expect(describeAudit(entry('member.removed', { residentsUnassigned: 0 }))).toBe('Removed Sato');
     expect(describeAudit(entry('invitation.created', { role: 'admin' }, 'kato@example.org'))).toBe('Invited kato@example.org as admin');
     expect(describeAudit(entry('organization.updated', { fields: 'name,timeZone' }))).toBe('Changed organization settings (name, timeZone)');

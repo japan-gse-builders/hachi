@@ -114,7 +114,7 @@ function CaseSaid({ detail, now }: { detail: CaseDetail; now: Date }) {
       <h2 id="said-heading">What was said</h2>
       {silences.map((d, i) => (
         <p key={`no-response-${i}`} className="case-silence">
-          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no resident quote.
+          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no patient quote.
         </p>
       ))}
       {evidence.map((e, i) => {

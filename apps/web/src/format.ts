@@ -12,7 +12,7 @@ export function urgencyTone(urgency: string): string {
 /** preferredName is how Hachi greets the resident (it can be "there"), so it is not a label. */
 export function speakerLabel(speaker: 'resident' | 'agent', residentName: string): string {
   if (speaker === 'agent') return 'Hachi';
-  return residentName.trim() || 'Resident';
+  return residentName.trim() || 'Patient';
 }
 
 export function formatWhen(iso: string): string {

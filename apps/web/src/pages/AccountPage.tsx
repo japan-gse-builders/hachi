@@ -72,7 +72,7 @@ function ProfileCard({ name: initial }: { name: string }) {
         Display name
         <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} autoComplete="name" />
       </label>
-      <p className="meta">Shown on the team list, beside residents you are responsible for, and in the activity log.</p>
+      <p className="meta">Shown on the team list, beside patients you are responsible for, and in the activity log.</p>
       <div className="form-actions">
         <button type="submit" disabled={busy || !name.trim() || name.trim() === initial}>{busy ? 'Saving…' : 'Save name'}</button>
       </div>
@@ -206,7 +206,7 @@ function OrganizationsCard({ memberships, uid }: { memberships: MembershipSummar
               </div>
               {leaving === m.orgId && (
                 <div className="stack confirm notice">
-                  <p>Leave {m.orgName}? Residents you are responsible for there become unassigned, and you will need a new invitation to come back.</p>
+                  <p>Leave {m.orgName}? Patients you are responsible for there become unassigned, and you will need a new invitation to come back.</p>
                   <div className="row">
                     <button type="button" disabled={busy} onClick={() => void leave(m.orgId)}>{busy ? 'Leaving…' : `Leave ${m.orgName}`}</button>
                     <button type="button" className="ghost" disabled={busy} onClick={() => setLeaving(null)}>Cancel</button>

@@ -111,7 +111,7 @@ function GeneralSettings({ org, onSaved }: { org: OrganizationView; onSaved: () 
           </select>
         </label>
       </div>
-      <p className="meta">The time zone is the default for new residents; residents already registered keep their own.</p>
+      <p className="meta">The time zone is the default for new patients; patients already registered keep their own.</p>
       <div className="form-actions">
         <button type="submit" disabled={busy || !changed || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button>
       </div>
@@ -150,7 +150,7 @@ function PlanCard({ org, onSaved }: { org: Required<OrganizationView>; onSaved: 
       <dl className="usage">
         <div><dt>Plan</dt><dd>{PLAN_LABEL[org.billing.plan]}</dd></div>
         <div><dt>Verification</dt><dd>{org.verified ? 'Verified' : 'Not yet verified'}</dd></div>
-        <div><dt>Residents</dt><dd>{org.usage.residents} of {limits.residents}</dd></div>
+        <div><dt>Patients</dt><dd>{org.usage.residents} of {limits.residents}</dd></div>
         <div><dt>Staff, with invitations</dt><dd>{org.usage.members} of {limits.members}</dd></div>
       </dl>
       <p className="meta">

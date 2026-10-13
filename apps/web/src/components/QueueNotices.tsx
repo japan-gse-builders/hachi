@@ -22,7 +22,7 @@ export function QueueCounts({ queue }: { queue: Queue }) {
         ))}
         {queue.summary && (
           <div className="queue-count queue-count-residents hide-below-sm">
-            <dt>Residents registered</dt>
+            <dt>Patients registered</dt>
             <dd>{queue.summary.residents}</dd>
           </div>
         )}
@@ -39,10 +39,10 @@ export function QueueUnreached({ unreached, now }: { unreached: { items: Unreach
   return (
     <section className={`card queue-notice queue-stripe sev-${worstSeverity(levels.map((l) => l.severity))}`} aria-labelledby="unreached-heading">
       <h2 id="unreached-heading" className="queue-notice-title">
-        Nobody has been reached <span className="queue-count-pill">{items.length}<span className="sr-only"> {items.length === 1 ? 'resident' : 'residents'}</span></span>
+        Nobody has been reached <span className="queue-count-pill">{items.length}<span className="sr-only"> {items.length === 1 ? 'patient' : 'patients'}</span></span>
       </h2>
       {unreached.note && <p className="meta">{unreached.note}</p>}
-      <ul className="queue-unreached" aria-label="Residents nobody has spoken to">
+      <ul className="queue-unreached" aria-label="Patients nobody has spoken to">
         {items.map((u, i) => (
           <li key={`${u.residentId}-${u.localDate}`} className={levels[i]!.severity === 'emergency' ? 'is-escalated' : undefined}>
             <p className="queue-unreached-who">

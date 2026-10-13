@@ -12,7 +12,7 @@ export function ResidentFields({ resident }: { resident?: Resident }) {
   return (
     <>
       <fieldset>
-        <legend>Resident</legend>
+        <legend>Patient</legend>
         <div className="field-grid">
           <label>Full name<input name="name" required maxLength={100} defaultValue={resident?.name} /></label>
           <label>Name Hachi should use<input name="preferredName" required maxLength={50} defaultValue={resident?.preferredName} /></label>

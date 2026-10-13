@@ -130,7 +130,7 @@ export function residentChips(
   }
   if (reach) chips.push({ key: 'reach', ...reachLevel(reach, now) });
   if (unchecked) chips.push({ key: 'checked', ...checkedLevel(unchecked) });
-  if (!hasCallConsent(r.callConsent)) chips.push({ key: 'approval', severity: 'system', word: 'Approval needed', detail: 'Daily calls wait until the resident agrees.' });
+  if (!hasCallConsent(r.callConsent)) chips.push({ key: 'approval', severity: 'system', word: 'Approval needed', detail: 'Daily calls wait until the patient agrees.' });
   if (!r.active) chips.push({ key: 'paused', severity: 'none', word: 'Calls paused', detail: 'No daily calls until they are resumed.' });
   return chips;
 }

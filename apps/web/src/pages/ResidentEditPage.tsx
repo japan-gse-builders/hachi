@@ -27,14 +27,14 @@ export function ResidentEditPage() {
       .then((t) => api<Resident>(`/api/residents/${encodeURIComponent(id)}`, t))
       .then(setResident)
       .catch((err: unknown) => setLoadError(err instanceof ApiError && err.status === 404
-        ? 'This resident is not registered, or the link is out of date.'
-        : err instanceof Error ? err.message : 'Could not load this resident'));
+        ? 'This patient is not registered, or the link is out of date.'
+        : err instanceof Error ? err.message : 'Could not load this patient'));
   }, [id, token, attempt]);
 
   const detailLink = `/staff/residents/${encodeURIComponent(id)}`;
   const back = (
     <p className="back-link">
-      <Link to={detailLink}><span aria-hidden="true">← </span>Back to {resident?.name ?? 'the resident'}</Link>
+      <Link to={detailLink}><span aria-hidden="true">← </span>Back to {resident?.name ?? 'the patient'}</Link>
     </p>
   );
 
@@ -55,7 +55,7 @@ export function ResidentEditPage() {
   };
 
   if (loadError) return <div className="stack page narrow">{back}<LoadError message={loadError} onRetry={() => setAttempt((n) => n + 1)} /></div>;
-  if (!resident) return <div className="stack page narrow">{back}<Loading layout="detail" label="Loading resident…" /></div>;
+  if (!resident) return <div className="stack page narrow">{back}<Loading layout="detail" label="Loading patient…" /></div>;
 
   const ownership = ownershipOf(resident, user?.uid);
   if (ownership !== 'mine') {

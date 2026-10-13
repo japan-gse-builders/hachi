@@ -113,7 +113,7 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
             <h3>The instruments' own results</h3>
             <p className="meta">
               The same answers read the other way round: what each published instrument makes of its own items, on its own cutoff. This is
-              the frame the resident's own doctor is likely to recognise.
+              the frame the patient's own doctor is likely to recognise.
             </p>
             {screening.instruments.map((i) => (
               <p key={i.instrument}>

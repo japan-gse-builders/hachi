@@ -133,7 +133,7 @@ export function QueuePage() {
                     <p id="urgency-explanation" className="meta">{selectedLevel?.meaning ?? selectedLevel?.action ?? 'All urgency levels, in priority order.'}</p>
                   </fieldset>
                   <div className="queue-search">
-                    <label>Search by resident or case summary
+                    <label>Search by patient or case summary
                       <input type="search" value={filters.query} maxLength={200} autoComplete="off" spellCheck={false} onChange={(event) => changeFilter('q', event.target.value)} />
                     </label>
                     <div className="row">

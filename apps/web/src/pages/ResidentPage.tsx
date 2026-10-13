@@ -9,7 +9,7 @@ import { PRIVACY_NOTICE } from '../privacy';
 import { useDocumentTitle } from '../title';
 
 export function ResidentPage() {
-  useDocumentTitle('Add a resident');
+  useDocumentTitle('Add a patient');
   const { token } = useAuth();
   const { current } = useAccount();
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ export function ResidentPage() {
       await api('/api/residents', await token(), { method: 'POST', body: JSON.stringify(body) });
       void navigate('/staff/residents', { state: { added: body.name } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save this resident');
+      setError(err instanceof Error ? err.message : 'Could not save this patient');
       // Everything typed stays in the form; only the message is new, so that is where focus goes.
       requestAnimationFrame(() => errorRef.current?.focus());
     } finally {
@@ -41,16 +41,16 @@ export function ResidentPage() {
 
   return (
     <div className="stack page narrow">
-      <p className="back-link"><Link to="/staff/residents"><span aria-hidden="true">← </span>Back to residents</Link></p>
+      <p className="back-link"><Link to="/staff/residents"><span aria-hidden="true">← </span>Back to patients</Link></p>
       {/* These are the resident's details, not the signed-in staff member's, so the browser should not fill them. */}
       <form className="card stack resident-form" autoComplete="off" onSubmit={(e) => void submit(e)}>
-        <h1>Add a resident</h1>
+        <h1>Add a patient</h1>
         <p className="meta">Fields marked optional can be left empty. Phone numbers include the country code, such as +81 90 1234 5678.</p>
         <ResidentFields />
         <CallConsentField />
         {error && <p ref={errorRef} className="error" role="alert" tabIndex={-1}>{error}</p>}
         <div className="row form-actions">
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save resident'}</button>
+          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save patient'}</button>
         </div>
       </form>
     </div>

@@ -81,8 +81,8 @@ export const ROLE_LABEL: Record<OrgRole, string> = { owner: 'Owner', admin: 'Adm
 
 export const ROLE_MEANING: Record<OrgRole, string> = {
   owner: 'Everything an admin can do, plus managing owners and billing.',
-  admin: 'Invites and manages staff, reassigns residents, sees the activity log.',
-  member: 'Works with residents and the queue.',
+  admin: 'Invites and manages staff, reassigns patients, sees the activity log.',
+  member: 'Works with patients and the queue.',
 };
 
 /** Memberships the account can act for right now. */
@@ -134,9 +134,9 @@ export function describeAudit(e: AuditEntry): string {
     case 'member.enabled':
       return `Turned access back on for ${who}`;
     case 'member.removed':
-      return `Removed ${who}${d.residentsUnassigned ? `; ${d.residentsUnassigned} resident(s) now unassigned` : ''}`;
+      return `Removed ${who}${d.residentsUnassigned ? `; ${d.residentsUnassigned} patient(s) now unassigned` : ''}`;
     case 'member.left':
-      return `Left the organization${d.residentsUnassigned ? `; ${d.residentsUnassigned} resident(s) now unassigned` : ''}`;
+      return `Left the organization${d.residentsUnassigned ? `; ${d.residentsUnassigned} patient(s) now unassigned` : ''}`;
     case 'member.sessions_revoked':
       return 'Signed out on every device';
     case 'invitation.created':

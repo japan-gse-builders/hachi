@@ -26,7 +26,7 @@ export function ResidentDetailPage() {
   const [resident, setResident] = useState<Resident | null>(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  useDocumentTitle(resident ? resident.name : 'Resident');
+  useDocumentTitle(resident ? resident.name : 'Patient');
 
   useEffect(() => {
     setLoadError('');
@@ -34,17 +34,17 @@ export function ResidentDetailPage() {
       .then((t) => api<Resident>(`/api/residents/${encodeURIComponent(id)}`, t))
       .then(setResident)
       .catch((err: unknown) => setLoadError(err instanceof ApiError && err.status === 404
-        ? 'This resident is not registered, or the link is out of date.'
-        : err instanceof Error ? err.message : 'Could not load this resident'));
+        ? 'This patient is not registered, or the link is out of date.'
+        : err instanceof Error ? err.message : 'Could not load this patient'));
   }, [id, token, attempt]);
 
   const back = (
     <p className="back-link">
-      <Link to="/staff/residents"><span aria-hidden="true">← </span>Back to residents</Link>
+      <Link to="/staff/residents"><span aria-hidden="true">← </span>Back to patients</Link>
     </p>
   );
   if (loadError) return <div className="stack page">{back}<LoadError message={loadError} onRetry={() => setAttempt((n) => n + 1)} /></div>;
-  if (!resident) return <div className="stack page">{back}<Loading layout="detail" label="Loading resident…" /></div>;
+  if (!resident) return <div className="stack page">{back}<Loading layout="detail" label="Loading patient…" /></div>;
 
   return (
     <div className="stack page">
@@ -84,7 +84,7 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
       </div>
       <dl className="person-context">
         <div>
-          <dt>Resident</dt>
+          <dt>Patient</dt>
           <dd>{[resident.name, resident.preferredName && `called “${resident.preferredName}”`, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</dd>
         </div>
         {v && (
