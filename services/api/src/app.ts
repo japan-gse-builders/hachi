@@ -70,7 +70,7 @@ import {
   buildFamilyDashboard,
   buildIncompleteAnalyses,
   buildQueue,
-  buildSpendView,
+  buildSpendNotice,
   buildUnreached,
   callProgressView,
   FAMILY_WINDOW_DAYS,
@@ -635,25 +635,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   /**
-   * This month's AI spend. Staff see it because when calls stop going out they are the ones who
-   * will be asked why, and "the budget is used up" is an answer they can act on.
+   * Whether the AI budget has stopped check-in calls, and null while it has not. Staff are told
+   * because when calls stop going out they are the ones who will be asked why.
    */
   app.get('/api/spend', async (req) => {
-    const staff = await requireStaff(req);
+    await requireStaff(req);
     if (!deps.spend) return null;
     const month = spendMonth(now());
     const ledger = (await store.getSpendLedger(month)) ?? emptyLedger(month, now().toISOString());
-    const view = buildSpendView(ledger, deps.spend.policy, localeOf(req));
-    if (staff.org.billing.plan === 'internal') return view;
-    // The budget is the whole deployment's, so a customer sees only whether it has stopped their calls.
-    if (!view.paused) return null;
-    return {
-      month: view.month,
-      paused: true,
-      note: localeOf(req) === 'ja'
-        ? '今月は新しい見守り通話を止めています。緊急時の連絡は止まりません。'
-        : 'New check-in calls have stopped for this month. Emergency contact is unaffected.',
-    };
+    return buildSpendNotice(ledger, deps.spend.policy, localeOf(req));
   });
 
   app.get<{ Params: { id: string } }>('/api/cases/:id', async (req) => {

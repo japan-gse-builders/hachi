@@ -10,7 +10,7 @@ import { SignalsLegend } from '../components/Signals';
 import { LoadError, Loading } from '../components/States';
 import { SEVERITY, urgencySeverity } from '../signals';
 import { useDocumentTitle } from '../title';
-import type { Queue, Spend } from '../types';
+import type { Queue, SpendNotice } from '../types';
 import '../styles/queue.css';
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -34,7 +34,7 @@ export function QueuePage() {
     setParams(next);
   };
   const [queue, setQueue] = useState<Queue | null>(null);
-  const [spend, setSpend] = useState<Spend | null>(null);
+  const [spend, setSpend] = useState<SpendNotice | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const filtered = Boolean(filters.urgency || filters.query.trim() || filters.includeClosed);
@@ -45,7 +45,7 @@ export function QueuePage() {
     const load = async () => {
       try {
         const t = await token();
-        const [data, money] = await Promise.all([api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t), api<Spend | null>('/api/spend?locale=en', t)]);
+        const [data, money] = await Promise.all([api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t), api<SpendNotice | null>('/api/spend?locale=en', t)]);
         if (!stop) {
           setQueue(data);
           setSpend(money);
@@ -87,11 +87,7 @@ export function QueuePage() {
       {error && <LoadError message={error} onRetry={retry} />}
       {queue === null && !error && <Loading layout="queue" label="Loading the queue…" />}
       {/* Staff are the ones who get asked why nobody was called today, so they can see the answer. */}
-      {spend?.paused && (
-        <p className="card card-emergency">
-          <strong>Check-in calls have stopped.</strong> {spend.note}
-        </p>
-      )}
+      {spend?.paused && <p className="card card-emergency"><strong>{spend.note}</strong></p>}
       {(queue || error) && (
         <div className="queue-layout">
           {queue && <QueueCounts queue={queue} />}
@@ -157,7 +153,7 @@ export function QueuePage() {
                   <p><button type="button" className="ghost" onClick={clearFilters}>Show all open cases</button></p>
                 </div>
               )}
-              {visible.length > 0 && <QueueLanes lanes={queueLanes(visible)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
+              {visible.length > 0 && <QueueLanes lanes={queueLanes(visible, queue.items)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
             </section>
           )}
           {/* Below the cases, or beside them on a wide screen: it loads after the queue and would push the cases down. */}
@@ -165,11 +161,6 @@ export function QueuePage() {
             <ContactRequests />
           </div>
         </div>
-      )}
-      {spend && !spend.paused && (
-        <p className="meta">
-          {spend.note} {spend.inFlight !== '$0.00' && `${spend.inFlight} is held by calls in progress.`}
-        </p>
       )}
     </div>
   );

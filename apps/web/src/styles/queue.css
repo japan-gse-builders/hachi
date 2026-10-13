@@ -180,6 +180,11 @@
   .queue-notified-mark { margin-inline-end: 3px; color: var(--sev-good); font-weight: 800; }
   .queue-notified .is-failed { color: var(--danger-ink); font-weight: 700; }
   .queue-notified .is-failed .queue-notified-mark { color: var(--danger); }
+  .queue-case-also { position: relative; z-index: 2; display: grid; gap: 2px; margin-block-start: var(--space-1); padding-block-start: var(--space-1); border-block-start: 1px dashed var(--line); }
+  .queue-case-also > .meta { margin: 0; font-size: var(--text-xs); }
+  .queue-case-also ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .queue-case-also li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); font-size: var(--text-sm); }
+  .queue-case-also a { font-weight: 600; }
   .queue-case.is-closed { background: var(--surface-sunken); }
   .queue-case.is-closed .queue-case-summary { font-weight: 400; }
 

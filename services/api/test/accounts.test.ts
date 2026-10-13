@@ -670,17 +670,20 @@ describe('the activity log', () => {
   });
 });
 
-describe('what a customer organization sees of the AI budget', () => {
-  it('says only whether calls have stopped, never the deployment’s figures', async () => {
+describe('what an organization sees of the AI budget', () => {
+  it('is the same on every plan: only whether calls have stopped, never the deployment’s figures', async () => {
     const { charge, parseSpendSettings, spendMonth, USD } = await import('@hachi/core');
     const spend = parseSpendSettings({ AI_MONTHLY_CAP_USD: '10' });
     const { app, as, store } = setup({ spend });
     await store.updateOrganization('org-2', (o) => ({ ...o, billing: { ...o.billing, plan: 'trial' } }));
-    expect((await app.inject({ method: 'GET', url: '/api/spend', ...as('outsider') })).body).toBe('null');
+    expect((await store.getOrganization('org-1'))?.billing.plan).toBe('internal');
+    for (const who of ['outsider', 'staff'] as const) {
+      expect((await app.inject({ method: 'GET', url: '/api/spend', ...as(who) })).body).toBe('null');
+    }
     await store.mutateSpendLedger(spendMonth(NOW), (l) => charge(l, 10 * USD, NOW));
-    const paused = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('outsider') })).json();
-    expect(paused).toEqual({ month: spendMonth(NOW), paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
-    // Our own organization still sees the figures.
-    expect((await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') })).json().cap).toBe('$10.00');
+    for (const who of ['outsider', 'staff'] as const) {
+      const paused = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as(who) })).json();
+      expect(paused).toEqual({ month: spendMonth(NOW), paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
+    }
   });
 });

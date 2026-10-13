@@ -122,6 +122,10 @@ async function makeApi() {
   // Nobody responsible yet, as residents registered before ownership existed can be.
   const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', ORG, now, demoStaff);
   await store.createResident({...pendingResident, synthetic: true});
+  // Margaret has a second open case under another rule, so the queue shows her once with both.
+  const meals = (await store.listCasesByResident('res-1'))[0];
+  await store.putCase({...meals, id: 'case-1-speech', rule: 'R3', autoUrgency: 'watch', notifications: [],
+    detections: [{...meals.detections[0], rule: 'R3', urgency: 'watch', summary: 'Pausing more than usual between words.'}]});
   const original = (await store.listCasesByResident('res-2'))[0];
   await store.putCase({...original, id: 'closed-case', status: 'closed', detections: [{...original.detections[0], summary: 'Earlier speech concern, now resolved.'}], outcome: {anomalyConfirmed: true, note: 'Spoke with her son; she is sleeping better now.'}});
   return buildApp({store, verifier, signer: {sign: async () => {throw new Error('No recordings in the local preview');}}});

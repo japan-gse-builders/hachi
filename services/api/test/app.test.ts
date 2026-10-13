@@ -257,18 +257,19 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(items[0]).toMatchObject({ status: 'open', statusLabel: 'Not started' });
   });
 
-  it('tells staff where the month stands, and says so plainly when calls have stopped', async () => {
+  it('tells staff nothing about the budget until it stops their calls, and then says so plainly', async () => {
     const spend = parseSpendSettings({ AI_MONTHLY_CAP_USD: '100' });
     const { app, as, store } = setup({ spend });
     const month = spendMonth(NOW);
+    await store.mutateSpendLedger(month, (l) => charge(l, 50 * USD, NOW));
     const quiet = await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') });
-    expect(quiet.json()).toMatchObject({ month, paused: false, cap: '$100.00', committed: '$0.00', usedPercent: 0 });
+    expect(quiet.statusCode).toBe(200);
+    expect(quiet.body).toBe('null');
 
-    await store.mutateSpendLedger(month, (l) => charge(l, 95 * USD, NOW));
+    await store.mutateSpendLedger(month, (l) => charge(l, 45 * USD, NOW));
     const used = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') })).json();
-    expect(used).toMatchObject({ paused: true, usedPercent: 95, remaining: '$0.00' });
-    // The sentence has to say that an emergency still gets through, or staff will assume it does not.
-    expect(used.note).toContain('Emergency contact is unaffected');
+    // No figures: not the cap, not what was spent, not how far along the month is.
+    expect(used).toEqual({ month, paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
     const ja = (await app.inject({ method: 'GET', url: '/api/spend', ...as('staff') })).json();
     expect(ja.note).toContain('緊急時の連絡は止まりません');
   });
@@ -361,6 +362,24 @@ describe('triage queue and cases (QUE-01..03)', () => {
       { id: 'mood.lonely', label: 'Lonely', domain: 'mood', polarity: 'concern', audience: 'family_with_consent', turn: 7, basis: 'inferred', confidence: 0.8, quote: null },
     ]);
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').wellbeing).toBeNull();
+  });
+
+  it('names the resident’s other open cases on a case, so handling one does not hide another', async () => {
+    const { app, as, store } = await seeded();
+    await store.putCase(storedCase({ id: 'meals', residentId: 'res-1', rule: 'R2' }));
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency?locale=en', ...as('staff') })).json();
+    expect(d.otherOpenCases).toEqual([{
+      id: 'meals',
+      ruleName: expect.any(String),
+      urgency: 'watch',
+      urgencyLabel: expect.any(String),
+      urgencyMeaning: expect.any(String),
+      summary: 'Barely ate yesterday',
+      statusLabel: 'Not started',
+      firstDetectedAt: '2026-10-01T01:05:00.000Z',
+    }]);
+    expect((await app.inject({ method: 'GET', url: '/api/cases/meals', ...as('staff') })).json().otherOpenCases.map((o: { id: string }) => o.id)).toEqual(['emergency']);
+    expect((await app.inject({ method: 'GET', url: '/api/cases/watch', ...as('staff') })).json().otherOpenCases).toEqual([]);
   });
 
   it('shows details for closed cases and returns 404 for unknown ones', async () => {

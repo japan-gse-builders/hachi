@@ -28,6 +28,11 @@
   .case-head-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-4); }
   .case-head-action > * { margin: 0; }
   .case-head-action .call-now p { margin: 0; }
+
+  .case-others-title { margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; }
+  .case-others-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .case-others-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+  .case-others-list a { font-weight: 600; }
   /* A confirmation or a call in progress needs room to be read. */
   .case-head-action:has(.confirm, [role="status"], .error) { flex-basis: 100%; justify-content: flex-start; }
   .case-head-action .call-now { max-width: 420px; }

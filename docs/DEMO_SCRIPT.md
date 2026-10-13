@@ -1,6 +1,6 @@
 # デモ動画の台本（3 分以内）
 
-Google Cloud AI Builder Cup 2026 提出用。本番環境 <https://hachicall-nao.web.app> をそのまま画面収録する。
+Google Cloud AI Builder Cup 2026 提出用。本番環境 <https://hachicall.web.app> をそのまま画面収録する。
 
 ナレーションは英語（製品も README も英語、利用者も英語話者）。合計 **405 語 / 約 2 分 54 秒**（3 分まで 6 秒の余裕）。読み上げ速度は 1 分あたり 150 語を想定。語数は引用（`>`）のナレーションだけを空白区切りで数えた値で、「long-term」のようなハイフン語は 1 語、「—」は数えない。
 
@@ -105,8 +105,8 @@ Edith Carter のカードの札、1 行の理由、9 つの指標のバーを見
 
 ## 7. 仕組み（2:19–2:35 / 40 語）
 
-**画面**：`architecture.png`。サービス名を順に軽くハイライト。最後の一文で待ち行列の最下部にある
-「… of AI spend this month, …% of the … cap.」の 1 行に切り替える。
+**画面**：`architecture.png`。サービス名を順に軽くハイライト。最後の一文で `docs/COST_CONTROL.md` の
+「3. 二つの上限の順序」の表に切り替える。職員の画面には、上限に達するまで費用の表示はない。
 
 > Twilio streams the call through Cloud Run to the Gemini Live API. Afterwards, Gemini reviews the
 > transcript with structured output, and speech measures come from the recording itself. A monthly

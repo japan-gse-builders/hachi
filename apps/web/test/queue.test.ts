@@ -53,17 +53,37 @@ const resident = (o: Partial<Resident> = {}) => ({ id: 'r', name: 'R', preferred
 describe('urgency lanes', () => {
   it('groups by urgency, most urgent first, keeping the order within a lane and closed cases last', () => {
     const lanes = queueLanes([
-      item({ caseId: 'w1' }),
-      item({ caseId: 'x', status: 'closed', urgency: 'emergency' }),
-      item({ caseId: 'e', urgency: 'emergency' }),
-      item({ caseId: 'w2' }),
-      item({ caseId: 'odd', urgency: 'later' }),
+      item({ caseId: 'w1', residentId: 'r1' }),
+      item({ caseId: 'x', residentId: 'r2', status: 'closed', urgency: 'emergency' }),
+      item({ caseId: 'e', residentId: 'r3', urgency: 'emergency' }),
+      item({ caseId: 'w2', residentId: 'r4' }),
+      item({ caseId: 'odd', residentId: 'r5', urgency: 'later' }),
     ]);
     expect(lanes.map((l) => [l.key, l.severity, l.items.map((i) => i.caseId)])).toEqual([
       ['emergency', 'emergency', ['e']],
       ['watch', 'monitor', ['w1', 'w2']],
       ['later', 'none', ['odd']],
       ['closed', 'good', ['x']],
+    ]);
+  });
+  it('shows a patient with several open cases once, in the lane of the most urgent, listing the rest', () => {
+    const all = [
+      item({ caseId: 'e', residentId: 'thomas', urgency: 'emergency' }),
+      item({ caseId: 'w-other', residentId: 'grace' }),
+      item({ caseId: 'w', residentId: 'thomas' }),
+      item({ caseId: 'w2', residentId: 'thomas' }),
+      item({ caseId: 'done', residentId: 'thomas', status: 'closed' }),
+    ];
+    const lanes = queueLanes(all);
+    expect(lanes.map((l) => [l.key, l.items.map((i) => [i.caseId, i.alsoOpen.map((o) => o.caseId)])])).toEqual([
+      ['emergency', [['e', ['w', 'w2']]]],
+      ['watch', [['w-other', []]]],
+      ['closed', [['done', []]]],
+    ]);
+    // Filtered to Monitor, Thomas's first case there carries the card, and the emergency is still named on it.
+    const watchOnly = queueLanes(all.filter((i) => i.urgency === 'watch' && i.status !== 'closed'), all);
+    expect(watchOnly.map((l) => l.items.map((i) => [i.caseId, i.alsoOpen.map((o) => o.caseId)]))).toEqual([
+      [['w-other', []], ['w', ['e', 'w2']]],
     ]);
   });
   it('counts open cases at all four levels, zeros included', () => {

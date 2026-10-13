@@ -36,18 +36,35 @@ export function avatarDetails(id: string, name: string): { initials: string; col
   return { initials, color: hash % 4 };
 }
 
-/** `null` urgency is the closed lane, which comes last whatever the urgency its cases had. */
-export interface QueueLane { key: string; urgency: string | null; severity: Severity; items: QueueItem[] }
+/** A card on the queue: one patient's most urgent shown case, with their other open cases. */
+export type QueueCard = QueueItem & { alsoOpen: QueueItem[] };
 
-/** One lane per urgency, most urgent first, each keeping the core's order; empty lanes are left out. */
-export function queueLanes(items: QueueItem[]): QueueLane[] {
+/** `null` urgency is the closed lane, which comes last whatever the urgency its cases had. */
+export interface QueueLane { key: string; urgency: string | null; severity: Severity; items: QueueCard[] }
+
+/**
+ * One lane per urgency, most urgent first, each keeping the core's order; empty lanes are left out.
+ * Staff ring a person, not a rule, so a patient with several open cases is one card, in the lane of
+ * the most urgent of them that `items` shows. `all`, the unfiltered queue, says what else is open.
+ */
+export function queueLanes(items: QueueItem[], all: QueueItem[] = items): QueueLane[] {
   const open = items.filter((i) => i.status !== 'closed');
+  const allOpen = all.filter((i) => i.status !== 'closed');
   const urgencies = [...new Set([...URGENCIES, ...open.map((i) => i.urgency)])];
+  const placed = new Set<string>();
   const lanes: QueueLane[] = urgencies
-    .map((urgency) => ({ key: urgency, urgency, severity: urgencySeverity(urgency), items: open.filter((i) => i.urgency === urgency) }))
+    .map((urgency) => {
+      const cards: QueueCard[] = [];
+      for (const i of open) {
+        if (i.urgency !== urgency || placed.has(i.residentId)) continue;
+        placed.add(i.residentId);
+        cards.push({ ...i, alsoOpen: allOpen.filter((o) => o.residentId === i.residentId && o.caseId !== i.caseId) });
+      }
+      return { key: urgency, urgency, severity: urgencySeverity(urgency), items: cards };
+    })
     .filter((l) => l.items.length > 0);
   const closed = items.filter((i) => i.status === 'closed');
-  if (closed.length) lanes.push({ key: 'closed', urgency: null, severity: 'good', items: closed });
+  if (closed.length) lanes.push({ key: 'closed', urgency: null, severity: 'good', items: closed.map((i) => ({ ...i, alsoOpen: [] })) });
   return lanes;
 }
 

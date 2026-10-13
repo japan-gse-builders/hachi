@@ -4,7 +4,7 @@ import {
   buildBaseline,
   CASE_STATUS_LABELS,
   CASE_STATUSES,
-  formatUsd,
+  compareUrgency,
   spendStatus,
   STAFF_REQUEST_HOLD_MS,
   type SpendLedger,
@@ -420,6 +420,20 @@ export async function buildCaseDetail(
       notifications: c.notifications,
       outcome: c.outcome ?? null,
     },
+    // Staff ring the person, not the rule: whoever handles this case should see what else is open for them.
+    otherOpenCases: open
+      .filter((x) => x.id !== c.id)
+      .sort((a, b) => compareUrgency(effectiveUrgency(b), effectiveUrgency(a)) || a.firstDetectedAt.localeCompare(b.firstDetectedAt))
+      .map((x) => ({
+        id: x.id,
+        ruleName: RULE_NAMES[locale][x.rule],
+        urgency: effectiveUrgency(x),
+        urgencyLabel: URGENCY_LABELS[locale][effectiveUrgency(x)],
+        urgencyMeaning: URGENCY_MEANINGS[locale][effectiveUrgency(x)],
+        summary: x.detections.at(-1)?.summary ?? '',
+        statusLabel: CASE_STATUS_LABELS[locale][x.status],
+        firstDetectedAt: x.firstDetectedAt,
+      })),
     resident: {
       id: r.id,
       name: r.name,
@@ -642,28 +656,19 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
 }
 
 /**
- * This month's AI spend, as a sentence rather than a row of numbers. Staff are not accountants:
- * what they need to know is whether calls are still going out, and if not, why not.
+ * What staff need to know about the AI budget: nothing, until it stops their calls. The figures are
+ * the operator's (Firestore `spend/{month}`, Cloud Billing); staff can do nothing with them, and the
+ * budget is the whole deployment's, so no organization sees another's spending in it.
  */
-export function buildSpendView(ledger: SpendLedger, policy: SpendPolicy, locale: Locale) {
+export function buildSpendNotice(ledger: SpendLedger, policy: SpendPolicy, locale: Locale) {
   const s = spendStatus(ledger, policy);
-  const pct = Math.round(s.usedFraction * 100);
-  const note = s.paused
-    ? locale === 'ja'
-      ? `今月の AI 予算（${formatUsd(s.capMicros)}）を使い切ったため、新しい見守り通話を止めています。緊急時の連絡は止まりません。`
-      : `This month's AI budget (${formatUsd(s.capMicros)}) is used up, so new check-in calls have stopped. Emergency contact is unaffected.`
-    : locale === 'ja'
-      ? `今月の AI 費用は ${formatUsd(s.committedMicros)}（上限 ${formatUsd(s.capMicros)} の ${pct}%）。通話は通常どおり。`
-      : `${formatUsd(s.committedMicros)} of AI spend this month, ${pct}% of the ${formatUsd(s.capMicros)} cap. Calls are going out as usual.`;
+  if (!s.paused) return null;
   return {
     month: s.month,
-    paused: s.paused,
-    usedPercent: pct,
-    cap: formatUsd(s.capMicros),
-    committed: formatUsd(s.committedMicros),
-    // Reserved money belongs to calls happening right now, which is why it is not yet "spent".
-    inFlight: formatUsd(s.reservedMicros),
-    remaining: formatUsd(s.availableMicros),
-    note,
+    paused: true as const,
+    // It has to say that an emergency still gets through, or staff will assume it does not.
+    note: locale === 'ja'
+      ? '今月は新しい見守り通話を止めています。緊急時の連絡は止まりません。'
+      : 'New check-in calls have stopped for this month. Emergency contact is unaffected.',
   };
 }

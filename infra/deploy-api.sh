@@ -17,10 +17,12 @@ BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
 INVOKER_SA="hachi-tasks@${PROJECT_ID}.iam.gserviceaccount.com"
 CALL_QUEUE=outbound-calls
 STAFF_CALL_COOLDOWN_MIN="${STAFF_CALL_COOLDOWN_MIN:-10}"
-WEB_ORIGINS="${WEB_ORIGINS:-http://localhost:5173,https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com}"
 
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
+source infra/lib.sh
+# The project's default site only redirects to the web app now, so the app never runs there.
+WEB_ORIGINS="${WEB_ORIGINS:-http://localhost:5173,$(web_origin)}"
 
 echo "==> Service account"
 gcloud iam service-accounts describe "$RUNTIME_SA" >/dev/null 2>&1 \

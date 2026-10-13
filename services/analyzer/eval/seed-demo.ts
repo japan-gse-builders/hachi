@@ -57,7 +57,7 @@ const demoNames = JSON.parse(await readFile(join(import.meta.dirname, 'demo-name
 const project = process.env.GOOGLE_CLOUD_PROJECT?.trim() || 'hachicall-nao';
 const bucket = process.env.RECORDINGS_BUCKET?.trim();
 const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-const appBaseUrl = process.env.APP_BASE_URL?.trim() || 'https://hachicall-nao.web.app';
+const appBaseUrl = process.env.APP_BASE_URL?.trim() || 'https://hachicall.web.app';
 if (!bucket) throw new Error('Set RECORDINGS_BUCKET to the recordings bucket');
 const seed = Number(args.seed);
 const DAY = 86_400_000;

@@ -106,15 +106,10 @@ export interface Queue {
   incomplete?: IncompleteAnalyses;
 }
 
-/** This month's AI spend. Null when the API was started without a budget configured. */
-export interface Spend {
+/** Sent only while the AI budget has stopped check-in calls; null otherwise. */
+export interface SpendNotice {
   month: string;
-  paused: boolean;
-  usedPercent: number;
-  cap: string;
-  committed: string;
-  inFlight: string;
-  remaining: string;
+  paused: true;
   note: string;
 }
 
@@ -200,6 +195,17 @@ export interface CaseDetail {
     notifications: (NotificationItem & { address: string })[];
     outcome: { anomalyConfirmed: boolean; note?: string } | null;
   };
+  /** The patient's other open cases, most urgent first. Missing from servers older than it. */
+  otherOpenCases?: {
+    id: string;
+    ruleName: string;
+    urgency: string;
+    urgencyLabel: string;
+    urgencyMeaning: string;
+    summary: string;
+    statusLabel: string;
+    firstDetectedAt: string;
+  }[];
   resident: {
     id: string;
     name: string;
