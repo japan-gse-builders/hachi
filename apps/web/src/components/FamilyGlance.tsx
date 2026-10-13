@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   cellState,
   dayLabel,
@@ -65,12 +66,13 @@ export function Legend() {
 }
 
 /** Rows are areas of life, columns are days; a dashed cell is a day without a call that connected. */
-export function TwoWeekGrid({ days, shareMood = false }: { days: FamilyGlance['days']; shareMood?: boolean }) {
+export function TwoWeekGrid({ days, shareMood = false, legend }: { days: FamilyGlance['days']; shareMood?: boolean; legend?: ReactNode }) {
   const first = days[0];
   const last = days.at(-1);
   return (
     <section className="card stack">
       <h2>The last two weeks at a glance</h2>
+      {legend}
       <div className="table-scroll glance-scroll" role="region" aria-label="Two-week call history" tabIndex={0}>
         <table className="glance-grid">
           <caption className="meta">

@@ -15,15 +15,17 @@ const { buildApp } = await import(pathToFileURL(join(root, 'services/api/dist/ap
 const { buildResident } = await import(pathToFileURL(join(root, 'services/api/dist/residents.js')));
 const { residentInputSchema } = await import(pathToFileURL(join(root, 'services/api/dist/schemas.js')));
 
-fixtures.queue.items.push({caseId: 'case-5', residentId: 'res-5', residentName: 'Edith (demo)', rule: 'R1', urgency: 'emergency', summary: 'Asked for immediate help during the call.'});
+fixtures.queue.items.push({caseId: 'case-5', residentId: 'res-5', residentName: 'Edith Carter', rule: 'R1', urgency: 'emergency', summary: 'Asked for immediate help during the call.'});
 
 const verifier = {
   async verify(token) {
-    if (token === 'demo-staff') return {uid: 'demo-staff', role: 'staff'};
+    if (token === 'demo-staff') return {uid: 'demo-staff', role: 'staff', email: 'demo@example.invalid', emailVerified: true, name: 'Aiko Tanaka'};
     if (token === 'demo-family') return {uid: 'demo-family', email: 'family@example.invalid', emailVerified: true};
     throw new Error('Unknown local preview account');
   },
 };
+
+const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka'};
 
 async function makeApi() {
   const store = new MemoryStore();
@@ -32,18 +34,20 @@ async function makeApi() {
   for (let i = 0; i < fixtures.queue.items.length; i++) {
     const item = fixtures.queue.items[i];
     const input = residentInputSchema.parse({
-      name: item.residentName.replace('(synthetic)', '(demo)'),
+      name: item.residentName,
       preferredName: item.residentName.split(' ')[0],
       phone: '+81900000000' + (i + 1),
       callTime: '10:00', timeZone: 'Asia/Tokyo',
-      vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis (fictional)'] : []},
-      householdNotes: 'Fictional resident for local testing.',
-      staff: {name: 'Demo care team', phone: '+81300000000', email: 'staff@example.invalid'},
-      family: {name: 'Demo family member', relationship: 'Daughter', email: 'family@example.invalid'},
+      vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
+      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas at weekends.' : 'A neighbour looks in most days.',
+      staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
+      family: {name: 'Sarah ' + item.residentName.split(' ').at(-1), relationship: 'Daughter', email: 'family@example.invalid'},
       serviceStartedAt: new Date(now.getTime() - 35 * 86400_000).toISOString(),
       callConsent: {accepted: true, noticeVersion: PRIVACY_NOTICE.version},
     });
-    const resident = {...buildResident(input, item.residentId, now, 'demo-staff'), synthetic: true};
+    // One resident belongs to a colleague, so the read-only view can be tried too.
+    const owner = i === 2 ? {uid: 'demo-colleague', email: 'colleague@example.invalid', name: 'Yuki Sato'} : demoStaff;
+    const resident = {...buildResident(input, item.residentId, now, owner), synthetic: true};
     await store.createResident(resident);
     const calls = Array.from({length: 14}, (_, day) => {
       const startedAt = new Date(Date.parse(at) - day * 86400_000).toISOString();
@@ -79,14 +83,16 @@ async function makeApi() {
     });
   }
   const pending = residentInputSchema.parse({
-    name: 'Claire (demo — approval needed)', preferredName: 'Claire', phone: '+819000000006',
+    name: 'Claire Watanabe', preferredName: 'Claire', phone: '+819000000006',
     callTime: '10:00', timeZone: 'Asia/Tokyo',
     vulnerability: {livesAlone: false, hasCloseSupporter: true, needsCare: false, chronicConditions: []},
-    staff: {name: 'Demo care team', phone: '+81300000000', email: 'staff@example.invalid'},
+    staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
   });
-  await store.createResident({...buildResident(pending, 'pending-1', now, 'demo-staff'), synthetic: true});
+  // Nobody responsible yet, as residents registered before ownership existed can be.
+  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', now, demoStaff);
+  await store.createResident({...pendingResident, synthetic: true});
   const original = (await store.listCasesByResident('res-2'))[0];
-  await store.putCase({...original, id: 'closed-case', status: 'closed', detections: [{...original.detections[0], summary: 'Earlier speech concern, now resolved.'}], outcome: {anomalyConfirmed: true, note: 'Fictional resolved case'}});
+  await store.putCase({...original, id: 'closed-case', status: 'closed', detections: [{...original.detections[0], summary: 'Earlier speech concern, now resolved.'}], outcome: {anomalyConfirmed: true, note: 'Spoke with her son; she is sleeping better now.'}});
   return buildApp({store, verifier, signer: {sign: async () => {throw new Error('No recordings in the local preview');}}});
 }
 
@@ -100,7 +106,7 @@ export const AuthProvider = ({children}) => children;
 const noop = async () => {};
 const token = async () => location.pathname.startsWith('/family') ? 'demo-family' : 'demo-staff';
 export const useAuth = () => ({
- user: location.pathname === '/privacy' ? null : {email: 'demo@example.invalid', emailVerified: true},
+ user: location.pathname === '/privacy' ? null : {uid: location.pathname.startsWith('/family') ? 'demo-family' : 'demo-staff', email: 'demo@example.invalid', emailVerified: true},
  role: location.pathname.startsWith('/family') ? 'family' : 'staff', ready: true, token,
  signOut: async () => {location.href = '/privacy';}, confirmEmail: noop, signIn: noop,
  signInWithGoogle: noop, sendPasswordReset: noop, sendSignInLink: noop, finishSignInLink: noop,

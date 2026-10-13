@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Link, Navigate, useLocation } from 'react-router';
 import { useAuth } from '../auth';
+import { sectionOf } from '../signin';
+import { Loading } from '../components/States';
+import { useDocumentTitle } from '../title';
 
 export function FamilyFinishPage() {
+  useDocumentTitle('Finish signing in');
   const { user, isSignInLink, storedLinkEmail, finishSignInLink } = useAuth();
+  const section = sectionOf(useLocation().pathname) ?? 'family';
   const href = window.location.href;
   const valid = isSignInLink(href);
   const [email, setEmail] = useState(storedLinkEmail() ?? '');
@@ -33,17 +38,17 @@ export function FamilyFinishPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to={`/${section}`} replace />;
   if (!valid) {
     return (
-      <section className="card stack narrow">
+      <section className="card stack narrow centered">
         <h1>This link does not work</h1>
-        <p><Link to="/family/login">Ask for a new sign-in link</Link>.</p>
+        <p><Link to={`/${section}/login`}>Ask for a new sign-in link</Link>.</p>
       </section>
     );
   }
 
-  if (busy && storedLinkEmail()) return <p>Signing you in…</p>;
+  if (busy && storedLinkEmail()) return <div className="narrow centered"><Loading label="Signing you in…" /></div>;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -51,13 +56,13 @@ export function FamilyFinishPage() {
   };
 
   return (
-    <form className="card stack narrow" onSubmit={submit}>
+    <form className="card stack narrow centered" onSubmit={submit}>
       <h1>Confirm your email</h1>
       <p className="meta">You opened the link on a different device. Enter the same email address to finish signing in.</p>
-      {error && <p className="error">{error}</p>}
-      <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+      {error && <p className="error" role="alert">{error}</p>}
+      <label>Email<input type="email" autoComplete="email" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      {error && <p><Link to="/family/login">Ask for a new sign-in link</Link></p>}
+      {error && <p><Link to={`/${section}/login`}>Ask for a new sign-in link</Link></p>}
     </form>
   );
 }

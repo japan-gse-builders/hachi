@@ -294,6 +294,8 @@ export interface FamilyDashboard {
     caseStatusLabel: string;
   }[];
   staff: { name: string; phone: string; email: string | null };
+  /** False for a relative who may view but is not the family contact. Missing on older servers. */
+  receivesAlerts?: boolean;
 }
 
 export interface Resident {
@@ -309,4 +311,23 @@ export interface Resident {
   callConsent?: import('./privacy').CallConsent;
   /** The call holding this resident's line, if any; stale once `until` has passed (issue #13). */
   callSlot?: { callId: string; at: string; until: string };
+  /** The family contact, who gets the alerts. */
+  family?: { name: string; relationship?: string; sms?: string; email?: string };
+  /** The staff member who may change this resident and their family access. Missing means nobody yet. */
+  owner?: ResidentOwner;
+  /** Family accounts, besides the contact, that can open the family dashboard. Missing on older servers. */
+  familyAccess?: FamilyAccess[];
+}
+
+export interface ResidentOwner {
+  uid: string;
+  email?: string;
+  name?: string;
+  since: string;
+}
+
+export interface FamilyAccess {
+  email: string;
+  addedAt: string;
+  addedBy: string;
 }

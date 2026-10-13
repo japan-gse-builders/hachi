@@ -40,7 +40,7 @@ if gcloud iam service-accounts describe "$INVOKER_SA" >/dev/null 2>&1; then
   gcloud iam service-accounts add-iam-policy-binding "$INVOKER_SA" \
     --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountUser >/dev/null
   PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format 'value(projectNumber)')"
-  TELEPHONY_ENV="@TELEPHONY_BASE_URL=https://hachi-telephony-${PROJECT_NUMBER}.${REGION}.run.app@TASKS_LOCATION=${REGION}@CALL_QUEUE=${CALL_QUEUE}@TASKS_INVOKER_SA=${INVOKER_SA}@STAFF_CALL_COOLDOWN_MIN=${STAFF_CALL_COOLDOWN_MIN}"
+  TELEPHONY_ENV=";TELEPHONY_BASE_URL=https://hachi-telephony-${PROJECT_NUMBER}.${REGION}.run.app;TASKS_LOCATION=${REGION};CALL_QUEUE=${CALL_QUEUE};TASKS_INVOKER_SA=${INVOKER_SA};STAFF_CALL_COOLDOWN_MIN=${STAFF_CALL_COOLDOWN_MIN}"
 else
   echo "Note: ${INVOKER_SA} does not exist yet; run deploy-telephony.sh first to enable \"Call now\"." >&2
 fi
@@ -55,10 +55,11 @@ else
 fi
 
 echo "==> Deploying Cloud Run"
+# The list delimiter must not occur in any value: WEB_ORIGINS has commas, TASKS_INVOKER_SA an @.
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 0 --max-instances 5 --cpu 1 --memory 512Mi \
   --timeout 60 \
-  --set-env-vars "^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@RECORDINGS_BUCKET=${RECORDINGS_BUCKET}@WEB_ORIGINS=${WEB_ORIGINS}${TELEPHONY_ENV}"
+  --set-env-vars "^;^GOOGLE_CLOUD_PROJECT=${PROJECT_ID};RECORDINGS_BUCKET=${RECORDINGS_BUCKET};WEB_ORIGINS=${WEB_ORIGINS}${TELEPHONY_ENV}"
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 echo "==> Health check"

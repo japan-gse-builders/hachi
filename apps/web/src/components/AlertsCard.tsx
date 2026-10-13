@@ -44,7 +44,7 @@ export function AlertsCard() {
   return (
     <section className="card stack">
       <h2>Alerts on this phone</h2>
-      {state === 'on' && <p>Alerts are on. Hachi will also text or email you if something urgent happens.</p>}
+      {state === 'on' && <p className="notice-success" role="status">Alerts are on. Hachi will also text or email you if something urgent happens.</p>}
       {state === 'ready' && (
         <>
           <p>Get an alert on this phone as soon as Hachi notices something urgent.</p>
@@ -59,7 +59,7 @@ export function AlertsCard() {
       {install && !isStandalone() && (
         <button type="button" className="ghost" onClick={() => void install.prompt().then(() => setInstall(null))}>Add Hachi to the home screen</button>
       )}
-      {message && <p className="error">{message}</p>}
+      {message && <p className="error" role="alert">{message}</p>}
     </section>
   );
 }

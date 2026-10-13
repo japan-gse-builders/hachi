@@ -42,6 +42,25 @@ export interface ResidentConsent {
   recordedBy: string;
 }
 
+/** The staff account responsible for a resident: the only one who may change their record. */
+export interface ResidentOwner {
+  uid: string;
+  /** Copied from the account when it took the resident on, so others can see who to ask. */
+  email?: string;
+  name?: string;
+  since: string;
+}
+
+/**
+ * A family account allowed to open the resident's dashboard, by the email it signs in with.
+ * Viewing only: alerts still go to `family`, the one contact the resident named for them.
+ */
+export interface FamilyAccess {
+  email: string;
+  addedAt: string;
+  addedBy: string;
+}
+
 export interface Resident {
   id: string;
   name: string;
@@ -59,7 +78,13 @@ export interface Resident {
   consent?: ResidentConsent;
   /** Initial approval for AI calls, including family mood/loneliness updates for new approvals. */
   callConsent?: CallConsent;
-  /** Normalized family phone/email used to authorize dashboard access (FAM-01). */
+  /** Absent until a staff account takes the resident on. */
+  owner?: ResidentOwner;
+  familyAccess?: FamilyAccess[];
+  /**
+   * Normalized family phone/email used to authorize dashboard access (FAM-01): the `family`
+   * contact plus every `familyAccess` email. Derived, never written on its own.
+   */
   familyLookup: string[];
   serviceStartedAt: string;
   /** New enrollment saved before approval; anchor its baseline/rotation when approval arrives. */

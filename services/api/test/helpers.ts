@@ -11,6 +11,9 @@ export const NOW = new Date('2026-10-01T03:00:00.000Z'); // 12:00 JST
 
 export const TOKENS: Record<string, VerifiedToken> = {
   staff: { uid: 'staff-1', role: 'staff', email: 'staff@example.org', emailVerified: true },
+  otherStaff: { uid: 'staff-2', role: 'staff', email: 'sato@example.org', emailVerified: true, name: 'Sato' },
+  relative: { uid: 'fam-3', email: 'bob@example.org', emailVerified: true },
+  unverifiedRelative: { uid: 'fam-4', email: 'bob@example.org', emailVerified: false },
   familyPhone: { uid: 'fam-1', phoneNumber: '+819000000002' },
   familyEmail: { uid: 'fam-2', email: 'Alice@Example.org', emailVerified: true },
   unverifiedEmail: { uid: 'x-1', email: 'alice@example.org', emailVerified: false },
@@ -47,7 +50,7 @@ export function makeResident(id: string, overrides: Record<string, unknown> = {}
   return buildResident(residentInputSchema.parse(residentInput({
     callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version },
     ...overrides,
-  })) as ResidentInput, id, NOW, 'staff-1');
+  })) as ResidentInput, id, NOW, { uid: 'staff-1', email: 'staff@example.org' });
 }
 
 export function detection(overrides: Partial<Detection> = {}): Detection {

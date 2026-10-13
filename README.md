@@ -123,9 +123,10 @@ Urgency levels:
   drop such messages from overseas senders) and fits one segment. Family messages never quote the
   transcript. Logs carry IDs rather than transcripts or addresses; idempotency keys store a hash of
   the address.
-- **Synthetic data is labelled.** Evaluation and demo residents are generated with Cloud
-  Text-to-Speech, named "(synthetic demo)", stored with `synthetic: true`, have no contact details and
-  are never called.
+- **Synthetic data is marked.** Evaluation and demo residents are generated with Cloud
+  Text-to-Speech, stored with `synthetic: true`, have no contact details and are never called. Demo
+  residents have made-up names; evaluation reports say on their first line that everything is
+  synthetic.
 - **Secrets live in Secret Manager**, mounted into Cloud Run at deploy time. Nothing secret is in the
   repository; `.env.example` lists non-secret settings only.
 - **Safety rules in the voice prompt:** no diagnoses or medical advice, never "wait and see" in an
@@ -283,5 +284,3 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 The web UI uses self-hosted **DM Serif Display** for headings, with the existing Avenir Next / Segoe UI
 body stack. The font is licensed separately under the
 [SIL Open Font License 1.1](apps/web/public/fonts/DMSerifDisplay-OFL.txt).
-See [Web typography](docs/TYPOGRAPHY.md) for the heading scale, font-loading behavior, contrast
-measurements and matched before/after screenshots.

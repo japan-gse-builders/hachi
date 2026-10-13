@@ -14,6 +14,7 @@ export function ContactRequests() {
   const [requests, setRequests] = useState<ContactRequest[]>([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [done, setDone] = useState('');
 
   const load = useCallback(async () => {
     const data = await api<{ requests: ContactRequest[] }>('/api/contact-requests', await token());
@@ -26,10 +27,12 @@ export function ContactRequests() {
   }, [load]);
 
   const decide = async (id: string, decision: 'approve' | 'reject') => {
-    setBusy(id);
+    setBusy(`${id}/${decision}`);
     setError('');
+    setDone('');
     try {
       await api(`/api/contact-requests/${id}`, await token(), { method: 'POST', body: JSON.stringify({ decision }) });
+      setDone(decision === 'approve' ? 'Decision saved: send the message.' : 'Decision saved: do not send the message.');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send that decision');
@@ -38,15 +41,17 @@ export function ContactRequests() {
     }
   };
 
-  if (!requests.length) return null;
+  // The confirmation outlives the last request, so deciding it does not make the answer vanish unread.
+  if (!requests.length) return done ? <p className="notice-success" role="status">{done}</p> : null;
 
   return (
     <div className="stack">
-      <h2>Asked for a phone call</h2>
-      {error && <p className="error">{error}</p>}
+      <h2 className="section-title">Asked for a phone call</h2>
+      {error && <p className="error" role="alert">{error}</p>}
+      {done && <p className="notice-success" role="status">{done}</p>}
       <div className="tiles tiles-compact">
         {requests.map((r) => (
-          <div key={r.id} className="card">
+          <div key={r.id} className="card stack">
             <h3>{r.residentName}</h3>
             <p>
               Asked us to text <strong>{r.requestedFor}</strong> on <strong>{r.number}</strong>.
@@ -54,12 +59,12 @@ export function ContactRequests() {
             <p className="meta">Read the number back before you agree to it. Hachi heard it over the phone.</p>
             <p className="quote">{r.body}</p>
             <p className="meta">Asked {formatWhen(r.requestedAt)}</p>
-            <div className="row">
-              <button type="button" disabled={busy === r.id} onClick={() => void decide(r.id, 'approve')}>
-                Send it
+            <div className="row tile-actions">
+              <button type="button" disabled={busy.startsWith(`${r.id}/`)} onClick={() => void decide(r.id, 'approve')}>
+                {busy === `${r.id}/approve` ? 'Saving…' : 'Send it'}
               </button>
-              <button type="button" className="ghost" disabled={busy === r.id} onClick={() => void decide(r.id, 'reject')}>
-                Do not send
+              <button type="button" className="ghost" disabled={busy.startsWith(`${r.id}/`)} onClick={() => void decide(r.id, 'reject')}>
+                {busy === `${r.id}/reject` ? 'Saving…' : 'Do not send'}
               </button>
             </div>
         </div>

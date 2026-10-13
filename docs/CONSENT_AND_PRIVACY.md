@@ -112,8 +112,8 @@ historical data.
   short memories for the next conversation, and cases.
 - **[Code]** Logs carry resident, call and outbox IDs, not transcripts or contact addresses.
   Notification idempotency keys contain a hash of the address, not the address.
-- **[Code]** Synthetic evaluation and demo residents are labelled "(synthetic demo)", stored with
-  `synthetic: true`, have no contact details and are never called.
+- **[Code]** Synthetic evaluation and demo residents are stored with `synthetic: true`, have
+  made-up names and no contact details, and are never called.
 - **[Operational]** Entering only what is needed in the free-text household notes.
 
 ## 5. Retention — [Operational]

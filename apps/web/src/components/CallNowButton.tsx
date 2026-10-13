@@ -77,7 +77,7 @@ export function CallNowButton({ residentId, name, phone, busyCallId }: { residen
         </p>
       )}
       {!underWay && confirming && (
-        <div className="stack confirm">
+        <div className="stack confirm notice">
           <p>
             Ring {name} on {phoneDisplay(phone)} now? Hachi will say the care team asked it to call. The call is recorded and checked like the daily call.
           </p>
@@ -87,7 +87,7 @@ export function CallNowButton({ residentId, name, phone, busyCallId }: { residen
           </div>
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </div>
   );
 }

@@ -18,6 +18,12 @@ export function filterQueue(items: QueueItem[], filters: QueueFilters): QueueIte
   );
 }
 
+/** Back from a case to the queue as it was left, filters included; a pasted case link gets the plain queue. */
+export function queueLink(state: unknown): string {
+  const search = (state as { queueSearch?: unknown } | null)?.queueSearch;
+  return typeof search === 'string' && search ? `/staff?${search}` : '/staff';
+}
+
 export function avatarDetails(id: string, name: string): { initials: string; color: number } {
   const words = name.replace(/\s*\([^)]*\)\s*$/u, '').trim().split(/\s+/u).filter(Boolean);
   const initials = words.length > 1

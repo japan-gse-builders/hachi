@@ -6,6 +6,7 @@ export interface VerifiedToken {
   phoneNumber?: string;
   email?: string;
   emailVerified?: boolean;
+  name?: string;
 }
 
 export interface TokenVerifier {
@@ -14,7 +15,7 @@ export interface TokenVerifier {
 }
 
 export type Principal =
-  | { kind: 'staff'; uid: string }
+  | { kind: 'staff'; uid: string; email?: string; name?: string }
   | { kind: 'family'; uid: string; contacts: string[] };
 
 export function normalizePhone(phone: string): string {
@@ -33,7 +34,9 @@ export function normalizeEmail(email: string): string {
  * which residents they can see is decided per request by matching those contacts.
  */
 export function toPrincipal(t: VerifiedToken): Principal | null {
-  if (t.role === 'staff') return { kind: 'staff', uid: t.uid };
+  if (t.role === 'staff') {
+    return { kind: 'staff', uid: t.uid, ...(t.email ? { email: normalizeEmail(t.email) } : {}), ...(t.name ? { name: t.name } : {}) };
+  }
   const contacts: string[] = [];
   if (t.phoneNumber) contacts.push(normalizePhone(t.phoneNumber));
   if (t.email && t.emailVerified) contacts.push(normalizeEmail(t.email));
@@ -51,6 +54,7 @@ export class FirebaseTokenVerifier implements TokenVerifier {
       phoneNumber: d.phone_number,
       email: d.email,
       emailVerified: d.email_verified,
+      name: typeof d.name === 'string' ? d.name : undefined,
     };
   }
 }

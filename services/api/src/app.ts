@@ -24,8 +24,31 @@ import { toPrincipal, type Principal, type TokenVerifier } from './auth.js';
 import { applyStaffUpdate } from './caseUpdate.js';
 import { decideContactRequest, NotFoundError, type Resident, type Store } from '@hachi/store';
 import { buildHeldRequests } from './contactRequests.js';
-import { addPushToken, buildImportedCalls, buildResident, patchResident } from './residents.js';
-import { callImportSchema, caseUpdateSchema, contactDecisionSchema, pushTokenSchema, queueQuerySchema, residentInputSchema, residentPatchSchema } from './schemas.js';
+import {
+  addPushToken,
+  buildImportedCalls,
+  buildResident,
+  claimResident,
+  FAMILY_ACCESS_MAX,
+  grantFamilyAccess,
+  isFamilyContact,
+  isOwner,
+  patchResident,
+  releaseResident,
+  revokeFamilyAccess,
+  type GrantOutcome,
+  type RevokeOutcome,
+} from './residents.js';
+import {
+  callImportSchema,
+  caseUpdateSchema,
+  contactDecisionSchema,
+  familyAccessSchema,
+  pushTokenSchema,
+  queueQuerySchema,
+  residentInputSchema,
+  residentPatchSchema,
+} from './schemas.js';
 import {
   analysisGaps,
   buildCaseDetail,
@@ -95,6 +118,18 @@ function requireFamily(req: FastifyRequest): Extract<Principal, { kind: 'family'
   return req.principal;
 }
 
+/**
+ * Changing a resident's record, and who in their family can read about them, is for the staff
+ * member responsible for them. Checked inside the store's transaction, so a hand-over that lands
+ * between reading and writing cannot let the previous owner through.
+ */
+function assertOwner(r: Resident, staffUid: string): void {
+  if (isOwner(r, staffUid)) return;
+  if (!r.owner) throw new HttpError(403, 'Nobody is responsible for this resident yet. Take them on first.', 'unassigned');
+  const who = r.owner.name ?? r.owner.email ?? 'another member of staff';
+  throw new HttpError(403, `Only the staff member responsible for ${r.name} (${who}) can change this.`, 'not_owner');
+}
+
 function localeOf(req: FastifyRequest): Locale {
   return (req.query as { locale?: string }).locale === 'en' ? 'en' : 'ja';
 }
@@ -113,7 +148,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       reply.header('access-control-allow-origin', origin);
       reply.header('vary', 'Origin');
       reply.header('access-control-allow-headers', 'Authorization, Content-Type');
-      reply.header('access-control-allow-methods', 'GET, POST, PATCH, OPTIONS');
+      reply.header('access-control-allow-methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     }
     if (req.method === 'OPTIONS') return reply.status(204).send();
     if (!req.url.startsWith('/api/')) return;
@@ -155,7 +190,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.post('/api/residents', async (req, reply) => {
     const staff = requireStaff(req);
     const input = parse(residentInputSchema, req.body);
-    const resident = buildResident(input, newId(), now(), staff.uid);
+    const resident = buildResident(input, newId(), now(), staff);
     await store.createResident(resident);
     return reply.status(201).send(resident);
   });
@@ -179,7 +214,88 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.patch<{ Params: { id: string } }>('/api/residents/:id', async (req) => {
     const staff = requireStaff(req);
     const patch = parse(residentPatchSchema, req.body);
-    return store.updateResident(req.params.id, (r) => patchResident(r, patch, now(), staff.uid));
+    return store.updateResident(req.params.id, (r) => {
+      assertOwner(r, staff.uid);
+      return patchResident(r, patch, now(), staff.uid);
+    });
+  });
+
+  // ---- Staff: who is responsible for a resident ----
+
+  /** Taking on a resident nobody is responsible for. One already taken has to be handed over first. */
+  app.post<{ Params: { id: string } }>('/api/residents/:id/owner', async (req) => {
+    const staff = requireStaff(req);
+    const saved = await store.updateResident(req.params.id, (r) => {
+      if (isOwner(r, staff.uid)) return r;
+      if (r.owner) {
+        const who = r.owner.name ?? r.owner.email ?? 'Another member of staff';
+        throw new HttpError(409, `${who} is already responsible for ${r.name}. Ask them to hand ${r.preferredName} over.`, 'owned_by_other');
+      }
+      return claimResident(r, staff, now());
+    });
+    req.log.info({ residentId: saved.id, by: staff.uid, action: 'resident_taken_on' }, 'resident ownership');
+    return saved;
+  });
+
+  /** Handing a resident over: they become unassigned, for the next member of staff to take on. */
+  app.delete<{ Params: { id: string } }>('/api/residents/:id/owner', async (req) => {
+    const staff = requireStaff(req);
+    const saved = await store.updateResident(req.params.id, (r) => {
+      assertOwner(r, staff.uid);
+      return releaseResident(r, now());
+    });
+    req.log.info({ residentId: saved.id, by: staff.uid, action: 'resident_handed_over' }, 'resident ownership');
+    return saved;
+  });
+
+  // ---- Staff: which family accounts can open a resident's dashboard (FAM-01) ----
+
+  const grantRefusal = (outcome: GrantOutcome): Error | null => {
+    if (outcome === 'family_contact') return new HttpError(409, 'This is the family contact’s address, which can already open the dashboard.', 'family_contact');
+    if (outcome === 'full') return new HttpError(409, `Up to ${FAMILY_ACCESS_MAX} family accounts can have access. Remove one first.`, 'access_full');
+    return null;
+  };
+  const revokeRefusal = (outcome: RevokeOutcome): Error | null => {
+    if (outcome === 'family_contact') return new HttpError(409, 'This is the family contact’s address. Change the family contact to remove it.', 'family_contact');
+    if (outcome === 'not_found') return new NotFoundError('Family access');
+    return null;
+  };
+
+  /**
+   * By email rather than by picking an account: nothing about who has signed up is shown to staff,
+   * and the address works whether its owner registers before or after. Access only ever goes to an
+   * account that has proved it holds the address (`toPrincipal` requires a verified email).
+   */
+  app.post<{ Params: { id: string } }>('/api/residents/:id/family-access', async (req, reply) => {
+    const staff = requireStaff(req);
+    const { email } = parse(familyAccessSchema, req.body);
+    let outcome: GrantOutcome = 'added';
+    const saved = await store.updateResident(req.params.id, (r) => {
+      assertOwner(r, staff.uid);
+      const result = grantFamilyAccess(r, email, staff.uid, now());
+      const refusal = grantRefusal(result.outcome);
+      if (refusal) throw refusal;
+      outcome = result.outcome;
+      return result.resident;
+    });
+    if (outcome === 'added') req.log.info({ residentId: saved.id, by: staff.uid, action: 'family_access_granted' }, 'family access');
+    return reply.status(outcome === 'added' ? 201 : 200).send({ outcome, familyAccess: saved.familyAccess ?? [] });
+  });
+
+  app.delete<{ Params: { id: string; email: string } }>('/api/residents/:id/family-access/:email', async (req) => {
+    const staff = requireStaff(req);
+    const { email } = parse(familyAccessSchema, { email: req.params.email });
+    let outcome: RevokeOutcome = 'removed';
+    const saved = await store.updateResident(req.params.id, (r) => {
+      assertOwner(r, staff.uid);
+      const result = revokeFamilyAccess(r, email, now());
+      const refusal = revokeRefusal(result.outcome);
+      if (refusal) throw refusal;
+      outcome = result.outcome;
+      return result.resident;
+    });
+    req.log.info({ residentId: saved.id, by: staff.uid, action: 'family_access_revoked' }, 'family access');
+    return { outcome, familyAccess: saved.familyAccess ?? [] };
   });
 
   app.post<{ Params: { id: string } }>('/api/residents/:id/calls/import', async (req, reply) => {
@@ -427,7 +543,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const t = now();
     const since = new Date(t.getTime() - FAMILY_WINDOW_DAYS * 86_400_000).toISOString();
     const [calls, cases] = await Promise.all([store.listCalls(r.id, { since }), store.listCasesByResident(r.id)]);
-    return buildFamilyDashboard(r, calls, cases, t, localeOf(req));
+    return { ...buildFamilyDashboard(r, calls, cases, t, localeOf(req)), receivesAlerts: isFamilyContact(r, fam.contacts) };
   });
 
   // ---- Contact requests the resident made by phone (CNV-15, NTF-05) ----
@@ -469,8 +585,10 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.post('/api/family/push-tokens', async (req, reply) => {
     const fam = requireFamily(req);
     const { token } = parse(pushTokenSchema, req.body);
-    const residents = await familyResidents(fam.contacts);
-    await Promise.all(residents.map((r) => store.updateResident(r.id, (cur) => addPushToken(cur, token))));
+    // Alerts belong to the family contact. A relative who may only view would otherwise receive
+    // them, and keep receiving them after their access was removed.
+    const residents = (await familyResidents(fam.contacts)).filter((r) => isFamilyContact(r, fam.contacts));
+    await Promise.all(residents.map((r) => store.updateResident(r.id, (cur) => (isFamilyContact(cur, fam.contacts) ? addPushToken(cur, token) : cur))));
     return reply.status(204).send();
   });
 

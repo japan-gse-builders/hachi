@@ -1,11 +1,14 @@
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../auth';
 import { SignInCard } from '../components/SignInCard';
+import { Loading } from '../components/States';
 import { signInRedirect } from '../signin';
+import { useDocumentTitle } from '../title';
 
 export function FamilyLoginPage() {
+  useDocumentTitle('Family sign in');
   const { user, role, ready } = useAuth();
-  if (!ready) return <p>Loading…</p>;
+  if (!ready) return <Loading />;
   const onward = signInRedirect('family', role);
   if (user && onward) return <Navigate to={onward} replace />;
 

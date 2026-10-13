@@ -7,17 +7,16 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
   const { staff, glance } = data;
   return (
     <>
-      {glance && <Legend />}
-      <section className="card">
+      <section className="card family-hero">
         <h1>Daily calls with {data.resident.name}</h1>
         {glance && <LatestCall latest={glance.latest} now={now} shareMood={glance.shareMood} />}
-        <p>{data.nextCallAt ? `Next call: ${formatWhen(data.nextCallAt)}` : 'Daily calls are paused.'}</p>
+        <p className="next-call">{data.nextCallAt ? `Next call: ${formatWhen(data.nextCallAt)}` : 'Daily calls are paused.'}</p>
         <p className="meta">Times are Japan time. Hachi calls once a day for a short chat.</p>
       </section>
 
       {data.alerts.length > 0 && (
-        <section className="card">
-          <h2 className="eyebrow">Alerts sent to you</h2>
+        <section className="card" aria-labelledby="family-alerts-heading">
+          <h2 id="family-alerts-heading">{data.receivesAlerts === false ? 'Alerts sent to the family contact' : 'Alerts sent to you'}</h2>
           {data.alerts.map((a) => (
             <p key={a.sentAt}>
               {formatWhen(a.sentAt)} · by {a.deliveries ? familyDeliveryList(a.deliveries) : channelList(a.channels)} ·{' '}
@@ -27,11 +26,9 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
         </section>
       )}
 
-      {glance && <TwoWeekGrid days={glance.days} shareMood={glance.shareMood} />}
-      {glance && <TagTrends trends={glance.trends} />}
-
-      <section className="card">
-        <h2 className="eyebrow">Care team</h2>
+      {/* Asking the care team is what a worried relative does next, so it comes before the history. */}
+      <section className="card" aria-labelledby="care-team-heading">
+        <h2 id="care-team-heading">Care team</h2>
         <p>{staff.name}</p>
         <div className="row">
           <a className="button" href={`tel:${staff.phone}`}>Call {phoneDisplay(staff.phone)}</a>
@@ -39,8 +36,11 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
         </div>
       </section>
 
-      <section className="card">
-        <h2 className="eyebrow">Notes from each call</h2>
+      {glance && <TwoWeekGrid days={glance.days} shareMood={glance.shareMood} legend={<Legend />} />}
+      {glance && <TagTrends trends={glance.trends} />}
+
+      <section className="card" aria-labelledby="notes-heading">
+        <h2 id="notes-heading">Notes from each call</h2>
         {data.calls.length === 0 ? (
           <p className="meta">No calls yet.</p>
         ) : (

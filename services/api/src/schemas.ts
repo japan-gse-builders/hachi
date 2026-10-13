@@ -125,6 +125,9 @@ export type CaseUpdate = z.infer<typeof caseUpdateSchema>;
 
 export const pushTokenSchema = z.object({ token: z.string().min(10).max(4096) });
 
+/** Who may open a resident's family dashboard, by the email their account signs in with. */
+export const familyAccessSchema = z.object({ email: email.pipe(z.string().max(254)) }).strict();
+
 /** The decision on a message held because the resident read the number out over the phone. */
 export const contactDecisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
 export const queueQuerySchema = z.object({ includeClosed: z.enum(['true', 'false']).optional() });

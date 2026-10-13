@@ -52,7 +52,7 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
                 {busy === key ? 'Asking…' : 'Analyse again'}
               </button>
             )}
-            {errors[key] && <p className="error">{errors[key]}</p>}
+            {errors[key] && <p className="error" role="alert">{errors[key]}</p>}
           </li>
         );
       })}
