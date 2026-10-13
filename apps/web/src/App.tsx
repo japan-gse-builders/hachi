@@ -38,7 +38,7 @@ function Shell({ children }: { children: ReactNode }) {
         )}
         {user && <button className="ghost sign-out" type="button" onClick={() => void signOut()}>Sign out</button>}
       </header>
-      <main id="main" tabIndex={-1}>{children}</main>
+      <main id="main" className="app-main" tabIndex={-1}>{children}</main>
       <footer className="footer"><Link to="/privacy">Privacy and support</Link></footer>
     </div>
   );
