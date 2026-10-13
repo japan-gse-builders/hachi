@@ -16,7 +16,7 @@ import {
   type Auth,
   type User,
 } from 'firebase/auth';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { sectionOf } from './signin';
 
@@ -129,14 +129,16 @@ export function useAuth(): Session {
   if (!sides) throw new Error('AuthProvider is missing');
   const side = sectionOf(pathname) ?? (sides.staff.user ? 'staff' : 'family');
   const { user, role } = sides[side];
+  // Pages fetch in effects keyed on `token`, so it must only change when the signed-in user does.
+  const token = useCallback(async () => {
+    if (!user) throw new Error('Sign in first');
+    return user.getIdToken();
+  }, [user]);
   return {
     user,
     role,
     ready: sides.staff.ready && sides.family.ready,
-    token: async () => {
-      if (!user) throw new Error('Sign in first');
-      return user.getIdToken();
-    },
+    token,
     signIn: async (email, password) => {
       await signInWithEmailAndPassword(requireAuth(side), email, password);
     },
