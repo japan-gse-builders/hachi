@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { openCounts, sortUnreached } from '../queue';
 import { reachLevel, SEVERITY, worstSeverity } from '../signals';
@@ -65,16 +66,29 @@ export function QueueUnreached({ unreached, now }: { unreached: { items: Unreach
   );
 }
 
-/** Calls nothing finished looking at: our side, not a finding, so blue and dashed rather than an urgency. */
+/** A 1020px window gives the page the 960px at which notices move beside the cases (queue.css). */
+const besideCases = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1020px)').matches === true;
+
+/**
+ * Calls nothing finished looking at: our side, not a finding, so blue and dashed rather than an
+ * urgency. Folded to its count on a phone, where it would come between staff and the cases.
+ */
 export function QueueUnchecked({ incomplete }: { incomplete: IncompleteAnalyses }) {
   const n = incomplete.items.length;
+  const [open] = useState(besideCases);
   return (
     <section className="card queue-notice queue-stripe sev-system" aria-labelledby="unchecked-heading">
-      <h2 id="unchecked-heading" className="queue-notice-title">
-        Not fully checked <span className="queue-count-pill">{n}<span className="sr-only"> {n === 1 ? 'call' : 'calls'}</span></span>
-      </h2>
-      {incomplete.note && <p className="meta">{incomplete.note}</p>}
-      <IncompleteAnalysisList items={incomplete.items} />
+      <details className="disclosure queue-notice-fold" open={open}>
+        <summary>
+          <h2 id="unchecked-heading" className="queue-notice-title">
+            Not fully checked <span className="queue-count-pill">{n}<span className="sr-only"> {n === 1 ? 'call' : 'calls'}</span></span>
+          </h2>
+        </summary>
+        <div className="disclosure-body stack">
+          {incomplete.note && <p className="meta">{incomplete.note}</p>}
+          <IncompleteAnalysisList items={incomplete.items} />
+        </div>
+      </details>
     </section>
   );
 }

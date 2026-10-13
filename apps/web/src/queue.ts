@@ -1,5 +1,5 @@
 import { hasCallConsent } from './privacy';
-import { checkedLevel, reachLevel, urgencySeverity, worstSeverity, type Level, type ReachInput, type Severity } from './signals';
+import { bySeverity, checkedLevel, reachLevel, urgencySeverity, type Level, type ReachInput, type Severity } from './signals';
 import type { NotificationItem, QueueItem, Resident, ResidentSignals, UnreachedResident } from './types';
 
 const URGENCIES = ['emergency', 'urgent', 'action', 'watch'];
@@ -34,12 +34,6 @@ export function avatarDetails(id: string, name: string): { initials: string; col
   let hash = 0;
   for (const char of id) hash = (Math.imul(hash, 31) + char.codePointAt(0)!) >>> 0;
   return { initials, color: hash % 4 };
-}
-
-/** Most worrying first, for `Array.prototype.sort`, which keeps equals in the order they came. */
-export function bySeverity(a: Severity, b: Severity): number {
-  if (a === b) return 0;
-  return worstSeverity([a, b]) === a ? -1 : 1;
 }
 
 /** `null` urgency is the closed lane, which comes last whatever the urgency its cases had. */

@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import '../styles/signals.css';
 import {
   buildIndicators,
@@ -51,15 +51,18 @@ function Icon({ name }: { name: IndicatorKey }) {
 }
 
 /**
- * A severity mark with a word. `label` replaces the severity's own word, which screen readers still
- * hear first; `detail` is the tooltip and is read after the label.
+ * A severity mark with a word. `label` replaces the severity's own word; `detail` is the tooltip and
+ * is read after the label. Screen readers hear `spoken` before the label, by default the severity's
+ * own word when `label` replaces it. Pass `spoken={false}` when the label is a status, a fact or
+ * already a level ("In progress", "Approval needed", "Urgent"), or a word of your own to say instead.
  */
-export function SeverityChip({ severity, label, detail }: { severity: Severity; label?: string; detail?: string }) {
+export function SeverityChip({ severity, label, detail, spoken }: { severity: Severity; label?: string; detail?: string; spoken?: string | false }) {
   const s = SEVERITY[severity];
+  const prefix = spoken === false ? '' : (spoken ?? (label && label !== s.label ? s.label : ''));
   return (
     <span className={`sev-chip sev-${severity}`} title={detail || undefined}>
       <span className="sev-mark" aria-hidden="true">{s.symbol}</span>
-      {label && label !== s.label && <span className="sr-only">{s.label}: </span>}
+      {prefix && <span className="sr-only">{prefix}: </span>}
       <span>{label ?? s.label}</span>
       {detail && <span className="sr-only"> {detail}</span>}
     </span>
@@ -89,6 +92,25 @@ function barItems(signals: ResidentSignals | undefined, now: Date, compact: bool
   const { attention, summary } = compactIndicators(all);
   const rest: BarItem[] = summary ? [{ key: 'summary', severity: 'none', text: summary.text, title: summary.text, detail: summary.detail }] : [];
   return [...attention.map(item), ...rest];
+}
+
+const EDGE = 8;
+
+/**
+ * Starts a tooltip at its indicator, shifted back inside the card and the window when it would run
+ * off the end, and no wider than the room there is. Call it once the tip is displayed.
+ */
+function placeTip(item: HTMLElement) {
+  const tip = item.querySelector<HTMLElement>('.sev-tip');
+  if (!tip || !tip.offsetWidth) return;
+  const at = item.getBoundingClientRect();
+  const card = item.closest('.card')?.getBoundingClientRect();
+  const left = Math.max(card?.left ?? 0, 0) + EDGE;
+  const right = Math.min(card?.right ?? Infinity, document.documentElement.clientWidth) - EDGE;
+  tip.style.setProperty('--tip-room', `${Math.max(right - left, 0)}px`);
+  const width = tip.offsetWidth;
+  const shift = Math.max(left - at.left, Math.min(0, right - width - at.left));
+  tip.style.setProperty('--tip-shift', `${Math.round(shift)}px`);
 }
 
 const STEP: Record<string, (i: number, last: number) => number> = {
@@ -123,6 +145,11 @@ export function IndicatorBar({
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const id = useId();
   const current = Math.min(active, items.length - 1);
+  const list = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => {
+    const item = open === null ? null : list.current?.children[open];
+    if (item instanceof HTMLElement) placeTip(item);
+  }, [open]);
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     if (e.key === 'Escape') {
@@ -137,9 +164,9 @@ export function IndicatorBar({
   };
 
   return (
-    <ul className={`sev-bar${hushed ? ' is-hushed' : ''}`} aria-label={label} onMouseLeave={() => setHushed(false)}>
+    <ul ref={list} className={`sev-bar${hushed ? ' is-hushed' : ''}`} aria-label={label} onMouseLeave={() => setHushed(false)}>
       {items.map((it, i) => (
-        <li key={it.key} className={`sev-item${open === i ? ' is-open' : ''}`}>
+        <li key={it.key} className={`sev-item${open === i ? ' is-open' : ''}`} onMouseEnter={(e) => placeTip(e.currentTarget)}>
           <button
             type="button"
             ref={(el) => {

@@ -3,7 +3,7 @@ import { callStatusLabel, minutes, topicList } from '../format';
 import { LIFE_DOMAINS, STATES, staffTagLine } from '../glance';
 import { domainLevel, SEVERITY, type Severity } from '../signals';
 import type { CaseDetail, DomainState } from '../types';
-import { CaseChip } from './CaseChip';
+import { SeverityChip } from './Signals';
 
 type Call = CaseDetail['calls'][number];
 
@@ -61,7 +61,7 @@ function CallRow({ call, now, quoted }: { call: Call; now: Date; quoted: boolean
         <span className="case-call-when">
           <strong>{callDay(call.startedAt, now)}</strong> <span className="meta">{callTime(call.startedAt)}</span>
         </span>
-        <CaseChip severity={severity} label={callStatusLabel(call.status)} />
+        <SeverityChip spoken={false} severity={severity} label={callStatusLabel(call.status)} />
         {call.wellbeing ? <CaseDomainDots domains={call.wellbeing.domains} /> : <span className="case-dots" aria-hidden="true" />}
         <span className="case-call-line">
           {quoted && <span className="case-call-flag">Quoted · </span>}

@@ -1,8 +1,9 @@
 import { channelList, familyDeliveryList, formatWhen, minutes, phoneDisplay, topicList } from '../format';
 import { familyDays, familyStatus, lastTalkedLevel, missedDays, nextCallLabel, todayCallNote } from '../glance';
 import type { FamilyDashboard } from '../types';
-import { FamilyChip, FamilyStatusCard, LatestCall, TagList, TagTrends } from './FamilyGlance';
+import { FamilyStatusCard, LatestCall, TagList, TagTrends } from './FamilyGlance';
 import { FamilyTwoWeeks } from './FamilyTwoWeeks';
+import { SeverityChip } from './Signals';
 
 /**
  * FAM-02..04: what family see, without recordings, transcripts or anything about how the resident
@@ -38,7 +39,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
                     <span>
                       {formatWhen(a.sentAt)} · by {a.deliveries ? familyDeliveryList(a.deliveries) : channelList(a.channels)}
                     </span>
-                    <FamilyChip severity={a.caseStatus === 'closed' ? 'good' : 'monitor'} label={`Care team: ${a.caseStatusLabel}`} />
+                    <SeverityChip spoken={false} severity={a.caseStatus === 'closed' ? 'good' : 'monitor'} label={`Care team: ${a.caseStatusLabel}`} />
                   </li>
                 ))}
               </ul>

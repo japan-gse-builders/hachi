@@ -17,6 +17,14 @@
   .case-nowrap { white-space: nowrap; }
   .case-chips { list-style: none; margin: 0; padding: 0; gap: var(--space-2); }
   .case-chips .sev-chip { font-size: 14px; font-weight: 600; }
+  /* On a phone four chips stack into four rows above the evidence; as one line of text they are a
+     sentence about the person, which is all they need to be there. */
+  @container card (max-width: 399px) {
+    .case-chips { gap: 0; }
+    .case-chips li:not(:last-child)::after { content: "·" / ""; margin-inline: 6px; color: var(--ink-muted); }
+    .case-chips .sev-chip { display: inline; padding: 0; border: 0; background: none; color: var(--ink-muted); }
+    .case-chips .sev-mark { display: none; }
+  }
   .case-head-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-4); }
   .case-head-action > * { margin: 0; }
   .case-head-action .call-now p { margin: 0; }
@@ -94,7 +102,10 @@
   }
   .case-priority > summary { color: var(--brand); }
 
-  .case-action-bar { justify-content: space-between; }
+  /* One row, so the bar covers as little of the page as it can. */
+  .case-action-bar { flex-wrap: nowrap; justify-content: space-between; }
+  .case-action-bar > .sev-chip { min-width: 0; }
+  .case-action-bar > .button { flex: none; padding-inline: 14px; }
 
   /* ---------- Who was told, history, about ---------- */
 
@@ -213,6 +224,3 @@
   .speech-table thead .meta { display: block; font-size: var(--text-xs); font-weight: 400; }
   .speech-table td { white-space: nowrap; }
 }
-
-/* Unlayered because signals.css is: the compact bar's last tooltip opens leftwards so it stays on screen. */
-.case-head .sev-bar > .sev-item:last-child:not(:first-child) > .sev-tip { inset-inline-start: auto; inset-inline-end: 0; }

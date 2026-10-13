@@ -183,7 +183,7 @@
 
   @media (pointer: coarse) {
     :where(.subtle, .back-link a, summary, .segmented button, .check, [role="tab"]) { min-height: var(--tap); }
-    :where(.row, .cluster, .tile-owner, .tile-actions, .page-header) > a:not(.button),
+    :where(.row, .cluster, .tile-owner, .tile-actions, .page-header, .resident-heading) > a:not(.button),
     :where(.row, .cluster, .tile-owner) > .meta > a:only-child { display: inline-flex; align-items: center; min-height: var(--tap); }
   }
   @media (hover: hover) {

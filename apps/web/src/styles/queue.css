@@ -11,20 +11,27 @@
 
   .queue-layout { display: grid; gap: var(--flow-2); grid-template-columns: minmax(0, 1fr); align-items: start; }
   .queue-requests:empty { display: none; }
-  /* From 1200px the cases keep the main column from the top; what arrives late lands beside them. */
+  /* The cases keep the main column from the top and the rest sits beside them: from 1200px always,
+     and from 960px when missed or unchecked calls would otherwise push the first case down. */
+  @container page (min-width: 960px) and (max-width: 1199px) {
+    .queue-layout:has(> .queue-notices) { grid-template-columns: minmax(0, 1fr) minmax(300px, 22rem); grid-template-rows: auto auto 1fr; grid-template-areas: "cases counts" "cases notices" "cases requests"; }
+    .queue-layout:has(> .queue-notices) > .queue-overview-panel { grid-area: counts; }
+    .queue-layout:has(> .queue-notices) > .queue-notices { grid-area: notices; }
+    .queue-layout:has(> .queue-notices) > .queue-cases { grid-area: cases; }
+    .queue-layout:has(> .queue-notices) > .queue-requests { grid-area: requests; }
+    .queue-layout:has(> .queue-notices) .queue-requests > .stack > .tiles { grid-template-columns: minmax(0, 1fr); }
+    .queue-layout:has(> .queue-notices) .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .queue-layout:has(> .queue-notices) .queue-count-residents { grid-column: 1 / -1; }
+  }
   @container page (min-width: 1200px) {
-    .queue-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 26rem);
-      grid-template-rows: auto auto 1fr;
-      grid-template-areas: "cases counts" "cases notices" "cases requests";
-    }
+    .queue-layout { grid-template-columns: minmax(0, 1fr) minmax(320px, 26rem); grid-template-rows: auto auto 1fr; grid-template-areas: "cases counts" "cases notices" "cases requests"; }
     .queue-layout > .queue-overview-panel { grid-area: counts; }
     .queue-layout > .queue-notices { grid-area: notices; }
     .queue-layout > .queue-cases { grid-area: cases; }
     .queue-layout > .queue-requests { grid-area: requests; }
-    .queue-requests > .stack > .tiles { grid-template-columns: minmax(0, 1fr); }
-    .queue-layout > .queue-overview-panel .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .queue-layout > .queue-overview-panel .queue-count-residents { grid-column: 1 / -1; }
+    .queue-layout .queue-requests > .stack > .tiles { grid-template-columns: minmax(0, 1fr); }
+    .queue-layout .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .queue-layout .queue-count-residents { grid-column: 1 / -1; }
   }
 
   /* ---------- Overview counts ---------- */
@@ -171,10 +178,12 @@
     .queue-case-state { flex-direction: column; align-items: flex-end; justify-self: end; text-align: end; }
     .queue-case-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   }
-  /* From 960px the nine indicators get a column of their own, so they line up from case to case. */
+  /* From 960px the nine indicators get a column of their own. Every column but the summary has a set
+     width, so the bars and the states line up from case to case and lane to lane. */
   @container lanes (min-width: 960px) {
+    .card.queue-case { grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) 11rem; }
     .card.queue-case.has-signals {
-      grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) var(--sev-bar-full) 11rem;
       grid-template-areas: "sev what bar when" "name what bar state";
     }
   }

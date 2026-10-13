@@ -7,8 +7,9 @@
   font-display: swap;
 }
 
-/* Later layers win whatever the specificity. Primitives and the shell are in styles/layout.css. */
-@layer reset, layout, components, screens, utilities;
+/* Later layers win whatever the specificity. Primitives and the shell are in styles/layout.css;
+   `shared` holds the widgets more than one screen draws (signals.css, loading.css). */
+@layer reset, layout, components, shared, screens, utilities;
 
 @layer reset {
   :root {
@@ -150,8 +151,6 @@
     .card-link:hover h2, .card-link:hover h3 { text-decoration: underline; text-underline-offset: 0.15em; }
   }
   .card-emergency, .card-emergency:hover { border-left: 8px solid var(--danger); }
-  /* Not a finding, so not an urgency colour: a call nobody has finished checking. */
-  .card-unchecked { border-left: 8px solid var(--warning); }
   .empty { justify-items: start; text-align: left; }
 
   .resident-heading { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-1) 0; min-width: 0; }
@@ -197,7 +196,6 @@
   /* ---------- Feedback ---------- */
 
   .badge { display: inline-block; border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: var(--text-xs); line-height: 1.4; white-space: nowrap; }
-  .emergency { background: #f8d4d0; color: #8a1c13; }
   .urgent { background: #f8e3c4; color: #8a4b08; }
   .action { background: #d9e6f8; color: #1849a0; }
   .watch { background: #ece7dc; color: #5c564c; }
@@ -225,12 +223,6 @@
   @keyframes skeleton-appear { from { visibility: hidden; } to { visibility: visible; } }
   @keyframes skeleton-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
-  /* Wellbeing at a glance: every state has a colour, a symbol and a word. Shared by family and staff. */
-  .state-good { background: #2f7a4f; color: white; }
-  .state-mixed { background: #f0c24b; color: #1c1915; }
-  .state-concern { background: #b54708; color: white; }
-  .state-unmentioned { background: #ece7dc; color: #5c564c; }
-  .state-nocall { background: transparent; color: #8a8173; border: 1px dashed #a39a8a; }
   .tag-list { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
   .tag { border-radius: 999px; padding: 2px 10px; font-size: 15px; background: #ece7dc; color: var(--ink); border: 1px solid transparent; }
   .tag.positive { background: #dcebe1; color: #1f4d3a; }
@@ -238,74 +230,27 @@
   .tag.inferred { border-style: dashed; border-color: currentColor; }
 }
 
-/*
- * Screens as they were before the redesign. Each screen's new stylesheet replaces its section here;
- * rules nobody uses any more are deleted in the final responsive pass, so do not edit them now.
- */
+/* Screen rules still shared by the redesigned pages; each screen otherwise styles itself in styles/. */
 @layer screens {
   /* ---------- Queue ---------- */
 
-  /* Case tiles: what happened first, who it is, then the smaller print, then when and who was told. */
-  .tile-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2); }
-  .tile-top h2 { margin: 0; }
-  .case-tile > span { display: block; }
-  .case-tile > .tile-top, .case-tile > .resident-heading { display: flex; }
-  .case-tile > .tile-context { display: grid; gap: 2px; padding-top: var(--space-2); border-top: 1px solid var(--line); }
-  .tiles > .case-tile > .tile-foot { display: grid; gap: 2px; margin-top: auto; padding-top: var(--space-3); }
-
-  /* Queue controls select cases while preserving the core's priority order. */
-  .queue-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--flow-2); margin: 0; }
-  .queue-overview > div { min-width: 0; background: var(--surface); border: 1px solid rgba(28, 25, 21, 0.06); border-radius: var(--radius-card); padding: var(--space-4) var(--card-pad); box-shadow: var(--shadow-card); overflow-wrap: anywhere; }
-  .queue-overview > div:first-child { border-top: 4px solid var(--brand); }
-  .queue-overview dt { font-weight: 700; font-size: var(--text-sm); color: var(--ink-muted); }
-  .queue-overview dd { margin: var(--space-1) 0 0; }
-  .overview-count { display: block; font-size: var(--text-display); font-weight: 700; line-height: 1.1; color: var(--brand); font-variant-numeric: tabular-nums; }
-  .queue-overview p { font-size: 15px; margin: var(--space-1) 0 0; color: var(--ink-muted); }
-  /* Three boxes side by side squeeze their sentences into columns of a few words; rows read better. */
-  @container page (max-width: 719px) {
-    .queue-overview { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
-    .queue-overview > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--space-3); padding: var(--space-3) var(--space-4); }
-    .queue-overview dd { display: contents; }
-    .overview-count { font-size: 32px; order: -1; }
-    .queue-overview dt { flex: 1; }
-    .queue-overview p { flex-basis: 100%; }
-    .queue-controls .check { align-items: flex-start; }
-  }
-  .queue-controls { display: grid; gap: var(--flow-2); }
-  @container page (min-width: 960px) { .queue-controls { grid-template-columns: auto minmax(320px, 1fr); align-items: start; gap: var(--space-6); } }
-  .queue-controls fieldset { gap: var(--space-2); }
   .segmented { gap: var(--space-2); }
   .segmented button { min-height: 44px; padding: 8px 14px; border-width: 1px; border-color: var(--line-control); color: var(--ink); }
   .segmented button:hover { border-color: var(--brand); color: var(--brand); }
   .segmented button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: white; }
   .queue-search { display: grid; gap: var(--space-2); }
   .queue-search .row { justify-content: space-between; }
-  /* The scale opens from the urgency filter on hover, and on keyboard focus for those without a mouse. */
-  .urgency-filter { position: relative; }
-  .legend { display: none; position: absolute; top: calc(100% + 8px); left: 0; z-index: 10; width: max-content; max-width: min(100%, 520px); list-style: none; margin: 0; padding: var(--space-3) var(--space-4); flex-direction: column; gap: var(--space-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); box-shadow: var(--shadow-raised); color: var(--ink-muted); font-size: var(--text-sm); }
-  .urgency-filter:hover .legend, .urgency-filter:focus-within .legend { display: flex; }
-  .legend li { display: flex; align-items: center; gap: var(--space-2); }
-  /* A resident per block, not a resident per line. These carry four things — who, what went wrong,
-     what it asks of you, and how many times we tried — and on one line the label is squeezed to a
-     disc and "we rang twice" ends up in a column of its own. */
-  .unreached { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-  .unreached li { border-top: 1px solid var(--line); padding-top: var(--space-3); }
-  .unreached li:first-child { border-top: 0; padding-top: 0; }
-  .unreached p { margin: var(--space-1) 0; }
   .gaps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
   .gaps li { display: grid; gap: var(--space-1); justify-items: start; border-top: 1px solid var(--line); padding-top: var(--space-3); }
   .gaps li p { margin: 0; }
 
   /* ---------- Residents ---------- */
 
-  /* Resident tiles: status first, the call actions together, the rare file import set apart below. */
-  .resident-tile .tile-top h2 { flex: 1 1 12ch; }
   .tile-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); padding-top: var(--space-2); }
   .tiles > .card > .tile-actions { margin-top: auto; }
   .tile-actions > * { margin: 0; }
   /* A confirmation or a call in progress needs the whole width to be read. */
   .tile-actions > .call-now:has(.confirm, [role="status"], .error) { flex-basis: 100%; }
-  .tile-footer { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--line); }
   .tile-owner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
   .tile-owner > p { margin: 0; }
 
@@ -321,25 +266,8 @@
   .access-row p { margin: 0; }
   .access-email { font-weight: 600; overflow-wrap: anywhere; }
 
-  /* ---------- Case ---------- */
+  /* ---------- Case and family ---------- */
 
-  .case { display: grid; gap: var(--flow-2); grid-template-columns: minmax(0, 1fr); }
-  /* Evidence and the decision on the left, the case's own records on the right, from 720px. */
-  @container page (min-width: 720px) {
-    .case { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
-    .case > .case-header { grid-column: 1 / -1; }
-    .case-header { grid-template-columns: minmax(0, 1fr) minmax(240px, auto); align-items: start; }
-  }
-  .case-header { display: grid; gap: var(--flow-2); }
-  .case-header h1 { margin: 0; }
-  .case-header-action .call-now { max-width: 420px; }
-  /* A case has two panels, with readable sections within each one. */
-  .case-column { gap: 0; }
-  .case-column > .card { padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-  .case-column > .card + .card { border-top: 1px solid var(--line); margin-top: var(--space-5); padding-top: var(--space-5); }
-  /* The one place on a case where something gets decided, set apart so it is found without hunting. */
-  .case-column > .case-decision { background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--radius-control); padding: var(--space-4); }
-  .case-column > .case-decision + .card { border-top: 0; }
   .person-context { margin: 0; display: grid; gap: var(--space-3); }
   .person-context dt { font-weight: 700; font-size: var(--text-sm); color: var(--ink-muted); }
   .person-context dd { margin: 2px 0 0; }
@@ -374,77 +302,6 @@
     .screening td:nth-of-type(2)::before { content: "Flagged "; color: var(--ink-muted); font-size: 15px; }
     .screening td:nth-of-type(3) { margin-inline-start: auto; }
   }
-
-  .speech-charts { display: grid; gap: var(--flow-2); }
-  @container card (min-width: 600px) { .speech-charts { grid-template-columns: 1fr 1fr; } }
-  .speech-chart { margin: 0; }
-  .speech-chart figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
-  .speech-chart svg { display: block; width: 100%; height: auto; background: var(--surface-sunken); border-radius: var(--radius-inner); }
-  .speech-chart p { margin: var(--space-1) 0 0; }
-  .speech-axis { display: flex; justify-content: space-between; font-size: var(--text-xs); }
-  .speech-legend { margin: 0; }
-  .speech-band { fill: #dcebe1; }
-  .speech-mean { stroke: #1f4d3a; stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.6; }
-  .speech-line { fill: none; stroke: #5c564c; stroke-width: 1.5; }
-  .speech-point { fill: #1f4d3a; }
-  .speech-outside { fill: #b3261e; }
-  .speech-excluded { fill: white; stroke: #5c564c; stroke-width: 1.5; }
-
-  /* ---------- Family ---------- */
-
-  .family-hero h1 { margin-bottom: var(--space-4); }
-  .next-call { font-weight: 600; margin-top: var(--space-2); }
-  /* From 960px the family page uses the width: today and who to call on the left, the two weeks and
-     what keeps coming up on the right. Dense packing pulls each right-hand card up beside the left. */
-  @container page (min-width: 960px) {
-    .page.narrow:has(> .family-hero) { max-width: var(--bp-xl); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: row dense; align-items: start; }
-    .page:has(> .family-hero) > * { grid-column: 1 / -1; }
-    .page:has(> .family-hero) > :is(.family-hero, [aria-labelledby="family-alerts-heading"], [aria-labelledby="care-team-heading"]) { grid-column: 1; }
-    .page:has(> .family-hero) > :is(:has(.glance-grid), :has(.glance-trends)) { grid-column: 2; }
-  }
-  .glance-cell { display: inline-flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; border-radius: 4px; font-weight: 700; font-size: 11px; line-height: 1; }
-  .glance-latest { gap: var(--space-2); margin-bottom: var(--space-3); }
-  .glance-latest p { margin: 0; }
-  .glance-headline { font-size: 20px; font-weight: 600; line-height: 1.35; }
-  .glance-today { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--space-2); }
-  @container card (min-width: 600px) { .glance-today { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-  .glance-today li { border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 4px; display: grid; justify-items: center; gap: var(--space-1); text-align: center; }
-  .glance-today .glance-cell { width: 34px; border-radius: var(--radius-inner); font-size: 18px; }
-  .glance-domain { font-weight: 700; font-size: var(--text-sm); }
-  .glance-word { font-size: var(--text-xs); line-height: 1.2; color: var(--ink-muted); }
-  .glance-grid { width: 100%; min-width: 300px; max-width: 560px; table-layout: fixed; border-collapse: separate; border-spacing: 2px; }
-  .glance-grid th { padding: 0; font-size: 12px; font-weight: 600; color: var(--ink-muted); text-align: center; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
-  .glance-grid th[scope="row"] { font-size: var(--text-xs); color: var(--ink); text-align: left; }
-  .glance-grid thead th:first-child { width: 64px; }
-  .glance-grid td { padding: 0; }
-  .glance-grid caption { caption-side: bottom; padding-top: var(--space-2); text-align: left; }
-  @container card (min-width: 600px) { .glance-grid .glance-cell { font-size: 13px; } }
-  /* Under 400px a label column leaves each day too thin to read, so each area's name goes above its
-     row of days and the days take the full width. Still one column per day, never a scrollbar. */
-  @container card (max-width: 399px) {
-    .glance-grid { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .glance-grid caption { display: block; order: 1; }
-    .glance-grid thead, .glance-grid tbody { display: contents; }
-    .glance-grid tr { display: flex; flex-wrap: wrap; gap: 2px; }
-    .glance-grid :is(td, thead th) { flex: 1 1 0; min-width: 0; }
-    .glance-grid thead th:first-child { display: none; }
-    .glance-grid th[scope="row"] { flex-basis: 100%; padding-top: var(--space-2); }
-  }
-  .glance-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px var(--space-4); font-size: 15px; color: var(--ink-muted); }
-  .glance-legend li { display: flex; align-items: center; gap: 6px; }
-  .glance-legend .glance-cell { width: 20px; }
-  .glance-trends { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
-  .glance-trends li { display: grid; gap: var(--space-1); }
-  @container card (min-width: 600px) { .glance-trends li { grid-template-columns: 13em 1fr; align-items: center; gap: var(--space-3); } }
-  .glance-trend-name { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
-  .glance-trend-detail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
-  .glance-trend-name .glance-cell { width: 22px; flex: none; }
-  .glance-bars { display: flex; gap: 3px; }
-  .glance-bars span { width: 18px; height: 10px; border-radius: 2px; background: #ece7dc; }
-  .glance-bars .good { background: #2f7a4f; }
-  .glance-bars .concern { background: #b54708; }
-  .glance-trends .muted .glance-trend-name { font-weight: 400; color: var(--ink-muted); }
-  .glance-trends .muted .glance-bars .on { opacity: 0.55; }
 
   /* ---------- Privacy ---------- */
 

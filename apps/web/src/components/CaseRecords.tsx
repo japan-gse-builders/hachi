@@ -1,7 +1,7 @@
 import { channelList, deliveryLabel, eventLabel, formatWhen, phoneDisplay } from '../format';
 import type { Severity } from '../signals';
 import type { CaseDetail } from '../types';
-import { CaseChip } from './CaseChip';
+import { SeverityChip } from './Signals';
 
 type Notification = CaseDetail['case']['notifications'][number];
 
@@ -28,7 +28,7 @@ export function CaseNotifications({ notifications }: { notifications: Notificati
         <ul className="case-told">
           {notifications.map((n, i) => (
             <li key={i}>
-              <CaseChip severity={deliverySeverity(n)} label={deliveryLabel(n.delivery)} />
+              <SeverityChip spoken={false} severity={deliverySeverity(n)} label={deliveryLabel(n.delivery)} />
               <span>
                 <strong>{RECIPIENT[n.recipient] ?? n.recipient}</strong> by {channelList([n.channel])}
                 <span className="meta"> · {formatWhen(n.sentAt)} · {n.address}</span>

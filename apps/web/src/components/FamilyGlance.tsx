@@ -12,19 +12,9 @@ import {
   type FamilyLevel,
   type FamilyStatus,
 } from '../glance';
-import { SEVERITY, type Severity } from '../signals';
+import { SEVERITY } from '../signals';
 import type { FamilyGlance, TagLabel, TagTrend } from '../types';
-
-/** A severity mark and a word in family language; screen readers hear only the word and the detail. */
-export function FamilyChip({ severity, label, detail }: { severity: Severity; label: string; detail?: string }) {
-  return (
-    <span className={`sev-chip sev-${severity}`} title={detail || undefined}>
-      <span className="sev-mark" aria-hidden="true">{SEVERITY[severity].symbol}</span>
-      <span>{label}</span>
-      {detail && <span className="sr-only"> {detail}</span>}
-    </span>
-  );
-}
+import { SeverityChip } from './Signals';
 
 export function FamilyCell({ state, label, tall = false }: { state: CellState; label?: string; tall?: boolean }) {
   const s = STATES[state];
@@ -67,7 +57,7 @@ export function FamilyStatusCard({
           <ul className="family-facts" aria-label="Calls">
             {reach && (
               <li>
-                <FamilyChip severity={reach.severity} label={reach.word} detail={reach.detail} />
+                <SeverityChip spoken={false} severity={reach.severity} label={reach.word} detail={reach.detail} />
               </li>
             )}
             <li className="family-next">{next}</li>

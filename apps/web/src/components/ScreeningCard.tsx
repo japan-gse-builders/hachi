@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { instrumentLine, itemList } from '../format';
 import type { Severity } from '../signals';
 import type { Screening } from '../types';
-import { CaseChip } from './CaseChip';
+import { SeverityChip } from './Signals';
 
 const verdict = (meets: boolean | null) => (meets === null ? 'Needs more answers' : meets ? 'Criteria met' : 'Below criteria');
 const severity = (meets: boolean | null): Severity => (meets === null ? 'none' : meets ? 'today' : 'good');
@@ -30,7 +30,7 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
     <section className="card stack case-screening" aria-labelledby={headingId}>
       <div className="cluster case-card-head">
         <h2 id={headingId}>Screening questions</h2>
-        <CaseChip
+        <SeverityChip spoken={false}
           severity={severity(overall.meets)}
           label={overall.meets === null ? 'Not enough answers yet' : verdict(overall.meets)}
           detail="Items 1 to 20 together."
@@ -51,7 +51,7 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
         <ul className="cluster case-chips" aria-label="Areas that meet their criteria">
           {met.map((d) => (
             <li key={d.domain}>
-              <CaseChip severity="today" label={`${d.label}: criteria met`} detail={`${d.flagged} flagged of ${d.answered} answered.`} />
+              <SeverityChip spoken={false} severity="today" label={`${d.label}: criteria met`} detail={`${d.flagged} flagged of ${d.answered} answered.`} />
             </li>
           ))}
         </ul>

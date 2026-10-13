@@ -12,8 +12,8 @@ import { LoadError, Loading } from '../components/States';
 import { phoneDisplay } from '../format';
 import { ownerName, ownershipOf } from '../ownership';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
-import { bySeverity, knownSignals, needsAttention, residentChips } from '../queue';
-import { uncheckedFor, worstSeverity } from '../signals';
+import { knownSignals, needsAttention, residentChips } from '../queue';
+import { bySeverity, uncheckedFor, worstSeverity } from '../signals';
 import { useDocumentTitle } from '../title';
 import '../styles/residents.css';
 
@@ -172,7 +172,8 @@ export function ResidentsPage() {
             <ul className="residents-chips" aria-label="At a glance">
               {chips.map((c) => (
                 <li key={c.key}>
-                  <SeverityChip severity={c.severity} label={c.word} detail={c.detail} />
+                  {/* Only how long since a call got through says more with the level read first. */}
+                  <SeverityChip spoken={c.key === 'reach' ? undefined : false} severity={c.severity} label={c.word} detail={c.detail} />
                   {c.caseId && <Link className="residents-case-link" to={`/staff/cases/${c.caseId}`}>See case</Link>}
                 </li>
               ))}

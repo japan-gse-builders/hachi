@@ -4,7 +4,6 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { CallNowButton } from '../components/CallNowButton';
 import { callDay, CaseCalls } from '../components/CaseCalls';
-import { CaseChip } from '../components/CaseChip';
 import { CaseDecision } from '../components/CaseDecision';
 import { CaseAbout, CaseHistory, CaseNotifications } from '../components/CaseRecords';
 import { ResidentAvatar } from '../components/ResidentAvatar';
@@ -57,8 +56,8 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
     <header className={`card case-head sev-${severity}`}>
       <div className="case-head-top">
         <p className="cluster case-head-state">
-          <SeverityChip severity={severity} label={c.urgencyLabel} detail={c.urgencyMeaning} />
-          <CaseChip severity={STATUS_SEVERITY[c.status] ?? 'none'} label={c.statusLabel} />
+          <SeverityChip spoken={false} severity={severity} label={c.urgencyLabel} detail={c.urgencyMeaning} />
+          <SeverityChip spoken={false} severity={STATUS_SEVERITY[c.status] ?? 'none'} label={c.statusLabel} />
           {/* One case on the screen, so what the level asks for is written out rather than left to a tooltip. */}
           <span className="meta">{c.urgencyMeaning}</span>
         </p>
@@ -80,7 +79,7 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
           <ul className="cluster case-chips" aria-label="Circumstances">
             {facts.map((f) => (
               <li key={f}>
-                <CaseChip severity="monitor" label={f} />
+                <SeverityChip spoken={false} severity="monitor" label={f} />
               </li>
             ))}
           </ul>
@@ -115,7 +114,7 @@ function CaseSaid({ detail, now }: { detail: CaseDetail; now: Date }) {
       <h2 id="said-heading">What was said</h2>
       {silences.map((d, i) => (
         <p key={`no-response-${i}`} className="case-silence">
-          <CaseChip severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no resident quote.
+          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no resident quote.
         </p>
       ))}
       {evidence.map((e, i) => {
@@ -247,7 +246,7 @@ export function CasePage() {
       </div>
       {!decisionInView && (
         <div className="action-bar hide-from-md case-action-bar">
-          <CaseChip severity={STATUS_SEVERITY[detail.case.status] ?? 'none'} label={detail.case.statusLabel} />
+          <SeverityChip spoken={false} severity={STATUS_SEVERITY[detail.case.status] ?? 'none'} label={detail.case.statusLabel} />
           <a className="button" href="#decision-heading">Update this case</a>
         </div>
       )}

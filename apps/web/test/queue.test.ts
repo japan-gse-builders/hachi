@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ageLabel,
   avatarDetails,
-  bySeverity,
   filterQueue,
   knownSignals,
   needsAttention,
@@ -14,7 +13,7 @@ import {
   sortUnreached,
 } from '../src/queue';
 import { PRIVACY_NOTICE } from '../src/privacy';
-import type { Severity } from '../src/signals';
+import { bySeverity, SEVERITY_RANK, type Severity } from '../src/signals';
 import type { QueueItem, Resident, UnreachedResident } from '../src/types';
 
 const items = [
@@ -93,6 +92,7 @@ describe('severity order', () => {
   it('sorts the most worrying first and unknowns before good', () => {
     const list: Severity[] = ['good', 'none', 'monitor', 'system', 'soon', 'today', 'emergency'];
     expect([...list].sort(bySeverity)).toEqual(['emergency', 'today', 'soon', 'system', 'monitor', 'none', 'good']);
+    expect([...list].sort(bySeverity)).toEqual(SEVERITY_RANK);
     expect(list.filter(needsAttention)).toEqual(['system', 'soon', 'today', 'emergency']);
   });
   it('puts three days without a call first, down to a call that failed on our side', () => {

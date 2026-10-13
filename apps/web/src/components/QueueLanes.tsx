@@ -39,7 +39,7 @@ function QueueCaseCard({ item, queue, now, linkState }: { item: QueueItem; queue
   return (
     <li className={`card queue-case queue-stripe sev-${closed ? 'good' : severity}${signals ? ' has-signals' : ''}${closed ? ' is-closed' : ''}`}>
       <div className="queue-case-sev">
-        <SeverityChip severity={severity} label={item.urgencyLabel} detail={item.urgencyMeaning} />
+        <SeverityChip spoken={false} severity={severity} label={item.urgencyLabel} detail={item.urgencyMeaning} />
       </div>
       <h4 className="resident-heading queue-case-name">
         <ResidentAvatar id={item.residentId} name={item.residentName} />

@@ -31,11 +31,16 @@ export const SEVERITY: Record<Severity, { symbol: string; label: string }> = {
 
 export const SEVERITIES = Object.keys(SEVERITY) as Severity[];
 
-/** Unknowns outrank good, so a resident nobody knows about never sorts with the fine ones. */
-const RANK: Severity[] = ['emergency', 'today', 'soon', 'system', 'monitor', 'none', 'good'];
+/** Most worrying first. Unknowns outrank good, so a resident nobody knows about never sorts with the fine ones. */
+export const SEVERITY_RANK: readonly Severity[] = ['emergency', 'today', 'soon', 'system', 'monitor', 'none', 'good'];
+
+/** Most worrying first, for `Array.prototype.sort`, which keeps equals in the order they came. */
+export function bySeverity(a: Severity, b: Severity): number {
+  return SEVERITY_RANK.indexOf(a) - SEVERITY_RANK.indexOf(b);
+}
 
 export function worstSeverity(list: readonly Severity[]): Severity {
-  return list.reduce<Severity>((a, s) => (RANK.indexOf(s) < RANK.indexOf(a) ? s : a), list.length ? 'good' : 'none');
+  return list.reduce<Severity>((a, s) => (bySeverity(s, a) < 0 ? s : a), list.length ? 'good' : 'none');
 }
 
 /** A severity with the word shown beside it and a sentence for the tooltip ('' when there is none). */

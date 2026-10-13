@@ -13,7 +13,7 @@ import {
   type SpeechProgress,
 } from '../speech';
 import type { SpeechBaseline, SpeechPoint } from '../types';
-import { CaseChip } from './CaseChip';
+import { SeverityChip } from './Signals';
 
 const FALLBACK_WIDTH = 560;
 const TIP_WIDTH = 224;
@@ -67,7 +67,14 @@ function Chart({ chart, name }: { chart: FeatureChart; name: string }) {
   };
 
   const tip = open === null ? null : plot.points[open];
-  const bandLabelInside = plot.band && plot.band.height >= 22;
+  // Calls within the usual range sit inside the band, so its name goes above or below it, not over them.
+  const bandLabelY = !plot.band
+    ? 0
+    : plot.band.y - plot.top >= 20
+      ? plot.band.y - 6
+      : plot.bottom - (plot.band.y + plot.band.height) >= 20
+        ? plot.band.y + plot.band.height + 16
+        : plot.band.y + 16;
   const changed = chart.status === 'clear_change' || chart.status === 'slight_change';
   const outside = changed ? speechLevel(chart.status).severity : 'monitor';
 
@@ -95,7 +102,7 @@ function Chart({ chart, name }: { chart: FeatureChart; name: string }) {
             <>
               <rect className="speech-usual" x={plot.left} y={plot.band.y} width={plot.right - plot.left} height={Math.max(plot.band.height, 2)} />
               <line className="speech-usual-mean" x1={plot.left} x2={plot.right} y1={plot.band.mean} y2={plot.band.mean} />
-              <text className="speech-usual-label" x={plot.left + 8} y={bandLabelInside ? plot.band.y + 16 : Math.max(plot.band.y - 6, 12)}>
+              <text className="speech-usual-label" x={plot.left + 8} y={bandLabelY}>
                 Usual for {name}
               </text>
             </>
@@ -175,7 +182,7 @@ function Progress({ progress, name }: { progress: SpeechProgress; name: string }
   const level = speechLevel('no_baseline');
   return (
     <div className="speech-progress">
-      <CaseChip severity={level.severity} label={`Usual range: ${collected} of ${needed} calls collected`} />
+      <SeverityChip spoken={false} severity={level.severity} label={`Usual range: ${collected} of ${needed} calls collected`} />
       <ol className="speech-progress-cells" aria-hidden="true">
         {Array.from({ length: needed }, (_, i) => (
           <li key={i} className={i < collected ? 'is-done' : undefined} />
@@ -244,7 +251,7 @@ export function SpeechTrendCard({ trend, baseline, name = 'them' }: { trend: Spe
     <section className="card stack case-speech" aria-labelledby={headingId}>
       <div className="cluster case-card-head">
         <h2 id={headingId}>Speech over time</h2>
-        <CaseChip severity={overall.severity} label={overall.word} detail={overall.detail} />
+        <SeverityChip spoken={false} severity={overall.severity} label={overall.word} detail={overall.detail} />
       </div>
       {!progress && (
         <p>
@@ -271,7 +278,7 @@ export function SpeechTrendCard({ trend, baseline, name = 'them' }: { trend: Spe
               return (
                 <li key={c.key}>
                   <button type="button" className="speech-pick" aria-pressed={pick === c.key} aria-controls={chartId} onClick={() => setPick(pick === c.key ? null : c.key)}>
-                    <CaseChip severity={l.severity} label={`${c.title}: ${l.word.toLowerCase()}`} detail={c.headline} />
+                    <SeverityChip spoken={false} severity={l.severity} label={`${c.title}: ${l.word.toLowerCase()}`} detail={c.headline} />
                   </button>
                 </li>
               );

@@ -2,147 +2,155 @@
  * One meaning per colour. Each severity has a fill, an ink for the symbol on that fill (4.5:1 or
  * better) and an edge that stands 3:1 against white and the cream page, so pale fills still read.
  * Any element with class `sev-<severity>` gets --sev-fill, --sev-on, --sev-line and --sev-line-style.
+ * In the shared layer: above the base components, so button rules never repaint an indicator, and
+ * below the screens, which may size the chips for their own context.
  */
-:root {
-  --sev-emergency: #b3261e;
-  --sev-emergency-ink: #fff;
-  --sev-emergency-edge: #b3261e;
-  --sev-today: #e07a1f;
-  --sev-today-ink: #1c1915;
-  --sev-today-edge: #9a4a06;
-  --sev-soon: #f0c24b;
-  --sev-soon-ink: #1c1915;
-  --sev-soon-edge: #8a6d1f;
-  --sev-monitor: #6f685e;
-  --sev-monitor-ink: #fff;
-  --sev-monitor-edge: #6f685e;
-  --sev-good: #2f7a4f;
-  --sev-good-ink: #fff;
-  --sev-good-edge: #2f7a4f;
-  --sev-system: #d9e6f8;
-  --sev-system-ink: #1849a0;
-  --sev-system-edge: #1849a0;
-  --sev-none: transparent;
-  --sev-none-ink: #5c564c;
-  --sev-none-edge: #8a8173;
-}
+@layer shared {
+  :root {
+    --sev-emergency: #b3261e;
+    --sev-emergency-ink: #fff;
+    --sev-emergency-edge: #b3261e;
+    --sev-today: #e07a1f;
+    --sev-today-ink: #1c1915;
+    --sev-today-edge: #9a4a06;
+    --sev-soon: #f0c24b;
+    --sev-soon-ink: #1c1915;
+    --sev-soon-edge: #8a6d1f;
+    --sev-monitor: #6f685e;
+    --sev-monitor-ink: #fff;
+    --sev-monitor-edge: #6f685e;
+    --sev-good: #2f7a4f;
+    --sev-good-ink: #fff;
+    --sev-good-edge: #2f7a4f;
+    --sev-system: #d9e6f8;
+    --sev-system-ink: #1849a0;
+    --sev-system-edge: #1849a0;
+    --sev-none: transparent;
+    --sev-none-ink: #5c564c;
+    --sev-none-edge: #8a8173;
+    /* One indicator, and the whole bar of nine, so screens can give the bar a column that lines up. */
+    --sev-ind: 2.25rem;
+    --sev-bar-full: calc(9 * var(--sev-ind) + 8 * var(--space-1, 4px));
+  }
 
-.sev-emergency { --sev-fill: var(--sev-emergency); --sev-on: var(--sev-emergency-ink); --sev-line: var(--sev-emergency-edge); --sev-line-style: solid; }
-.sev-today { --sev-fill: var(--sev-today); --sev-on: var(--sev-today-ink); --sev-line: var(--sev-today-edge); --sev-line-style: solid; }
-.sev-soon { --sev-fill: var(--sev-soon); --sev-on: var(--sev-soon-ink); --sev-line: var(--sev-soon-edge); --sev-line-style: solid; }
-.sev-monitor { --sev-fill: var(--sev-monitor); --sev-on: var(--sev-monitor-ink); --sev-line: var(--sev-monitor-edge); --sev-line-style: solid; }
-.sev-good { --sev-fill: var(--sev-good); --sev-on: var(--sev-good-ink); --sev-line: var(--sev-good-edge); --sev-line-style: solid; }
-.sev-system { --sev-fill: var(--sev-system); --sev-on: var(--sev-system-ink); --sev-line: var(--sev-system-edge); --sev-line-style: dashed; }
-.sev-none { --sev-fill: var(--sev-none); --sev-on: var(--sev-none-ink); --sev-line: var(--sev-none-edge); --sev-line-style: solid; }
+  .sev-emergency { --sev-fill: var(--sev-emergency); --sev-on: var(--sev-emergency-ink); --sev-line: var(--sev-emergency-edge); --sev-line-style: solid; }
+  .sev-today { --sev-fill: var(--sev-today); --sev-on: var(--sev-today-ink); --sev-line: var(--sev-today-edge); --sev-line-style: solid; }
+  .sev-soon { --sev-fill: var(--sev-soon); --sev-on: var(--sev-soon-ink); --sev-line: var(--sev-soon-edge); --sev-line-style: solid; }
+  .sev-monitor { --sev-fill: var(--sev-monitor); --sev-on: var(--sev-monitor-ink); --sev-line: var(--sev-monitor-edge); --sev-line-style: solid; }
+  .sev-good { --sev-fill: var(--sev-good); --sev-on: var(--sev-good-ink); --sev-line: var(--sev-good-edge); --sev-line-style: solid; }
+  .sev-system { --sev-fill: var(--sev-system); --sev-on: var(--sev-system-ink); --sev-line: var(--sev-system-edge); --sev-line-style: dashed; }
+  .sev-none { --sev-fill: var(--sev-none); --sev-on: var(--sev-none-ink); --sev-line: var(--sev-none-edge); --sev-line-style: solid; }
 
-/* Chip: the word stays dark on a pale background; only the mark carries the colour. */
-.sev-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  max-inline-size: 100%;
-  padding: 2px 10px 2px 3px;
-  border: 1px solid var(--line, #e6dfd2);
-  border-radius: 999px;
-  background: var(--surface-sunken, #faf8f3);
-  color: var(--ink, #1c1915);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-  vertical-align: middle;
-}
-.sev-mark {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 1.5em;
-  block-size: 1.5em;
-  padding-inline: 2px;
-  border: 1.5px var(--sev-line-style) var(--sev-line);
-  border-radius: 999px;
-  background: var(--sev-fill);
-  color: var(--sev-on);
-  font-size: 0.8em;
-  font-weight: 800;
-  line-height: 1;
-}
+  /* Chip: the word stays dark on a pale background; only the mark carries the colour. */
+  .sev-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    max-inline-size: 100%;
+    padding: 2px 10px 2px 3px;
+    border: 1px solid var(--line, #e6dfd2);
+    border-radius: 999px;
+    background: var(--surface-sunken, #faf8f3);
+    color: var(--ink, #1c1915);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+  }
+  .sev-mark {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.5em;
+    block-size: 1.5em;
+    padding-inline: 2px;
+    border: 1.5px var(--sev-line-style) var(--sev-line);
+    border-radius: 999px;
+    background: var(--sev-fill);
+    color: var(--sev-on);
+    font-size: 0.8em;
+    font-weight: 800;
+    line-height: 1;
+  }
 
-/* Indicator bar: intrinsically sized, wraps onto more lines rather than overflowing. */
-.sev-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1, 4px);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  min-inline-size: 0;
-}
-.sev-item { position: relative; display: flex; }
-.sev-ind {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  min-inline-size: 2.25rem;
-  min-block-size: 2.25rem;
-  margin: 0;
-  padding: 3px 4px;
-  border: 1.5px var(--sev-line-style) var(--sev-line);
-  border-radius: var(--radius-inner, 8px);
-  background: var(--sev-fill);
-  color: var(--sev-on);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-  cursor: help;
-}
-.sev-icon { inline-size: 1.35em; block-size: 1.35em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.sev-ind.sev-summary {
-  flex-direction: row;
-  padding-inline: var(--space-2, 8px);
-  border-color: var(--line-control, #8a8173);
-  background: var(--surface-sunken, #faf8f3);
-  color: var(--ink, #1c1915);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
+  /* Indicator bar: intrinsically sized, wraps onto more lines rather than overflowing. */
+  .sev-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-inline-size: 0;
+  }
+  .sev-item { position: relative; display: flex; }
+  .sev-ind {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-inline-size: var(--sev-ind);
+    min-block-size: var(--sev-ind);
+    margin: 0;
+    padding: 3px 4px;
+    border: 1.5px var(--sev-line-style) var(--sev-line);
+    border-radius: var(--radius-inner, 8px);
+    background: var(--sev-fill);
+    color: var(--sev-on);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: help;
+  }
+  .sev-icon { inline-size: 1.35em; block-size: 1.35em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sev-ind.sev-summary {
+    flex-direction: row;
+    padding-inline: var(--space-2, 8px);
+    border-color: var(--line-control, #8a8173);
+    background: var(--surface-sunken, #faf8f3);
+    color: var(--ink, #1c1915);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
 
-/* Tooltip on hover, focus or tap; Escape hides it until the pointer leaves the bar (WCAG 1.4.13). */
-.sev-tip {
-  position: absolute;
-  inset-block-start: calc(100% + 6px);
-  inset-inline-start: 0;
-  z-index: 30;
-  inline-size: max-content;
-  max-inline-size: min(18rem, 80vw);
-  padding: var(--space-2, 8px) var(--space-3, 12px);
-  border-radius: var(--radius-inner, 8px);
-  background: var(--ink, #1c1915);
-  color: #fff;
-  box-shadow: var(--shadow-raised, 0 8px 24px rgba(28, 25, 21, 0.1));
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.4;
-  text-align: start;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out;
-}
-.sev-tip::before { content: ""; position: absolute; inset-inline: 0; inset-block-start: -6px; block-size: 6px; }
-.sev-tip strong { font-weight: 700; }
-.sev-item:nth-last-child(-n + 4):not(:nth-child(-n + 2)) > .sev-tip { inset-inline-start: auto; inset-inline-end: 0; }
-.sev-item.is-open > .sev-tip,
-.sev-bar:not(.is-hushed) > .sev-item:hover > .sev-tip { visibility: visible; opacity: 1; pointer-events: auto; }
+  /* Tooltip on hover, focus or tap; Escape hides it until the pointer leaves the bar (WCAG 1.4.13).
+     Not displayed while closed: a hidden tip still widens the page it would run off. */
+  .sev-tip {
+    display: none;
+    position: absolute;
+    inset-block-start: calc(100% + 6px);
+    inset-inline-start: var(--tip-shift, 0px);
+    z-index: 30;
+    inline-size: max-content;
+    max-inline-size: min(18rem, var(--tip-room, calc(100vw - 16px)));
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border-radius: var(--radius-inner, 8px);
+    background: var(--ink, #1c1915);
+    color: #fff;
+    box-shadow: var(--shadow-raised, 0 8px 24px rgba(28, 25, 21, 0.1));
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: start;
+  }
+  .sev-tip::before { content: ""; position: absolute; inset-inline: 0; inset-block-start: -6px; block-size: 6px; }
+  .sev-tip strong { font-weight: 700; }
+  .sev-item.is-open > .sev-tip,
+  .sev-bar:not(.is-hushed) > .sev-item:hover > .sev-tip { display: block; }
 
-/* Legend: the colour key, then what each indicator covers. */
-.sev-legend { display: grid; gap: var(--space-3, 12px); }
-.sev-legend ul { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px) var(--space-4, 16px); margin: 0; padding: 0; list-style: none; }
-.sev-legend-indicators li { display: flex; align-items: center; gap: var(--space-2, 8px); flex: 1 1 14rem; min-inline-size: 0; }
-.sev-legend-indicators .sev-ind { cursor: default; }
-.sev-legend-what { color: var(--ink-muted, #5c564c); font-size: 15px; }
+  @media (pointer: coarse) {
+    :root { --sev-ind: 44px; }
+  }
+
+  /* Legend: the colour key, then what each indicator covers. */
+  .sev-legend { display: grid; gap: var(--space-3, 12px); }
+  .sev-legend ul { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px) var(--space-4, 16px); margin: 0; padding: 0; list-style: none; }
+  .sev-legend-indicators li { display: flex; align-items: center; gap: var(--space-2, 8px); flex: 1 1 14rem; min-inline-size: 0; }
+  .sev-legend-indicators .sev-ind { cursor: default; }
+  .sev-legend-what { color: var(--ink-muted, #5c564c); font-size: 15px; }
+}

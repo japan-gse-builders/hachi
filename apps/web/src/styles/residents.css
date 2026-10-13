@@ -44,23 +44,16 @@
   .residents-more { border-top: 1px solid var(--line); }
 
   /* One row per resident: who and how they are, the indicators, who is responsible, then the calls.
-     The list is one column from here, so the page's width is the card's. */
+     The rows share the list's columns (subgrid), so chips, bars and buttons line up for comparison. */
   @container page (min-width: 960px) {
-    .tiles > .card.residents-card {
-      display: grid;
-      grid-template-columns: minmax(18rem, 1.6fr) minmax(12rem, 1fr) auto;
-      grid-template-areas: "who owner actions";
-      align-items: start;
-      gap: var(--space-3) var(--space-5);
-    }
-    .tiles > .card.residents-card.has-signals {
-      grid-template-columns: minmax(18rem, 1.6fr) auto minmax(12rem, 1fr) auto;
-      grid-template-areas: "who signals owner actions";
-    }
-    .residents-card > .residents-who { grid-area: who; }
-    .residents-card > .residents-signals { grid-area: signals; }
-    .residents-card > .residents-owner { grid-area: owner; flex-direction: column; align-items: flex-start; }
-    .residents-card > .residents-actions { grid-area: actions; justify-content: flex-end; }
-    .residents-card > :not(.residents-who, .residents-signals, .residents-owner, .residents-actions) { grid-column: 1 / -1; }
+    .residents-list { --who: minmax(14rem, 1.6fr); --owner: minmax(10rem, 1fr); grid-template-columns: var(--who) var(--owner) auto; column-gap: var(--space-5); }
+    .residents-list:has(> .has-signals) { grid-template-columns: var(--who) auto var(--owner) auto; }
+    /* A size container lays itself out alone and cannot be a subgrid; the page is the container here. */
+    .tiles > .card.residents-card { container-type: normal; grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: start; row-gap: var(--space-3); }
+    .residents-card > * { grid-column: 1 / -1; }
+    .residents-card > .residents-who { grid-column: 1; }
+    .residents-card > .residents-owner { grid-column: -3; flex-direction: column; align-items: flex-start; }
+    .residents-card > .residents-actions { grid-column: -2; justify-content: flex-end; }
+    .residents-card > .residents-signals { grid-column: 2; }
   }
 }

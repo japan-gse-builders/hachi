@@ -261,6 +261,16 @@ describe('signal components', () => {
     expect(render(createElement(LastReachedChip, { reach: reach(2, { ourFault: true }), now }))).toContain('sev-system');
   });
 
+  it('let a chip whose word is a status or a fact say only that, or a prefix of its own', () => {
+    expect(render(createElement(SeverityChip, { severity: 'monitor', label: 'In progress', spoken: false }))).toBe(
+      '<span class="sev-chip sev-monitor"><span class="sev-mark" aria-hidden="true">•</span><span>In progress</span></span>',
+    );
+    expect(render(createElement(SeverityChip, { severity: 'system', label: 'Approval needed', spoken: 'Waiting' }))).toContain(
+      '<span class="sr-only">Waiting: </span><span>Approval needed</span>',
+    );
+    expect(render(createElement(SeverityChip, { severity: 'soon', label: 'No call for 1 day' }))).toContain('<span class="sr-only">Review soon: </span>');
+  });
+
   it('give a legend of colours and indicators', () => {
     const html = render(createElement(SignalsLegend));
     for (const s of SEVERITIES) expect(html).toContain(`sev-chip sev-${s}`);
