@@ -20,6 +20,13 @@ import type {
 
 export type CallChannel = 'pstn' | 'whatsapp';
 
+/** The illustrations staff can choose to show beside a resident's name; absent shows their initials. */
+export const RESIDENT_PORTRAITS = [
+  'grandmother-1', 'grandmother-2', 'grandmother-3', 'grandmother-4', 'grandmother-5',
+  'grandfather-1', 'grandfather-2', 'grandfather-3', 'grandfather-4', 'grandfather-5',
+] as const;
+export type ResidentPortrait = (typeof RESIDENT_PORTRAITS)[number];
+
 export interface StaffContact extends Contact {
   /** Phone number shown to family on the dashboard (FAM-04). */
   phone: string;
@@ -74,6 +81,7 @@ export interface Resident {
   timeZone: string;
   vulnerability: VulnerabilityProfile;
   householdNotes?: string;
+  portrait?: ResidentPortrait;
   staff: StaffContact;
   family?: FamilyContact;
   /** Absent means nothing has been agreed, which is treated as "no". */

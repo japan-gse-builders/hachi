@@ -13,6 +13,8 @@ import { useDocumentTitle } from '../title';
 import type { Queue, Spend } from '../types';
 import '../styles/queue.css';
 
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** Wide screens open the filters; on a phone they fold to one line so the cases come first. */
 const wideScreen = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 900px)').matches === true;
 
@@ -115,11 +117,16 @@ export function QueuePage() {
                       <button type="button" className="ghost" aria-pressed={!filters.urgency} onClick={() => changeFilter('urgency', '')}>All levels</button>
                       {queue.legend.map((level) => {
                         const severity = urgencySeverity(level.urgency);
+                        const tipId = `urgency-tip-${level.urgency}`;
                         return (
-                          <button key={level.urgency} type="button" className="ghost" aria-pressed={filters.urgency === level.urgency} onClick={() => changeFilter('urgency', level.urgency)}>
-                            <span className={`sev-mark sev-${severity}`} aria-hidden="true">{SEVERITY[severity].symbol}</span>
-                            {level.label}
-                          </button>
+                          <span key={level.urgency} className="urgency-filter">
+                            <button type="button" className={`ghost urgency-option sev-${severity}`} aria-pressed={filters.urgency === level.urgency}
+                              aria-describedby={tipId} onClick={() => changeFilter('urgency', level.urgency)}>
+                              <span className="sev-mark" aria-hidden="true">{SEVERITY[severity].symbol}</span>
+                              {level.label}
+                            </button>
+                            <span id={tipId} role="tooltip" className="urgency-tip">{capital(level.action)}</span>
+                          </span>
                         );
                       })}
                     </div>

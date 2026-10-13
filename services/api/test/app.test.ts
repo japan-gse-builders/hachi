@@ -622,7 +622,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const { app, as } = await seeded();
     for (const who of ['familyPhone', 'familyEmail'] as const) {
       const res = await app.inject({ method: 'GET', url: '/api/family/residents', ...as(who) });
-      expect(res.json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
+      expect(res.json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith', portrait: null }]);
     }
     expect((await app.inject({ method: 'GET', url: '/api/family/residents', ...as('stranger') })).json().residents).toEqual([]);
   });
@@ -756,7 +756,7 @@ describe('who is responsible for a resident, and which family can see them (FAM-
     expect(added.json()).toEqual({ outcome: 'added', familyAccess: [{ email: 'bob@example.org', addedAt: NOW.toISOString(), addedBy: 'staff-1' }] });
     expect((await grant('bob@example.org')).json().outcome).toBe('already_has_access');
 
-    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
+    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith', portrait: null }]);
     expect((await inject('relative', 'GET', '/api/family/residents/res-1/dashboard')).statusCode).toBe(200);
     expect((await inject('unverifiedRelative', 'GET', '/api/family/residents')).statusCode).toBe(403);
 

@@ -161,7 +161,7 @@ export function ResidentsPage() {
       <article className={`card residents-card residents-stripe sev-${severity}${signals ? ' has-signals' : ''}`} key={r.id}>
         <div className="residents-who">
           <h3 className="resident-heading">
-            <ResidentAvatar id={r.id} name={r.name} />
+            <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
             <Link to={`/staff/residents/${r.id}`}>{r.name}</Link>
           </h3>
           <p className="meta">
@@ -198,8 +198,9 @@ export function ResidentsPage() {
             <p className="meta">Responsible: {mine ? <strong>you</strong> : ownerName(r.owner!)}</p>
           )}
           <p className="meta">
-            <Link to={`/staff/residents/${r.id}`}>Family access{r.familyAccess?.length ? ` (${r.familyAccess.length})` : ''}</Link>
+            <Link to={`/staff/residents/${r.id}`}>Details and family access{r.familyAccess?.length ? ` (${r.familyAccess.length})` : ''}</Link>
           </p>
+          {mine && <p className="meta"><Link to={`/staff/residents/${r.id}/edit`}>Edit details and contacts</Link></p>}
         </div>
         <div className="tile-actions residents-actions">
           {r.active && hasCallConsent(r.callConsent) && (

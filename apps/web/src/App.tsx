@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OrganizationPage } from './pages/OrganizationPage';
 import { QueuePage } from './pages/QueuePage';
 import { ResidentDetailPage } from './pages/ResidentDetailPage';
+import { ResidentEditPage } from './pages/ResidentEditPage';
 import { ResidentPage } from './pages/ResidentPage';
 import { ResidentsPage } from './pages/ResidentsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
@@ -180,6 +181,7 @@ function AppRoutes() {
       <Route path="/staff/residents" element={<StaffGuard><ResidentsPage /></StaffGuard>} />
       <Route path="/staff/residents/new" element={<StaffGuard><ResidentPage /></StaffGuard>} />
       <Route path="/staff/residents/:id" element={<StaffGuard><ResidentDetailPage /></StaffGuard>} />
+      <Route path="/staff/residents/:id/edit" element={<StaffGuard><ResidentEditPage /></StaffGuard>} />
       <Route path="/staff/team" element={<StaffGuard><TeamPage /></StaffGuard>} />
       <Route path="/staff/organization" element={<StaffGuard><OrganizationPage /></StaffGuard>} />
       <Route path="/staff/activity" element={<StaffGuard><ActivityPage /></StaffGuard>} />

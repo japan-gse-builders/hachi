@@ -48,7 +48,7 @@ import {
   type Turn,
   type WellbeingTagId,
 } from '@hachi/core';
-import { lonelinessFor, type CallRecord, type CallWellbeing, type CaseEvent, type Resident, type StoredCase } from '@hachi/store';
+import { lonelinessFor, type CallRecord, type CallWellbeing, type CaseEvent, type Resident, type ResidentPortrait, type StoredCase } from '@hachi/store';
 
 export interface MediaSigner {
   /** Returns a short-lived HTTPS URL for a gs:// recording. */
@@ -64,6 +64,7 @@ export interface QueueItem {
   caseId: string;
   residentId: string;
   residentName: string;
+  residentPortrait: ResidentPortrait | null;
   rule: string;
   urgency: string;
   urgencyLabel: string;
@@ -110,6 +111,7 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       caseId: c.id,
       residentId: c.residentId,
       residentName: residents.get(c.residentId)!.name,
+      residentPortrait: residents.get(c.residentId)!.portrait ?? null,
       residentFacts: residentFacts(residents.get(c.residentId)!, locale),
       householdNotes: residents.get(c.residentId)!.householdNotes ?? null,
       synthetic: residents.get(c.residentId)!.synthetic === true,
@@ -422,6 +424,7 @@ export async function buildCaseDetail(
       id: r.id,
       name: r.name,
       preferredName: r.preferredName,
+      portrait: r.portrait ?? null,
       phone: r.phone,
       vulnerability: r.vulnerability,
       householdNotes: r.householdNotes ?? null,

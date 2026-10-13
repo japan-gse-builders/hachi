@@ -26,6 +26,11 @@ const verifier = {
 };
 
 const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka'};
+const PORTRAIT_BY_NAME = {
+  'Margaret Ellis': 'grandmother-2', 'Arthur Nakamura': 'grandfather-1', 'Dorothy Ishii': 'grandmother-1',
+  'Harold Brooks': 'grandfather-4', 'Edith Carter': 'grandmother-3',
+};
+const portraitOf = (name) => PORTRAIT_BY_NAME[name];
 
 const ORG = 'org-sakura';
 
@@ -61,6 +66,7 @@ async function makeApi() {
     const input = residentInputSchema.parse({
       name: item.residentName,
       preferredName: item.residentName.split(' ')[0],
+      portrait: portraitOf(item.residentName),
       phone: '+81900000000' + (i + 1),
       callTime: '10:00', timeZone: 'Asia/Tokyo',
       vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
@@ -108,7 +114,7 @@ async function makeApi() {
     });
   }
   const pending = residentInputSchema.parse({
-    name: 'Claire Watanabe', preferredName: 'Claire', phone: '+819000000006',
+    name: 'Claire Watanabe', preferredName: 'Claire', portrait: 'grandmother-4', phone: '+819000000006',
     callTime: '10:00', timeZone: 'Asia/Tokyo',
     vulnerability: {livesAlone: false, hasCloseSupporter: true, needsCare: false, chronicConditions: []},
     staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
@@ -143,18 +149,11 @@ export const useAuth = () => ({
  hasPassword: true, changePassword: noop, reloadUser: noop,
 });`;
 
-const banner = `<aside style="padding:12px 20px;background:#dcebe1;color:#1f4d3a;font:16px/1.5 system-ui;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
-<strong>Local demo · Fictional data · No calls or messages</strong>
-<a href="/staff">Staff queue</a><a href="/staff/residents">Residents</a><a href="/staff/team">Team</a>
-<a href="/family/residents/res-1">Family view</a><a href="/privacy">Privacy</a>
-<button type="button" onclick="fetch('/__preview/reset',{method:'POST'}).then(r=>{if(r.ok)location.reload()})" style="font:inherit;padding:6px 12px">Reset demo</button></aside>`;
-
 const server = await createServer({
   configFile: false, envDir: false, root: join(root, 'apps/web'),
   plugins: [{
     name: 'local-interactive-preview', enforce: 'pre',
     transform(_code, id) {if (id === join(root, 'apps/web/src/auth.tsx')) return authPreview;},
-    transformIndexHtml(html) {return html.replace('<body>', '<body>' + banner);},
     configureServer(vite) {
       vite.middlewares.use(async (req, res, next) => {
         const url = req.url || '/';

@@ -72,7 +72,7 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
         </div>
       </div>
       <div className="resident-heading">
-        <ResidentAvatar id={r.id} name={r.name} />
+        <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
         <h1>{r.name}</h1>
         <LastReachedChip reach={signals.reach} now={now} />
         {facts.length > 0 && (

@@ -42,7 +42,7 @@ function QueueCaseCard({ item, queue, now, linkState }: { item: QueueItem; queue
         <SeverityChip spoken={false} severity={severity} label={item.urgencyLabel} detail={item.urgencyMeaning} />
       </div>
       <h4 className="resident-heading queue-case-name">
-        <ResidentAvatar id={item.residentId} name={item.residentName} />
+        <ResidentAvatar id={item.residentId} name={item.residentName} portrait={item.residentPortrait} />
         <Link className="queue-case-link" to={`/staff/cases/${item.caseId}`} state={linkState}>{item.residentName}</Link>
       </h4>
       <div className="queue-case-what">
@@ -74,7 +74,6 @@ function Lane({ lane, legend, queue, now, linkState }: { lane: QueueLane; legend
   const id = useId();
   const level = legend.find((l) => l.urgency === lane.urgency);
   const label = lane.urgency === null ? 'Closed' : (level?.label ?? lane.items[0]!.urgencyLabel);
-  const ask = lane.urgency === null ? 'No action needed' : level?.action;
   const n = lane.items.length;
   return (
     <section className="queue-lane" aria-labelledby={id}>
@@ -82,7 +81,6 @@ function Lane({ lane, legend, queue, now, linkState }: { lane: QueueLane; legend
         <span className={`sev-mark sev-${lane.severity}`} aria-hidden="true">{SEVERITY[lane.severity].symbol}</span>
         <span>{label}</span>
         <span className="queue-count-pill">{n}<span className="sr-only"> {n === 1 ? 'case' : 'cases'}</span></span>
-        {ask && <span className="queue-lane-ask">{ask}</span>}
       </h3>
       <ol className="queue-lane-items">
         {lane.items.map((item) => <QueueCaseCard key={item.caseId} item={item} queue={queue} now={now} linkState={linkState} />)}

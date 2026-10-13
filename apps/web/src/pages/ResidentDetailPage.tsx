@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
+import { ResidentAvatar } from '../components/ResidentAvatar';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
 import { atLeast, type Member } from '../orgs';
@@ -20,10 +21,12 @@ const FIELD_REASONS = new Set(['family_contact', 'access_full']);
 export function ResidentDetailPage() {
   const { id = '' } = useParams();
   const { token, user } = useAuth();
+  const location = useLocation();
+  const saved = Boolean((location.state as { saved?: boolean } | null)?.saved);
   const [resident, setResident] = useState<Resident | null>(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  useDocumentTitle(resident ? `${resident.name} · Family access` : 'Resident');
+  useDocumentTitle(resident ? resident.name : 'Resident');
 
   useEffect(() => {
     setLoadError('');
@@ -47,16 +50,66 @@ export function ResidentDetailPage() {
     <div className="stack page">
       {back}
       <header className="page-header">
-        <div>
-          <h1>{resident.name}</h1>
-          <p className="meta">{[resident.preferredName, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</p>
+        <div className="resident-heading">
+          <ResidentAvatar id={resident.id} name={resident.name} portrait={resident.portrait} />
+          <div>
+            <h1>{resident.name}</h1>
+            <p className="meta">{[resident.preferredName, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</p>
+          </div>
         </div>
       </header>
+      {saved && <p className="notice-success" role="status">Saved. The new details apply from the next call and the next alert.</p>}
       <div className="resident-detail">
+        <DetailsCard resident={resident} uid={user?.uid} />
         <Responsibility resident={resident} uid={user?.uid} onSaved={setResident} />
         <FamilyAccessCard resident={resident} uid={user?.uid} onSaved={(familyAccess) => setResident({ ...resident, familyAccess })} />
       </div>
     </div>
+  );
+}
+
+/** What is on record and who gets contacted, with the way to change it for whoever may. */
+function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
+  const ownership = ownershipOf(resident, uid);
+  const who = resident.preferredName || resident.name;
+  const v = resident.vulnerability;
+  const staff = resident.staff;
+  const family = resident.family;
+  const phone = (n: string | undefined) => n && phoneDisplay(n);
+  return (
+    <section className="card stack details-card" aria-labelledby="details-heading">
+      <div className="row details-head">
+        <h2 id="details-heading">Details and contacts</h2>
+        {ownership === 'mine' && <Link className="button ghost" to={`/staff/residents/${encodeURIComponent(resident.id)}/edit`}>Edit details</Link>}
+      </div>
+      <dl className="person-context">
+        <div>
+          <dt>Resident</dt>
+          <dd>{[resident.name, resident.preferredName && `called “${resident.preferredName}”`, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</dd>
+        </div>
+        {v && (
+          <div>
+            <dt>Circumstances</dt>
+            <dd>
+              {[v.livesAlone ? 'Lives alone' : 'Lives with others', v.hasCloseSupporter ? 'Has someone nearby' : 'Nobody nearby', v.needsCare ? 'Needs care' : 'No care needs recorded', ...v.chronicConditions].join(' · ')}
+              {resident.householdNotes && <><br /><span className="meta">{resident.householdNotes}</span></>}
+            </dd>
+          </div>
+        )}
+        {staff && (
+          <div>
+            <dt>Staff in charge</dt>
+            <dd>{[staff.name, phone(staff.phone) && `phone ${phone(staff.phone)}`, phone(staff.sms) && `texts ${phone(staff.sms)}`, staff.email].filter(Boolean).join(' · ')}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Family contact</dt>
+          <dd>{family ? [family.name, family.relationship, phone(family.sms), family.email].filter(Boolean).join(' · ') : 'None recorded'}</dd>
+        </div>
+      </dl>
+      {ownership === 'theirs' && <p className="meta">Only {ownerName(resident.owner!)} can change {who}’s details.</p>}
+      {ownership === 'unassigned' && <p className="meta">Take {who} on to change their details.</p>}
+    </section>
   );
 }
 

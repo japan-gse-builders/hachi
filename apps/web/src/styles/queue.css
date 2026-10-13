@@ -110,6 +110,34 @@
   .segmented button .sev-mark { font-size: 14px; }
   .segmented button[aria-pressed="true"] .sev-mark { box-shadow: 0 0 0 1.5px #fff; }
 
+  /* Each level's button in its own colour, the same tint as the level's chip on the cases below. */
+  .urgency-filter { position: relative; display: inline-flex; }
+  .segmented .urgency-option { --sev-tint: color-mix(in srgb, var(--sev-fill) 16%, var(--surface)); background: var(--sev-tint); border-color: var(--sev-line); color: var(--ink); }
+  .segmented .urgency-option:hover { background: color-mix(in srgb, var(--sev-fill) 30%, var(--surface)); border-color: var(--sev-line); color: var(--ink); }
+  .segmented .urgency-option[aria-pressed="true"] { background: var(--sev-fill); border-color: var(--sev-line); color: var(--sev-on); box-shadow: inset 0 0 0 1px var(--sev-line); }
+  /* What the level asks of staff, on hover or keyboard focus. */
+  .urgency-tip {
+    display: none;
+    position: absolute;
+    inset-block-start: calc(100% + 8px);
+    inset-inline-start: 50%;
+    z-index: 30;
+    translate: -50% 0;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-inner);
+    background: var(--ink);
+    color: #fff;
+    box-shadow: var(--shadow-raised);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .urgency-tip::before { content: ""; position: absolute; inset-block-end: 100%; inset-inline-start: 50%; translate: -50% 0; border: 6px solid transparent; border-block-end-color: var(--ink); }
+  .urgency-filter:hover > .urgency-tip,
+  .urgency-filter:has(> .urgency-option:focus-visible) > .urgency-tip { display: block; }
+  .queue-case-sev .sev-chip { background: color-mix(in srgb, var(--sev-fill) 16%, var(--surface)); border-color: color-mix(in srgb, var(--sev-line) 55%, var(--surface)); }
+
   .queue-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-4); }
   .queue-list-head > .meta { margin: 0; }
   .queue-legend > summary { min-height: 44px; font-size: var(--text-sm); }
@@ -123,7 +151,6 @@
   .queue-lane { display: grid; gap: var(--space-2); }
   .queue-lane-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; }
   .queue-lane-title > .sev-mark { font-size: 18px; }
-  .queue-lane-ask { color: var(--ink-muted); font-size: var(--text-sm); font-weight: 400; }
   .queue-lane-items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 
   /* ---------- One case ---------- */
@@ -145,7 +172,7 @@
   .queue-case-state { grid-area: state; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); font-size: var(--text-sm); }
 
   .queue-case-name { margin: 0; font-family: var(--font-body); font-size: var(--text-lg); font-weight: 700; gap: var(--space-2); }
-  .queue-case .resident-avatar { width: 36px; height: 36px; flex-basis: 36px; font-size: 15px; }
+  .queue-case .resident-avatar { width: 44px; height: 44px; flex-basis: 44px; font-size: 16px; }
   .queue-case-summary { margin: 0; font-weight: 600; line-height: 1.35; }
   .queue-case-facts { margin: 0; font-size: var(--text-xs); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   .queue-status { padding: 1px 10px; border: 1px solid var(--line-control); border-radius: 999px; font-weight: 600; white-space: nowrap; }
