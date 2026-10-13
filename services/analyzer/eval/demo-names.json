@@ -1,0 +1,29 @@
+{
+  "staff": "Aiko Tanaka",
+  "residents": {
+    "syn-s1": { "name": "Margaret Ellis", "householdNotes": "Lives alone. Daughter Sarah phones from overseas at weekends." },
+    "syn-s2": { "name": "Arthur Nakamura", "householdNotes": "Lives alone since his wife died. Son David lives in Osaka." },
+    "syn-s3": { "name": "Dorothy Ishii", "householdNotes": "Lives alone. Speaks slowly and takes her time; this is usual for her." },
+    "syn-s4": { "name": "Harold Brooks", "householdNotes": "Lives alone. Plays golf on Saturdays; daughter Claire lives abroad." },
+    "syn-s5": { "name": "Joan Whitfield", "householdNotes": "Lives alone. Goes to the community centre most weeks." },
+    "syn-c1": { "name": "Edith Carter", "householdNotes": "Lives alone. Son Michael phones from overseas on Sundays." },
+    "syn-c2": { "name": "Walter Hughes", "householdNotes": "Lives alone near the harbour. Daughter Rachel visits twice a year." },
+    "syn-c3": { "name": "Irene Okada", "householdNotes": "Lives alone. Daughter Laura lives in Tokyo and calls most evenings." },
+    "syn-c4": { "name": "George Bennett", "householdNotes": "Lives alone. Keen photographer; son Richard lives abroad." },
+    "syn-c5": { "name": "Mary Fujita", "householdNotes": "Lives alone. Walks by the canal most mornings." }
+  },
+  "testResidents": [
+    "Kenji Mori",
+    "Hana Takeda",
+    "Ruth Maeda",
+    "Frank Ogawa",
+    "Alice Kimura",
+    "Thomas Reid",
+    "Nora Hayashi",
+    "Peter Sugimoto",
+    "Grace Endo",
+    "Henry Matsuda",
+    "Lillian Sakai",
+    "Robert Kono"
+  ]
+}

@@ -42,8 +42,29 @@ export interface ResidentConsent {
   recordedBy: string;
 }
 
+/** The staff account responsible for a resident: the only one who may change their record. */
+export interface ResidentOwner {
+  uid: string;
+  /** Copied from the account when it took the resident on, so others can see who to ask. */
+  email?: string;
+  name?: string;
+  since: string;
+}
+
+/**
+ * A family account allowed to open the resident's dashboard, by the email it signs in with.
+ * Viewing only: alerts still go to `family`, the one contact the resident named for them.
+ */
+export interface FamilyAccess {
+  email: string;
+  addedAt: string;
+  addedBy: string;
+}
+
 export interface Resident {
   id: string;
+  /** The organization whose staff look after this resident. Fixed at registration. */
+  orgId: string;
   name: string;
   preferredName: string;
   phone: string;
@@ -59,7 +80,13 @@ export interface Resident {
   consent?: ResidentConsent;
   /** Initial approval for AI calls, including family mood/loneliness updates for new approvals. */
   callConsent?: CallConsent;
-  /** Normalized family phone/email used to authorize dashboard access (FAM-01). */
+  /** Absent until a staff account takes the resident on. */
+  owner?: ResidentOwner;
+  familyAccess?: FamilyAccess[];
+  /**
+   * Normalized family phone/email used to authorize dashboard access (FAM-01): the `family`
+   * contact plus every `familyAccess` email. Derived, never written on its own.
+   */
   familyLookup: string[];
   serviceStartedAt: string;
   /** New enrollment saved before approval; anchor its baseline/rotation when approval arrives. */
@@ -245,6 +272,8 @@ export interface OutboxEntry extends OutboxMessage {
   /** SHA-256 of the idempotency key. */
   id: string;
   residentId: string;
+  /** Copied from the resident, so one organization's held messages can be listed on their own. */
+  orgId: string;
   status: OutboxStatus;
   attempts: number;
   createdAt: string;
@@ -268,6 +297,8 @@ export interface CaseOutcome {
 }
 
 export interface StoredCase extends Case {
+  /** Copied from the resident, so one organization's queue can be listed on its own. */
+  orgId: string;
   /** QUE-03: staff adjustment added to the computed priority score. */
   staffScoreOffset?: number;
   outcome?: CaseOutcome;

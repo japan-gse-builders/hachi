@@ -38,7 +38,7 @@ export async function recordDetections(
     const open = (await store.listCasesByResident(resident.id)).find((c) => c.rule === d.rule && c.status !== 'closed');
     if (!open) {
       const { cases, changes: [change] } = applyDetections([], [d], opts.newId);
-      await store.putCase(cases[0]!);
+      await store.putCase({ ...cases[0]!, orgId: resident.orgId });
       changes.push(change!);
       continue;
     }
@@ -63,7 +63,7 @@ export async function recordDetections(
       locale: opts.locale,
     })
       .filter((m) => !skip.has(m.channel))
-      .map((m) => ({ ...m, id: outboxId(m.idempotencyKey), residentId: resident.id, status: 'pending' as const, attempts: 0, createdAt })),
+      .map((m) => ({ ...m, id: outboxId(m.idempotencyKey), residentId: resident.id, orgId: resident.orgId, status: 'pending' as const, attempts: 0, createdAt })),
   );
   const outbox = await store.enqueueOutbox(entries);
   return { changes, outbox };

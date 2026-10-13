@@ -1,5 +1,5 @@
 import { DEFAULT_GATEWAY_POLICY, parseSpendSettings, PRIVACY_NOTICE, type GatewayPolicy } from '@hachi/core';
-import { MemoryStore, type Resident } from '@hachi/store';
+import { MemoryStore, type Organization, type Resident } from '@hachi/store';
 import type { CallDeps } from '../src/calls.js';
 import type { EnqueueRequest, TaskCallerVerifier, TaskQueue } from '@hachi/cloud';
 import { TelephonyError, type PlaceCallRequest, type TelephonyProvider } from '../src/twilio.js';
@@ -12,6 +12,7 @@ export const BASE_URL = 'https://telephony.example.run.app';
 export function resident(id: string, overrides: Partial<Resident> = {}): Resident {
   return {
     id,
+    orgId: 'org-1',
     name: 'Margaret Smith',
     preferredName: 'Maggie',
     phone: '+819000000001',
@@ -25,6 +26,23 @@ export function resident(id: string, overrides: Partial<Resident> = {}): Residen
     active: true,
     callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version, recordedAt: '2026-09-01T00:00:00.000Z', recordedBy: 'staff-1' },
     createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** Verified unless the test says otherwise, so calls are placed as they are for a real care company. */
+export function organization(id: string, overrides: Partial<Organization> = {}): Organization {
+  return {
+    id,
+    name: 'Sakura Care',
+    timeZone: 'Asia/Tokyo',
+    status: 'active',
+    verifiedAt: '2026-09-01T00:00:00.000Z',
+    verifiedBy: 'migration',
+    billing: { plan: 'internal', email: 'billing@example.org', limits: { residents: 50, members: 10 } },
+    createdAt: '2026-09-01T00:00:00.000Z',
+    createdBy: 'migration',
     updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
@@ -70,6 +88,7 @@ export function makeDeps(
   overrides: { now?: () => Date; voiceStreamUrl?: string; monthlyCapUsd?: number; gateway?: Partial<GatewayPolicy> } = {},
 ) {
   const store = new MemoryStore();
+  store.seedAccounts({ organizations: [organization('org-1')] });
   const queue = new FakeQueue();
   const telephony = new FakeTelephony();
   let tokens = 0;

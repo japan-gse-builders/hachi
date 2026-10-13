@@ -86,7 +86,7 @@ describe('analyzeCall', () => {
       const { deps, store, notifications, reviewer } = await setup(asking());
       reviewer.next(requested('my neighbour Susan'));
       await analyzeCall(deps, ref);
-      const [waiting] = await store.listOutboxAwaitingApproval(10);
+      const [waiting] = await store.listOutboxAwaitingApproval('org-1', 10);
       expect(waiting).toMatchObject({ recipient: 'contact', address: '+819011112222', requestedFor: 'my neighbour Susan' });
       expect(await store.listPendingOutbox(10)).toEqual([]);
       expect(notifications.tasks).toEqual([]);
@@ -98,7 +98,7 @@ describe('analyzeCall', () => {
       await analyzeCall(deps, ref);
       expect((await store.getCall('res-1', ref.callId))!.analysis!.contactRequest).toMatchObject({ who: 'my daughter Alice' });
       expect(await store.listPendingOutbox(10)).toEqual([]);
-      expect(await store.listOutboxAwaitingApproval(10)).toEqual([]);
+      expect(await store.listOutboxAwaitingApproval('org-1', 10)).toEqual([]);
     });
 
     it('does not text anyone about a call that was imported from the past', async () => {

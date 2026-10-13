@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEmail, normalizePhone, toPrincipal } from '../src/auth.js';
+import { familyContacts, normalizeEmail, normalizePhone, toIdentity } from '../src/auth.js';
 import { applyStaffUpdate } from '../src/caseUpdate.js';
 import { addPushToken, patchResident } from '../src/residents.js';
 import { staffContactSchema } from '../src/schemas.js';
@@ -22,15 +22,21 @@ describe('auth helpers', () => {
     for (const bad of ['9000000002', '0000000002', '+81', 'abc']) expect(sms(bad).success).toBe(false);
   });
 
-  it('maps tokens to principals', () => {
-    expect(toPrincipal({ uid: 'a', role: 'staff' })).toEqual({ kind: 'staff', uid: 'a' });
-    expect(toPrincipal({ uid: 'b', phoneNumber: '+819000000002', email: 'A@x.org', emailVerified: true })).toEqual({
-      kind: 'family',
-      uid: 'b',
-      contacts: ['+819000000002', 'a@x.org'],
+  it('maps tokens to identities, with sign-in time in milliseconds and the email normalized', () => {
+    expect(toIdentity({ uid: 'a', email: ' A@X.org ', emailVerified: true, name: 'Ann', authTime: 1_790_000_000 })).toEqual({
+      uid: 'a',
+      email: 'a@x.org',
+      emailVerified: true,
+      name: 'Ann',
+      authTime: 1_790_000_000_000,
     });
-    expect(toPrincipal({ uid: 'c', email: 'a@x.org', emailVerified: false })).toBeNull();
-    expect(toPrincipal({ uid: 'd', role: 'admin' })).toBeNull();
+    expect(toIdentity({ uid: 'b' })).toEqual({ uid: 'b', emailVerified: false });
+  });
+
+  it('counts only a verified email, and any phone number, as a family contact', () => {
+    expect(familyContacts(toIdentity({ uid: 'b', phoneNumber: '+819000000002', email: 'A@x.org', emailVerified: true }))).toEqual(['+819000000002', 'a@x.org']);
+    expect(familyContacts(toIdentity({ uid: 'c', email: 'a@x.org', emailVerified: false }))).toEqual([]);
+    expect(familyContacts(toIdentity({ uid: 'd' }))).toEqual([]);
   });
 });
 

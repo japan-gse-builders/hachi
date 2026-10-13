@@ -29,6 +29,7 @@ export async function recordContactRequest(
     ...plan.message,
     id: outboxId(plan.message.idempotencyKey),
     residentId: resident.id,
+    orgId: resident.orgId,
     status: plan.needsApproval ? 'awaiting_approval' : 'pending',
     attempts: 0,
     createdAt: now.toISOString(),

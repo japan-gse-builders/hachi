@@ -15,6 +15,7 @@ function entry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
     idempotencyKey: key,
     caseId: 'case-1',
     residentId: 'res-1',
+    orgId: 'org-1',
     urgency: 'emergency',
     recipient: 'family',
     channel: 'sms',
@@ -35,6 +36,7 @@ function storedCase(): StoredCase {
   return {
     id: 'case-1',
     residentId: 'res-1',
+    orgId: 'org-1',
     rule: 'R1',
     autoUrgency: 'emergency',
     status: 'open',

@@ -16,6 +16,37 @@ export interface QueueItem {
   residentFacts?: string[];
   householdNotes?: string | null;
   synthetic?: boolean;
+  /** The resident's nine-indicator inputs. Missing from servers older than the indicator bar. */
+  signals?: ResidentSignals;
+}
+
+/**
+ * R3's latest reading of how the resident speaks against their usual range: `slight_change` is its
+ * `watch`, `clear_change` its `action`, `no_baseline` while the usual range is still being collected
+ * and `insufficient_recent` when too few recent calls were usable to compare.
+ */
+export type SpeechStatus = 'usual' | 'slight_change' | 'clear_change' | 'no_baseline' | 'insufficient_recent';
+
+/** Whether check-in calls are getting through, for the "Last reached" chip and the Calls indicator. */
+export interface ReachSummary {
+  /** The latest call that connected and in which the resident spoke; null when none in the lookback. */
+  lastReachedAt: string | null;
+  /** Consecutive resident-local days, back from today, whose check-in was due and did not connect. */
+  missedDays: number;
+  /** The most recent missed check-in failed on our side (`isOurFault`), so nothing is known about them. */
+  ourFault: boolean;
+}
+
+/** Inputs for the nine indicators. Any missing field reads as "no data", never as good. */
+export interface ResidentSignals {
+  /** Start of the latest connected call `domains` comes from; null when no call connected in the lookback. */
+  latestCallAt?: string | null;
+  /** That call's six domains; null when it was analysed before tags existed. */
+  domains?: DomainStates | null;
+  speech?: SpeechStatus;
+  reach?: ReachSummary;
+  /** Calls in the incomplete-analyses window whose analysis did not finish, as `/api/incomplete-analyses` counts them. */
+  unchecked?: number;
 }
 
 export interface UrgencyLegendItem {
@@ -38,6 +69,8 @@ export interface UnreachedResident {
   ourFault: boolean;
   lastReachedAt: string | null;
   tried: string;
+  /** As `ReachSummary.missedDays`. Missing from servers older than the no-call ladder. */
+  missedDays?: number;
 }
 
 /**
@@ -178,6 +211,8 @@ export interface CaseDetail {
     synthetic: boolean;
     /** Active, agreed to calls and not synthetic, so "Call now" can work (issue #13). Missing from older servers. */
     callable?: boolean;
+    /** Missing from servers older than the indicator bar; `caseSignals` fills what it can from this page. */
+    signals?: ResidentSignals;
   };
   detections: { summary: string; detectedAt: string; evidence: Evidence[]; noResponse?: 'silent_after_greeting' | 'stopped_responding' }[];
   calls: {
@@ -294,6 +329,8 @@ export interface FamilyDashboard {
     caseStatusLabel: string;
   }[];
   staff: { name: string; phone: string; email: string | null };
+  /** False for a relative who may view but is not the family contact. Missing on older servers. */
+  receivesAlerts?: boolean;
 }
 
 export interface Resident {
@@ -309,4 +346,25 @@ export interface Resident {
   callConsent?: import('./privacy').CallConsent;
   /** The call holding this resident's line, if any; stale once `until` has passed (issue #13). */
   callSlot?: { callId: string; at: string; until: string };
+  /** The family contact, who gets the alerts. */
+  family?: { name: string; relationship?: string; sms?: string; email?: string };
+  /** The staff member who may change this resident and their family access. Missing means nobody yet. */
+  owner?: ResidentOwner;
+  /** Family accounts, besides the contact, that can open the family dashboard. Missing on older servers. */
+  familyAccess?: FamilyAccess[];
+  /** Missing from servers older than the indicator bar, and from write responses. */
+  signals?: ResidentSignals;
+}
+
+export interface ResidentOwner {
+  uid: string;
+  email?: string;
+  name?: string;
+  since: string;
+}
+
+export interface FamilyAccess {
+  email: string;
+  addedAt: string;
+  addedBy: string;
 }

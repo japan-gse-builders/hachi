@@ -1,17 +1,45 @@
 import { extractSpeechSample, hasCallConsent } from '@hachi/core';
 import { normalizeEmail, normalizePhone } from './auth.js';
-import type { CallRecord, FamilyContact, Resident } from '@hachi/store';
+import type { CallRecord, FamilyAccess, FamilyContact, Resident, ResidentOwner } from '@hachi/store';
 import type { CallImport, ResidentInput, ResidentPatch } from './schemas.js';
 
 type FamilyInput = NonNullable<ResidentInput['family']>;
 
-function familyLookup(f: FamilyInput | undefined): string[] {
+/** The signed-in staff account making a change. */
+export interface StaffActor {
+  uid: string;
+  email?: string;
+  name?: string;
+}
+
+/** Enough for a family; each one is a person who can read about the resident's days. */
+export const FAMILY_ACCESS_MAX = 5;
+
+function contactLookup(f: FamilyInput | undefined): string[] {
   if (!f) return [];
   return [f.sms && normalizePhone(f.sms), f.email && normalizeEmail(f.email)].filter((v): v is string => Boolean(v));
 }
 
+/** The one place `familyLookup` is computed, so access granted and access revoked cannot drift apart. */
+function lookupOf(family: FamilyInput | undefined, access: FamilyAccess[] | undefined): string[] {
+  return [...new Set([...contactLookup(family), ...(access ?? []).map((a) => a.email)])];
+}
+
+function ownerOf(staff: StaffActor, at: string): ResidentOwner {
+  return { uid: staff.uid, ...(staff.email ? { email: staff.email } : {}), ...(staff.name ? { name: staff.name } : {}), since: at };
+}
+
+export function isOwner(r: Resident, uid: string): boolean {
+  return r.owner?.uid === uid;
+}
+
+/** The named family contact, who gets the alerts, as opposed to someone only allowed to view. */
+export function isFamilyContact(r: Resident, contacts: string[]): boolean {
+  return contactLookup(r.family).some((c) => contacts.includes(c));
+}
+
 function toFamily(f: FamilyInput, previous?: FamilyContact): FamilyContact {
-  const sameContacts = previous && familyLookup(previous).join() === familyLookup(f).join();
+  const sameContacts = previous && contactLookup(previous).join() === contactLookup(f).join();
   return {
     ...f,
     // The SMS number doubles as the number for automated voice alerts in emergencies.
@@ -20,19 +48,23 @@ function toFamily(f: FamilyInput, previous?: FamilyContact): FamilyContact {
   };
 }
 
-export function buildResident(input: ResidentInput, id: string, now: Date, staffUid = 'unknown'): Resident {
+/** Whoever registers a resident is responsible for them until they hand them over. */
+export function buildResident(input: ResidentInput, id: string, orgId: string, now: Date, staff: StaffActor): Resident {
   const at = now.toISOString();
   const { family, serviceStartedAt, callConsent, ...rest } = input;
   return {
     ...rest,
     id,
+    orgId,
     staff: { ...input.staff, voice: input.staff.phone },
     ...(family ? { family: toFamily(family) } : {}),
     ...(callConsent ? {
-      callConsent: { ...callConsent, recordedAt: at, recordedBy: staffUid },
-      consent: { shareMood: true, recordedAt: at, recordedBy: staffUid },
+      callConsent: { ...callConsent, recordedAt: at, recordedBy: staff.uid },
+      consent: { shareMood: true, recordedAt: at, recordedBy: staff.uid },
     } : {}),
-    familyLookup: familyLookup(family),
+    owner: ownerOf(staff, at),
+    familyAccess: [],
+    familyLookup: lookupOf(family, []),
     serviceStartedAt: serviceStartedAt ?? at,
     ...(!callConsent && !serviceStartedAt ? { serviceStartPending: true } : {}),
     active: true,
@@ -64,12 +96,51 @@ export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staf
   }
   if (family === null) {
     delete next.family;
-    next.familyLookup = [];
   } else if (family) {
     next.family = toFamily(family, r.family);
-    next.familyLookup = familyLookup(family);
   }
+  next.familyLookup = lookupOf(next.family, next.familyAccess);
   return next;
+}
+
+export function claimResident(r: Resident, staff: StaffActor, now: Date): Resident {
+  return { ...r, owner: ownerOf(staff, now.toISOString()), updatedAt: now.toISOString() };
+}
+
+/** An admin deciding who is responsible, whoever was before. */
+export function assignResident(r: Resident, to: StaffActor, now: Date): Resident {
+  if (isOwner(r, to.uid)) return r;
+  return claimResident(r, to, now);
+}
+
+export function releaseResident(r: Resident, now: Date): Resident {
+  const { owner: _owner, ...rest } = r;
+  return { ...rest, updatedAt: now.toISOString() };
+}
+
+export type GrantOutcome = 'added' | 'already_has_access' | 'family_contact' | 'full';
+
+/** `email` must already be normalized. Granting twice is not an error: the access is there. */
+export function grantFamilyAccess(r: Resident, email: string, staffUid: string, now: Date): { resident: Resident; outcome: GrantOutcome } {
+  const access = r.familyAccess ?? [];
+  if (access.some((a) => a.email === email)) return { resident: r, outcome: 'already_has_access' };
+  if (contactLookup(r.family).includes(email)) return { resident: r, outcome: 'family_contact' };
+  if (access.length >= FAMILY_ACCESS_MAX) return { resident: r, outcome: 'full' };
+  const at = now.toISOString();
+  const familyAccess = [...access, { email, addedAt: at, addedBy: staffUid }];
+  return { resident: { ...r, familyAccess, familyLookup: lookupOf(r.family, familyAccess), updatedAt: at }, outcome: 'added' };
+}
+
+export type RevokeOutcome = 'removed' | 'not_found' | 'family_contact';
+
+/** The family contact's own access goes with the contact, so it is changed there rather than here. */
+export function revokeFamilyAccess(r: Resident, email: string, now: Date): { resident: Resident; outcome: RevokeOutcome } {
+  const access = r.familyAccess ?? [];
+  if (!access.some((a) => a.email === email)) {
+    return { resident: r, outcome: contactLookup(r.family).includes(email) ? 'family_contact' : 'not_found' };
+  }
+  const familyAccess = access.filter((a) => a.email !== email);
+  return { resident: { ...r, familyAccess, familyLookup: lookupOf(r.family, familyAccess), updatedAt: now.toISOString() }, outcome: 'removed' };
 }
 
 export function addPushToken(r: Resident, token: string, max = 10): Resident {

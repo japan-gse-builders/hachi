@@ -92,10 +92,13 @@ historical data.
 - **[Code]** Browsers never read Firestore or Cloud Storage directly: Firestore rules deny all client
   access and the recordings bucket is private. All access goes through the API, which verifies a
   Firebase ID token on every request.
-- **[Code]** Staff are identified by a `role: "staff"` custom claim set by an administrator
-  (`infra/set-staff-claim.mjs`). Family members sign in with an email link; they see only residents
-  whose registered family contact matches their verified email or phone. Unknown and "not yours"
-  residents get the same response.
+- **[Code]** Staff are members of an organization, checked on every request from a membership record
+  (ADR 0004): a verified email is required, a member whose access is turned off or who signed out
+  everywhere is refused at once, and residents, cases and held messages of another organization get
+  the same response as missing ones. Changes to members, settings, residents and cases are written to
+  the organization's activity log, which only its admins can read. Family members sign in with an
+  email link; they see only residents whose registered family contact matches their verified email
+  or phone. Unknown and "not yours" residents get the same response.
 - **[Code]** Family messages never include transcript quotes. SMS contains no link, phone number or
   quote.
 - **[Code]** Without mood-sharing approval, the family API withholds mood states, generated
@@ -112,8 +115,8 @@ historical data.
   short memories for the next conversation, and cases.
 - **[Code]** Logs carry resident, call and outbox IDs, not transcripts or contact addresses.
   Notification idempotency keys contain a hash of the address, not the address.
-- **[Code]** Synthetic evaluation and demo residents are labelled "(synthetic demo)", stored with
-  `synthetic: true`, have no contact details and are never called.
+- **[Code]** Synthetic evaluation and demo residents are stored with `synthetic: true`, have
+  made-up names and no contact details, and are never called.
 - **[Operational]** Entering only what is needed in the free-text household notes.
 
 ## 5. Retention — [Operational]

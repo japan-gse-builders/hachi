@@ -5,7 +5,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { buildApp } from './app.js';
-import { FirebaseTokenVerifier } from './auth.js';
+import { FirebaseAuthAdmin, FirebaseTokenVerifier } from './auth.js';
 import { loadConfig } from './config.js';
 import { GcsMediaSigner } from './gcs.js';
 import { FirestoreStore } from '@hachi/store';
@@ -17,9 +17,11 @@ const firebase = initializeApp();
 const db = getFirestore(firebase);
 db.settings({ ignoreUndefinedProperties: true });
 
+const auth = getAuth(firebase);
 const app = buildApp({
   store: new FirestoreStore(db),
-  verifier: new FirebaseTokenVerifier(getAuth(firebase)),
+  verifier: new FirebaseTokenVerifier(auth),
+  authAdmin: new FirebaseAuthAdmin(auth),
   signer: new GcsMediaSigner(getStorage(firebase), config.recordingsBucket),
   corsOrigins: config.corsOrigins,
   spend: config.spend,

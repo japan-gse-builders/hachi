@@ -1,21 +1,41 @@
 import type { Auth } from 'firebase-admin/auth';
 import type { Storage } from 'firebase-admin/storage';
 import { describe, expect, it, vi } from 'vitest';
-import { FirebaseTokenVerifier } from '../src/auth.js';
+import { FirebaseAuthAdmin, FirebaseTokenVerifier } from '../src/auth.js';
 import { GcsMediaSigner } from '../src/gcs.js';
 
 describe('FirebaseTokenVerifier', () => {
   it('maps decoded Firebase claims', async () => {
     const auth = {
-      verifyIdToken: vi.fn(async () => ({ uid: 'u1', role: 'staff', phone_number: '+819000000002', email: 'a@x.org', email_verified: true })),
+      verifyIdToken: vi.fn(async () => ({
+        uid: 'u1',
+        role: 'staff',
+        phone_number: '+819000000002',
+        email: 'a@x.org',
+        email_verified: true,
+        name: 'Ann',
+        auth_time: 1_790_000_000,
+      })),
     } as unknown as Auth;
+    // The legacy role claim is ignored: being staff is having a membership.
     await expect(new FirebaseTokenVerifier(auth).verify('tok')).resolves.toEqual({
       uid: 'u1',
-      role: 'staff',
       phoneNumber: '+819000000002',
       email: 'a@x.org',
       emailVerified: true,
+      name: 'Ann',
+      authTime: 1_790_000_000,
     });
+  });
+
+  it('updates display names and revokes sessions through Firebase Auth', async () => {
+    const updateUser = vi.fn(async () => ({}));
+    const revokeRefreshTokens = vi.fn(async () => undefined);
+    const admin = new FirebaseAuthAdmin({ updateUser, revokeRefreshTokens } as unknown as Auth);
+    await admin.setDisplayName('u1', 'Ann');
+    await admin.revokeSessions('u1');
+    expect(updateUser).toHaveBeenCalledWith('u1', { displayName: 'Ann' });
+    expect(revokeRefreshTokens).toHaveBeenCalledWith('u1');
   });
 
   it('propagates verification failures', async () => {
