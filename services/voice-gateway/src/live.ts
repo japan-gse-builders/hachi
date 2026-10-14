@@ -117,7 +117,9 @@ export const TOOLS: FunctionDeclaration[] = [
   },
   {
     name: 'end_call',
-    description: 'Hang up. Call this only after you have said goodbye.',
+    description:
+      'Hang up. Only after the resident has said they want to finish, or said yes to "Would you like to end our call now?", and you have said goodbye. ' +
+      'For the wrong person or voicemail, call it straight away with that reason. The call is only ended if the resident really asked.',
     behavior: Behavior.NON_BLOCKING,
     parameters: {
       type: Type.OBJECT,
