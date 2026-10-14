@@ -20,10 +20,10 @@ export function callDay(iso: string, now: Date): string {
   const day = localDay(at);
   if (day === localDay(now)) return 'Today';
   if (day === localDay(new Date(now.getTime() - 86_400_000))) return 'Yesterday';
-  return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: 'numeric', month: 'short' }).format(at);
+  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, day: 'numeric', month: 'short' }).format(at);
 }
 
-const callTime = (iso: string) => new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+const callTime = (iso: string) => new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 
 /** Tags first: the same words call after call, so rows can be compared down the list. */
 function oneLine(c: Call): string {

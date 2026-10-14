@@ -34,12 +34,12 @@ export const STATES: Record<CellState, { symbol: string; word: string; tone: str
 export const LEGEND: CellState[] = ['good', 'mixed', 'concern', 'unmentioned', 'notes', 'missed', 'nocall', 'notyet'];
 
 const tokyoDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(d);
-const tokyoTime = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+const tokyoTime = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
 const DAY = 86_400_000;
 
 /** `date` is a resident-local YYYY-MM-DD. */
 export function dayLabel(date: string): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${date}T00:00:00Z`));
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${date}T00:00:00Z`));
 }
 
 export function dayOfMonth(date: string): string {

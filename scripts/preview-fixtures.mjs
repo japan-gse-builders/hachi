@@ -43,7 +43,7 @@ export const fixtures = {
       autoUrgency: 'urgent', staffUrgency: null, staffScoreOffset: 0, status: 'open', statusLabel: 'Not started',
       reason: 'Very little to eat for two days. Lives alone and has no close supporter nearby.', score: 30,
       firstDetectedAt: at, updatedAt: at, notifications, outcome: null},
-    resident: {id: 'res-1', name: 'Margaret Ellis', preferredName: 'Margaret', phone: '+819000000001', householdNotes: 'Lives alone. Daughter Sarah phones from overseas at weekends.', synthetic: true,
+    resident: {id: 'res-1', name: 'Margaret Ellis', preferredName: 'Margaret', phone: '+819000000001', householdNotes: 'Lives alone. Daughter Sarah phones from overseas on weekends.', synthetic: true,
       vulnerability: {livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: []}},
     detections: [{summary: 'Very little to eat for two days.', detectedAt: at, evidence: [{callId: 'call-1', quote: transcript[1].text, startMs: 25000, endMs: 32000, audioUrl: null}]}],
     calls: [{id: 'call-1', startedAt: at, status: 'completed', durationSec: 240, summary, transcript},

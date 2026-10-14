@@ -84,7 +84,7 @@ export function CallNowButton({ residentId, name, phone, busyCallId }: { residen
       {!underWay && confirming && (
         <div className="stack confirm notice">
           <p>
-            Ring {name} on {phoneDisplay(phone)} now? Hachi will say the care team asked it to call. The call is recorded and checked like the daily call.
+            Call {name} on {phoneDisplay(phone)} now? Hachi will say the care team asked it to call. The call is recorded and checked like the daily call.
           </p>
           <div className="row">
             <button type="button" disabled={busy} onClick={() => void call()}>{busy ? 'Asking…' : `Call ${name} now`}</button>

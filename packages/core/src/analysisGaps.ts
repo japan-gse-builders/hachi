@@ -79,13 +79,13 @@ export function describeAnalysisGaps(gaps: readonly AnalysisGap[], locale: Local
   }
   if (review && voice) {
     return {
-      notChecked: 'Meals and drinks (R2), changes in speech (R3), the call summary, the set questions and any request to ring someone have not been checked.',
+      notChecked: 'Meals and drinks (R2), changes in speech (R3), the call summary, the set questions and any request to call someone have not been checked.',
       checked: 'Sudden emergencies (R1) were checked by keyword rules only.',
     };
   }
   if (review) {
     return {
-      notChecked: 'Meals and drinks (R2), how the conversation held together (R3), the call summary, the set questions and any request to ring someone have not been checked.',
+      notChecked: 'Meals and drinks (R2), how the conversation held together (R3), the call summary, the set questions and any request to call someone have not been checked.',
       checked: 'Sudden emergencies (R1) were checked by keyword rules only.',
     };
   }

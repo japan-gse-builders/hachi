@@ -168,6 +168,8 @@ export interface CallRecord {
   conversation?: {
     endedBy: ConversationEnd;
     at: string;
+    /** Issue #10: how often the checks kept the call open when the model asked to hang up. */
+    endChecks?: EndChecks;
     /** The configured no-response prompts were exhausted: flag R1, rather than legacy R4. */
     noResponseEscalated?: boolean;
     /** Immediate R1 flag succeeded; post-call analysis must not create the same flag again. */
@@ -221,6 +223,17 @@ export interface CallAnalysis {
   error?: string;
   /** Why speech could not be measured from the recording, if it was not. Same as `error`. */
   voiceError?: string;
+}
+
+/**
+ * Issue #10: how often the model asked to hang up and the gateway kept the call open — no request
+ * from the resident (`refused`), no goodbye actually said (`noFarewell`), or the resident talking
+ * again during it (`reopened`). Kept so it can be counted how often the model jumps the gun.
+ */
+export interface EndChecks {
+  refused: number;
+  noFarewell: number;
+  reopened: number;
 }
 
 /**

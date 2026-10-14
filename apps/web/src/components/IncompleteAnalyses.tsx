@@ -25,7 +25,7 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
       await api(`/api/residents/${item.residentId}/calls/${item.callId}/reanalysis`, await token(), { method: 'POST' });
       setRequested((prev) => ({ ...prev, [key]: true }));
     } catch (err) {
-      setErrors((prev) => ({ ...prev, [key]: err instanceof Error ? err.message : 'Could not ask for this call to be analysed again' }));
+      setErrors((prev) => ({ ...prev, [key]: err instanceof Error ? err.message : 'Could not ask for this call to be analyzed again' }));
     } finally {
       setBusy(null);
     }
@@ -49,10 +49,10 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
             <p>{item.notChecked}</p>
             <p className="meta">{item.checked}</p>
             {pending ? (
-              <p className="meta" role="status">Asked to analyse again. The result usually appears within about 10 minutes.</p>
+              <p className="meta" role="status">Asked to analyze again. The result usually appears within about 10 minutes.</p>
             ) : (
               <button className="ghost" type="button" disabled={busy !== null} onClick={() => void request(item, key)}>
-                {busy === key ? 'Asking…' : 'Analyse again'}
+                {busy === key ? 'Asking…' : 'Analyze again'}
               </button>
             )}
             {errors[key] && <p className="error" role="alert">{errors[key]}</p>}

@@ -2,25 +2,31 @@ import { timingSafeEqual } from 'node:crypto';
 import {
   classifyGatewayFailure,
   hasCallConsent,
+  isClosingReply,
+  isSpokenFarewell,
   itemsForCall,
   localDate,
   R1Monitor,
   recordGatewayFailure,
   recordGatewaySuccess,
+  residentWantsToEnd,
   type ScreenItem,
   type Turn,
 } from '@hachi/core';
-import type { CallRecord, ConversationEnd, Resident, Store } from '@hachi/store';
+import type { CallRecord, ConversationEnd, EndChecks, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyPresence, EmergencyRaiser } from './emergency.js';
-import type { LiveConnector, LiveHandlers, LiveSession, ToolCall } from './live.js';
+import type { LiveConnector, LiveHandlers, LiveSession, ToolCall, ToolScheduling } from './live.js';
 import type { NoResponseReporter } from './noResponse.js';
 import {
   buildSystemInstruction,
   priorContext,
   EMERGENCY_TOOL_GUIDANCE,
   emergencyCue,
+  END_REFUSED_GUIDANCE,
+  FAREWELL_GUIDANCE,
   openingCue,
+  reopenedCue,
   resumeCue,
   silenceCue,
   silenceFarewellCue,
@@ -120,6 +126,16 @@ function tokensMatch(expected: string | undefined, given: unknown): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Totals across the call's media streams; absent while no check has ever held a call open. */
+function addEndChecks(before: EndChecks | undefined, now: EndChecks): EndChecks | undefined {
+  const sum = {
+    refused: (before?.refused ?? 0) + now.refused,
+    noFarewell: (before?.noFarewell ?? 0) + now.noFarewell,
+    reopened: (before?.reopened ?? 0) + now.reopened,
+  };
+  return sum.refused + sum.noFarewell + sum.reopened ? sum : undefined;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tidy = (s: string) => s.replace(/\s+/g, ' ').trim();
 
@@ -187,6 +203,29 @@ export class CallSession {
   private endReason?: ConversationEnd;
   private hangupMark?: string;
   private markSeq = 0;
+  /** The system asked for the goodbye (time limit), so end_call needs no word from the resident. */
+  private wrapUpSent = false;
+  /**
+   * Issue #10: the resident asked to finish; turns Hachi has left to actually say goodbye in. Two,
+   * because end_call can arrive in the middle of a turn: that turn ends first, and the goodbye the
+   * tool response asks for comes in the one after.
+   */
+  private farewellTurns = 0;
+  /** The ending is one the resident asked for, so the resident can take it back by talking. */
+  private reopenable = false;
+  /** What the resident has said since the goodbye began. */
+  private sinceGoodbye = '';
+  /** Hachi is part-way through a turn: some of its audio or words have arrived, and it has not completed. */
+  private modelTurnOpen = false;
+  /**
+   * An end_call the resident did ask for, received while Hachi was still speaking with no goodbye in
+   * the words heard so far. A turn's words can trail its audio, so the goodbye may already have been
+   * said: it is answered when the turn completes, because asking for a goodbye now would get a
+   * second one straight after the first.
+   */
+  private pendingEnd?: { call: ToolCall; live: LiveSession | undefined };
+  /** How often the checks kept the call open, so it can be counted across calls afterwards. */
+  private readonly endChecks: EndChecks = { refused: 0, noFarewell: 0, reopened: 0 };
   private timers: NodeJS.Timeout[] = [];
   /** Separate from `timers` because it is restarted every time either side stops speaking. */
   private silenceTimer?: NodeJS.Timeout;
@@ -282,7 +321,9 @@ export class CallSession {
 
     const remainingSec = Math.max(1, this.deps.config.maxConversationSec - Math.floor(this.offsetMs / 1000));
     this.timer((remainingSec - Math.min(this.t.wrapUpLeadSec, remainingSec / 2)) * 1000, () => {
-      if (!this.emergencyActive && !this.endReason) this.live?.sendText(wrapUpCue(this.name));
+      if (this.emergencyActive || this.endReason) return;
+      this.wrapUpSent = true;
+      this.live?.sendText(wrapUpCue(this.name));
     });
     this.timer(remainingSec * 1000, () => {
       if (!this.emergencyActive) this.requestEnd('time_limit');
@@ -435,17 +476,28 @@ export class CallSession {
   private handlers(generation: number): LiveHandlers {
     const current = () => generation === this.liveGeneration && this.state === 'active';
     return {
-      audio: (pcm) => current() && this.onModelAudio(pcm),
+      audio: (pcm) => {
+        if (!current()) return;
+        this.modelTurnOpen = true;
+        this.onModelAudio(pcm);
+      },
       inputTranscript: (text) => current() && this.onResidentText(text),
-      outputTranscript: (text) => current() && this.appendTurn('agent', text),
+      outputTranscript: (text) => {
+        if (!current()) return;
+        this.modelTurnOpen = true;
+        this.appendTurn('agent', text);
+      },
       interrupted: () => {
         if (!current()) return;
+        this.modelTurnOpen = false;
         this.sendTwilio({ event: 'clear', streamSid: this.streamSid });
         this.recorder.clearOutbound();
         this.down.reset();
       },
       turnComplete: () => {
         if (!current()) return;
+        this.modelTurnOpen = false;
+        if (this.farewellTurns) this.onFarewellTurn();
         const name = `t${++this.markSeq}`;
         this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
         if (this.endReason) this.hangupMark = name;
@@ -576,6 +628,10 @@ export class CallSession {
     this.residentActivity();
     if (this.turns[this.turns.length - 1]?.speaker !== 'resident') this.monitor.endTurn();
     const turn = this.appendTurn('resident', text);
+    if (this.reopenable && (this.farewellTurns > 0 || this.endReason === 'agent')) {
+      this.sinceGoodbye += ` ${text}`;
+      if (!isClosingReply(this.sinceGoodbye)) this.reopen();
+    }
     const [signal] = this.monitor.push(text, { startMs: turn.startMs, endMs: turn.endMs });
     if (signal) {
       this.live?.sendText(emergencyCue(this.name));
@@ -583,17 +639,121 @@ export class CallSession {
     }
   }
 
-  private onToolCall(call: ToolCall): void {
+  /** The resident's latest words, what Hachi said just before them, and what Hachi has said since. */
+  private latestExchange(): { resident: string; agentBefore: string; agentSince: string } {
+    const turns = [...this.previousTurns, ...this.transcript()];
+    let i = turns.length - 1;
+    while (i >= 0 && turns[i]!.speaker !== 'resident') i--;
+    const before = turns.slice(0, Math.max(i, 0)).filter((t) => t.speaker === 'agent').at(-1);
+    return {
+      resident: i >= 0 ? turns[i]!.text : '',
+      agentBefore: i >= 0 ? (before?.text ?? '') : '',
+      agentSince: turns.slice(i + 1).filter((t) => t.speaker === 'agent').map((t) => t.text).join(' '),
+    };
+  }
+
+  /**
+   * Issue #10: a tool call alone is not consent. The call ends only when (a) the resident's own
+   * latest words ask for it, or say yes to Hachi asking, and (b) Hachi's goodbye has really been
+   * said; the mark then waits for it to finish playing. Anything less keeps the call open and
+   * tells the model to ask.
+   */
+  private onEndCall(call: ToolCall): void {
     const live = this.live;
-    if (call.name === 'end_call') {
-      if (this.silencePrompts > 0 && !this.silenceEscalated && !this.emergencyActive) {
-        live?.respondToTool(call, { status: 'error', retryable: false, message: 'The unanswered-check sequence is still running. Wait for the resident to answer; do not hang up yet.' }, 'SILENT');
-        return;
-      }
-      live?.respondToTool(call, { status: 'ok', retryable: false, message: 'The call will end now.' }, 'SILENT');
-      if (!this.emergencyActive) this.requestEnd(this.silenceEscalated && this.endReason ? this.endReason : 'agent');
+    const ok = (message: string, scheduling: 'SILENT' | 'WHEN_IDLE') =>
+      live?.respondToTool(call, { status: 'ok', retryable: false, message }, scheduling);
+    // #29 first. While Hachi is still checking on a resident who has not answered, the model may
+    // not hang up; once that silence has been escalated, the call ends as the silence it is.
+    if (this.silencePrompts > 0 && !this.silenceEscalated && !this.emergencyActive) {
+      live?.respondToTool(call, { status: 'error', retryable: false, message: 'The unanswered-check sequence is still running. Wait for the resident to answer; do not hang up yet.' }, 'SILENT');
       return;
     }
+    if (this.silenceEscalated && this.endReason && !this.emergencyActive) {
+      ok('The call will end now.', 'SILENT');
+      return this.requestEnd(this.endReason);
+    }
+    // Already ending for a reason of the gateway's own (time, silence, an emergency), or help is
+    // being arranged: the tool changes nothing, and must not overwrite why the call ended.
+    if (this.emergencyActive || this.endReason) return void ok('The call is already ending.', 'SILENT');
+    const reason = call.args.reason;
+    // Not the resident on the line, so there is nobody whose wish to check; or the time is up and
+    // the system itself asked for the goodbye.
+    if (reason === 'wrong_person' || reason === 'voicemail' || this.wrapUpSent) {
+      ok('The call will end now.', 'SILENT');
+      return this.requestEnd('agent');
+    }
+    const said = this.latestExchange();
+    if (!residentWantsToEnd(said.resident, said.agentBefore)) {
+      this.endChecks.refused++;
+      this.deps.log.info({ ...this.ids, check: 'no_request', reason }, 'end_call refused: the resident has not asked to finish');
+      live?.respondToTool(call, { status: 'error', retryable: false, message: END_REFUSED_GUIDANCE }, 'WHEN_IDLE');
+      return;
+    }
+    this.reopenable = true;
+    this.sinceGoodbye = '';
+    if (isSpokenFarewell(said.agentSince)) {
+      ok('The call will end now.', 'SILENT');
+      return this.requestEnd('agent');
+    }
+    if (this.modelTurnOpen) {
+      this.pendingEnd = { call, live };
+      this.farewellTurns = 1;
+      return;
+    }
+    this.farewellTurns = 2;
+    ok(FAREWELL_GUIDANCE, 'WHEN_IDLE');
+  }
+
+  /** Answers an end_call held until its turn completed; dropped if Gemini has since reconnected. */
+  private answerPendingEnd(status: 'ok' | 'error', message: string, scheduling: ToolScheduling): void {
+    const pending = this.pendingEnd;
+    this.pendingEnd = undefined;
+    if (pending && pending.live === this.live) pending.live?.respondToTool(pending.call, { status, retryable: false, message }, scheduling);
+  }
+
+  /** Hachi finished speaking after the resident asked to end: hang up only if that was a goodbye. */
+  private onFarewellTurn(): void {
+    // Help is being arranged: the goodbye that was due no longer is.
+    if (this.emergencyActive) {
+      this.farewellTurns = 0;
+      this.answerPendingEnd('error', 'Not ended: help is being arranged.', 'SILENT');
+      return;
+    }
+    if (isSpokenFarewell(this.latestExchange().agentSince)) {
+      this.farewellTurns = 0;
+      this.answerPendingEnd('ok', 'The call will end now.', 'SILENT');
+      return this.requestEnd('agent');
+    }
+    // The turn end_call arrived in is over without a goodbye: only now is it worth asking for one.
+    if (this.pendingEnd) {
+      this.farewellTurns = 2;
+      return this.answerPendingEnd('ok', FAREWELL_GUIDANCE, 'WHEN_IDLE');
+    }
+    if (--this.farewellTurns > 0) return;
+    this.reopenable = false;
+    this.endChecks.noFarewell++;
+    this.deps.log.info({ ...this.ids, check: 'no_farewell' }, 'end_call held: Hachi did not say goodbye');
+  }
+
+  /** The resident started talking during the goodbye: the call goes on. */
+  private reopen(): void {
+    this.endChecks.reopened++;
+    this.deps.log.info({ ...this.ids, check: 'reopened' }, 'ending taken back: the resident kept talking');
+    this.farewellTurns = 0;
+    this.reopenable = false;
+    this.sinceGoodbye = '';
+    this.answerPendingEnd('error', 'Not ended: the resident started talking again.', 'SILENT');
+    if (this.endReason === 'agent') {
+      this.endReason = undefined;
+      this.hangupMark = undefined;
+      this.endGeneration++;
+    }
+    this.live?.sendText(reopenedCue(this.name));
+  }
+
+  private onToolCall(call: ToolCall): void {
+    const live = this.live;
+    if (call.name === 'end_call') return this.onEndCall(call);
     if (call.name === 'report_emergency') {
       const quote = typeof call.args.quote === 'string' && call.args.quote.trim() ? call.args.quote.trim() : 'Reported by Hachi during the call';
       const symptom = typeof call.args.symptom === 'string' ? call.args.symptom : undefined;
@@ -679,15 +839,20 @@ export class CallSession {
     const transcript = [...this.previousTurns, ...this.transcript()];
     let saved = false;
     try {
-      await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => ({
-        ...c,
-        transcript,
-        conversation: {
-          endedBy: reason, at,
-          ...(this.silenceEscalated && (reason === 'silent_after_greeting' || reason === 'stopped_responding') ? { noResponseEscalated: true } : {}),
-        },
-        analysisPending: true,
-      }));
+      await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => {
+        const checks = addEndChecks(c.conversation?.endChecks, this.endChecks);
+        return {
+          ...c,
+          transcript,
+          conversation: {
+            endedBy: reason,
+            at,
+            ...(checks ? { endChecks: checks } : {}),
+            ...(this.silenceEscalated && (reason === 'silent_after_greeting' || reason === 'stopped_responding') ? { noResponseEscalated: true } : {}),
+          },
+          analysisPending: true,
+        };
+      });
       saved = true;
     } catch (err) {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save transcript');
@@ -709,7 +874,7 @@ export class CallSession {
       }
     }
     this.socket.close();
-    this.deps.log.info({ ...ids, reason, turns: transcript.length }, 'conversation ended');
+    this.deps.log.info({ ...ids, reason, turns: transcript.length, endChecks: this.endChecks }, 'conversation ended');
     // Kept apart from the line above because it is about the transport rather than about the call.
     // One is read when asking what happened to a resident, the other when asking whether resumption
     // and compression do what they were configured to do, which no single call can answer alone.

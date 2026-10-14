@@ -1,4 +1,4 @@
-import type { ScreenItem, Turn } from '@hachi/core';
+import { END_QUESTION, type ScreenItem, type Turn } from '@hachi/core';
 import type { CallRecord } from '@hachi/store';
 
 /** What earlier calls tell the next one (CNV-07 / CNV-08 / DET-04). */
@@ -78,7 +78,8 @@ export function buildSystemInstruction(
     '3. Ask what they have eaten today, and whether they have been eating as usual, for example yesterday. Ask what they have had to drink as well, in the same friendly way.',
     '4. Ask one or two friendly questions about their day, such as sleep, plans, or something they enjoy, and let them talk.',
     `5. Work today's set questions into the conversation, one at a time, where they fit. ${items.length ? 'They are listed below.' : kind.unscheduled ? 'There are none on this call; they belong to the daily call.' : 'There are none today.'}`,
-    '6. After about three to five minutes, or as soon as they want to finish, thank them, say goodbye, and then call end_call.',
+    `6. After about three to five minutes, ask exactly: "${END_QUESTION}" and wait for the answer. If they say yes, or tell you themselves that they want to finish, thank them, say goodbye, and then call end_call. If they want to keep talking, carry on a little longer.`,
+    '   Never decide on your own that the call is over: end_call only works once they have said so.',
     '',
     // The call stays short. What an older adult who wants company needs is the people who love
     // them, not more minutes of an AI, so Hachi offers to carry the message and then finishes.
@@ -126,6 +127,17 @@ export function buildSystemInstruction(
   return lines.join('\n');
 }
 
+/** The one question whose plain "yes" counts as agreeing to end the call (see `residentWantsToEnd`). */
+export { END_QUESTION };
+/** Sent back when end_call is refused: the resident has not asked to finish. */
+export const END_REFUSED_GUIDANCE =
+  'Not ended: the resident has not clearly said they want to finish, so the call stays open. Do not say goodbye. ' +
+  `If you already said goodbye, say warmly that you spoke too soon. If they might want to finish, ask exactly "${END_QUESTION}" and wait.`;
+/** Sent back when the resident did ask to finish but Hachi has not said goodbye yet. */
+export const FAREWELL_GUIDANCE =
+  "Say one short, warm goodbye now that ends with the word 'Goodbye'. Do not ask a question. The call ends once it has played, unless they speak again.";
+export const reopenedCue = (name: string) =>
+  `[System] ${name} started talking again, so the call is still open. Listen and answer them. Do not say goodbye again unless they want to finish.`;
 export const openingCue = (name: string) => `[System] The call has connected. Greet ${name} now.`;
 export const resumeCue = (name: string) => `[System] The call has reconnected. Apologize briefly to ${name} and continue.`;
 export const wrapUpCue = (name: string) => `[System] The call time is almost over. Thank ${name}, say goodbye warmly, and call end_call.`;

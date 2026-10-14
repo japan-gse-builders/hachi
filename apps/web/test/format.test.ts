@@ -10,7 +10,7 @@ describe('staff display helpers', () => {
   });
 
   it('formats times in Japan and offsets inside a recording', () => {
-    expect(formatWhen('2026-10-02T07:41:00.000Z')).toBe('2 Oct, 16:41');
+    expect(formatWhen('2026-10-02T07:41:00.000Z')).toBe('Oct 2, 16:41');
     expect(formatWhen('not-a-date')).toBe('not-a-date');
     expect(clock(125000)).toBe('2:05');
     expect(clock(undefined)).toBe('');

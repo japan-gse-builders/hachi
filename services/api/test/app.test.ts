@@ -535,7 +535,7 @@ describe('residents nobody reached (QUE-01)', () => {
     const { items, note } = await ctx.get();
     expect(items[0]).toMatchObject({ reasonLabel: 'System fault' });
     expect(items[0].meaning).toContain('A fault on our side');
-    expect(items[0].tried).toBe('Rang once. No call has connected in 14 days.');
+    expect(items[0].tried).toBe('Called once. No call has connected in 14 days.');
     expect(note).toContain('the fault is ours');
   });
 

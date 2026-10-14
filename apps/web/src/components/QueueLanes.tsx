@@ -1,28 +1,93 @@
-import { useId } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { deliveryLabel, formatWhen } from '../format';
+import { channelList, deliveryLabel, formatWhen } from '../format';
 import { ageLabel, knownSignals, notifiedSummary, type QueueCard, type QueueLane } from '../queue';
-import { SEVERITY, uncheckedFor, urgencySeverity } from '../signals';
+import { uncheckedFor, urgencySeverity } from '../signals';
 import type { Queue, QueueItem, UrgencyLegendItem } from '../types';
 import { ResidentAvatar } from './ResidentAvatar';
-import { IndicatorBar, SeverityChip } from './Signals';
+import { IndicatorBar, placeTip, SeverityChip, SeverityMark } from './Signals';
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+function NotificationInfo({ notification: n, open, onOpenChange }: {
+  notification: ReturnType<typeof notifiedSummary>[number];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const id = useId();
+  const item = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !item.current) return;
+    const position = () => {
+      const trigger = item.current;
+      if (!trigger) return;
+      placeTip(trigger);
+      const tip = trigger.querySelector<HTMLElement>('.sev-tip');
+      if (!tip) return;
+      const rect = trigger.getBoundingClientRect();
+      const below = Math.max(0, document.documentElement.clientHeight - rect.bottom - 14);
+      const above = Math.max(0, rect.top - 14);
+      const up = tip.scrollHeight > below && above > below;
+      tip.style.setProperty('--notification-tip-room', `${up ? above : below}px`);
+      tip.style.setProperty('--notification-tip-top', up ? `${-tip.offsetHeight - 6}px` : 'calc(100% + 6px)');
+    };
+    const dismiss = (event: KeyboardEvent) => { if (event.key === 'Escape') onOpenChange(false); };
+    position();
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, [open, n.items, onOpenChange]);
+
+  return (
+    <li
+      ref={item}
+      className={`queue-notification${n.delivered ? '' : ' is-failed'}${open ? ' is-open' : ''}`}
+      onMouseEnter={() => onOpenChange(true)}
+      onMouseLeave={(event) => { if (!event.currentTarget.contains(document.activeElement)) onOpenChange(false); }}
+    >
+      <button
+        type="button"
+        className="queue-notified-trigger"
+        aria-label={`${capital(n.recipient)} notification details${n.delivered ? '' : ' (not delivered)'}`}
+        aria-describedby={id}
+        onFocus={() => onOpenChange(true)}
+        onBlur={() => onOpenChange(false)}
+        onClick={() => onOpenChange(true)}
+      >
+        <span className="queue-notified-mark" aria-hidden="true">{n.delivered ? '✓' : '×'}</span>
+        <span className="queue-notified-name">{capital(n.recipient)}{!n.delivered && ' not delivered'}</span>
+      </button>
+      <div id={id} className="sev-tip queue-notification-tip" role="tooltip">
+        <strong>{capital(n.recipient)} notification</strong>
+        <p>{n.delivered ? 'Hachi sent an alert. No delivery failure is recorded.' : 'At least one alert could not be delivered.'}</p>
+        <ul>
+          {n.items.map((i, index) => (
+            <li key={index}>
+              <span>{capital(channelList([i.channel]))}: {deliveryLabel(i.delivery)}</span>
+              <time dateTime={i.sentAt}>Sent {formatWhen(i.sentAt)}</time>
+            </li>
+          ))}
+        </ul>
+        <p>This mark does not confirm that the alert was read or acted on.</p>
+      </div>
+    </li>
+  );
+}
+
 function Notified({ item }: { item: QueueItem }) {
+  const [open, setOpen] = useState<string | null>(null);
   const summary = notifiedSummary(item.notifications);
   if (!summary.length) return null;
   return (
-    <ul className="queue-notified" aria-label="Who was told">
+    <ul className="queue-notified" aria-label="Notification status">
       {summary.map((n) => (
-        <li key={n.recipient} className={n.delivered ? '' : 'is-failed'}>
-          <span className="queue-notified-mark" aria-hidden="true">{n.delivered ? '✓' : '×'}</span>
-          {capital(n.recipient)}
-          {!n.delivered && <span> not delivered</span>}
-          <span className="sr-only">
-            {' '}{n.items.map((i) => `by ${i.channel} (${deliveryLabel(i.delivery)}), ${formatWhen(i.sentAt)}`).join('; ')}
-          </span>
-        </li>
+        <NotificationInfo key={n.recipient} notification={n} open={open === n.recipient}
+          onOpenChange={(show) => setOpen((current) => show ? n.recipient : current === n.recipient ? null : current)} />
       ))}
     </ul>
   );
@@ -56,9 +121,6 @@ function QueueCaseCard({ item, queue, now, linkState }: { item: QueueCard; queue
   });
   return (
     <li className={`card queue-case queue-stripe sev-${closed ? 'good' : severity}${signals ? ' has-signals' : ''}${closed ? ' is-closed' : ''}`}>
-      <div className="queue-case-sev">
-        <SeverityChip spoken={false} severity={severity} label={item.urgencyLabel} detail={item.urgencyMeaning} />
-      </div>
       <h4 className="resident-heading queue-case-name">
         <ResidentAvatar id={item.residentId} name={item.residentName} portrait={item.residentPortrait} />
         <Link className="queue-case-link" to={`/staff/cases/${item.caseId}`} state={linkState}>{item.residentName}</Link>
@@ -98,7 +160,7 @@ function Lane({ lane, legend, queue, now, linkState }: { lane: QueueLane; legend
   return (
     <section className="queue-lane" aria-labelledby={id}>
       <h3 id={id} className="queue-lane-title">
-        <span className={`sev-mark sev-${lane.severity}`} aria-hidden="true">{SEVERITY[lane.severity].symbol}</span>
+        <SeverityMark severity={lane.severity} />
         <span>{label}</span>
         <span className="queue-count-pill">{n}<span className="sr-only"> {unit}</span></span>
       </h3>

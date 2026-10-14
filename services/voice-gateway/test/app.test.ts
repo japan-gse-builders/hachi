@@ -42,7 +42,8 @@ describe('voice gateway app', () => {
     expect(ctx.live.last.texts).toEqual([openingCue('Maggie')]);
 
     ctx.live.last.h.audio(new Int16Array(480).fill(5000));
-    ctx.live.last.h.toolCalls([{ id: 'f', name: 'end_call', args: {} }]);
+    // A reason that needs no word from the resident (issue #10); the consent checks are tested in session.test.ts.
+    ctx.live.last.h.toolCalls([{ id: 'f', name: 'end_call', args: { reason: 'wrong_person' } }]);
     await vi.waitFor(() => expect(received.some((m) => m.event === 'mark')).toBe(true));
     expect(received[0]).toMatchObject({ event: 'media', streamSid: 'MZ1' });
 
