@@ -27,7 +27,13 @@ export const RESIDENT_PORTRAITS = [
 ] as const;
 export type ResidentPortrait = (typeof RESIDENT_PORTRAITS)[number];
 
+/**
+ * The staff member in charge, who gets the alerts. Copied from the account of whoever is
+ * responsible for the resident, so it is always someone on the team rather than a typed-in name.
+ */
 export interface StaffContact extends Contact {
+  /** The account it was copied from. Absent on contacts typed in before staff were chosen from the team. */
+  uid?: string;
   /** Phone number shown to family on the dashboard (FAM-04). */
   phone: string;
 }

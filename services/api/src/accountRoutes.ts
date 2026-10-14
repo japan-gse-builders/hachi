@@ -17,7 +17,7 @@ import {
 import type { AuthAdmin, Identity, StaffPrincipal } from './auth.js';
 import { HttpError } from './errors.js';
 import { ID, parse, requireIdentity, requireVerifiedEmail } from './request.js';
-import { releaseResident } from './residents.js';
+import { refreshStaffContact, releaseResident } from './residents.js';
 import {
   auditQuerySchema,
   invitationCreateSchema,
@@ -41,9 +41,15 @@ function pathId(id: string, what: string): string {
   return id;
 }
 
-/** What the team page shows about someone: nothing about their sessions. */
+/** What the team page shows about someone: nothing about their sessions, and not their numbers. */
 function memberView(m: Membership) {
-  return { uid: m.uid, email: m.email, name: m.name ?? null, role: m.role, status: m.status, joinedAt: m.joinedAt };
+  return { uid: m.uid, email: m.email, name: m.name ?? null, role: m.role, status: m.status, joinedAt: m.joinedAt, canBeInCharge: Boolean(m.phone) };
+}
+
+/** The numbers are the person's, not the organization's, so a new membership starts with the ones they already gave. */
+function contactOf(memberships: Membership[]): Pick<Membership, 'phone' | 'sms'> {
+  const m = memberships.find((x) => x.phone);
+  return m ? { phone: m.phone, ...(m.sms ? { sms: m.sms } : {}) } : {};
 }
 
 export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDeps): void {
@@ -84,6 +90,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       email: id.email ?? null,
       emailVerified: id.emailVerified,
       name: memberships.find((m) => m.name)?.name ?? id.name ?? null,
+      phone: contactOf(memberships).phone ?? null,
+      sms: contactOf(memberships).sms ?? null,
       memberships: memberships.flatMap((m, i) => {
         const org = orgs[i];
         if (!org) return [];
@@ -102,15 +110,31 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     };
   });
 
-  /** The name colleagues and the activity log see. Kept on each membership so lists need no Auth lookups. */
+  /**
+   * The name colleagues and the activity log see, and the numbers alerts reach them on when they
+   * are in charge of a resident. Kept on each membership so lists need no Auth lookups; residents
+   * they are in charge of are brought up to date straight away, so the next alert uses the new ones.
+   */
   app.patch('/api/me', async (req) => {
     const id = requireIdentity(req);
-    const { name } = parse(profilePatchSchema, req.body);
+    const { name, phone, sms } = parse(profilePatchSchema, req.body);
     await freshSession(id);
-    const at = now().toISOString();
+    const t = now();
+    const at = t.toISOString();
     await deps.authAdmin?.setDisplayName(id.uid, name);
-    await store.updateMembershipsOfUser(id.uid, (m) => ({ ...m, name, updatedAt: at }));
-    return { name };
+    const saved = await store.updateMembershipsOfUser(id.uid, ({ sms: oldSms, ...m }) => {
+      const nextSms = sms === undefined ? oldSms : (sms ?? undefined);
+      return { ...m, name, ...(phone ? { phone } : {}), ...(nextSms ? { sms: nextSms } : {}), updatedAt: at };
+    });
+    const contact = contactOf(saved);
+    if (contact.phone) {
+      const inCharge = { uid: id.uid, name, phone: contact.phone, ...(contact.sms ? { sms: contact.sms } : {}) };
+      await Promise.all(saved.map(async (m) => {
+        const theirs = (await store.listResidents(m.orgId)).filter((r) => (r.staff?.uid ?? r.owner?.uid) === id.uid);
+        await Promise.all(theirs.map((r) => store.updateResident(r.id, (cur) => refreshStaffContact(cur, { ...inCharge, email: m.email }, t))));
+      }));
+    }
+    return { name, phone: contact.phone ?? null, sms: contact.sms ?? null };
   });
 
   /**
@@ -142,7 +166,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     // Membership ids join the organization id and the uid with `_`, so organization ids never contain one.
     const orgId = newId().replace(/[^A-Za-z0-9-]/g, '');
     const { org, owner } = buildOrganization(input, orgId, id, now());
-    await store.createOrganization(org, validAfter ? { ...owner, sessionsValidAfter: validAfter } : owner);
+    await store.createOrganization(org, { ...owner, ...contactOf(memberships), ...(validAfter ? { sessionsValidAfter: validAfter } : {}) });
     await audit(req, org.id, staffRef(id), { action: 'organization.created', target: { type: 'organization', id: org.id, label: org.name } });
     return reply.status(201).send({ orgId: org.id, orgName: org.name, role: owner.role });
   });
@@ -150,13 +174,14 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
   app.post<{ Params: { id: string } }>('/api/invitations/:id/accept', async (req) => {
     const id = requireVerifiedEmail(req);
     const invId = pathId(req.params.id, 'Invitation');
-    const { validAfter } = await freshSession(id);
+    const { memberships, validAfter } = await freshSession(id);
     const accept = acceptance(id, now());
     let joined = false;
     const membership = await store.acceptInvitation(invId, id.uid, (inv, existing) => {
       const result = accept(inv, existing);
       joined = !existing;
-      return joined && validAfter ? { ...result, membership: { ...result.membership, sessionsValidAfter: validAfter } } : result;
+      if (!joined) return result;
+      return { ...result, membership: { ...result.membership, ...contactOf(memberships), ...(validAfter ? { sessionsValidAfter: validAfter } : {}) } };
     }).catch((err: unknown) => {
       // A missing invitation reads the same as one addressed to someone else.
       if (err instanceof NotFoundError) throw new HttpError(404, 'Invitation not found', 'invitation_not_found');

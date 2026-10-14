@@ -63,17 +63,19 @@ export function residentInput(overrides: Record<string, unknown> = {}): Record<s
     callTime: '10:00',
     timeZone: 'Asia/Tokyo',
     vulnerability: { livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: ['diabetes'] },
-    staff: { name: 'Tanaka', phone: '+81300000000', email: 'staff@example.org' },
     family: { name: 'Alice', relationship: 'daughter', sms: '+81 90-0000-0002', email: 'alice@example.org' },
     ...overrides,
   };
 }
 
+/** Who `makeResident` puts in charge: staff-1, with the numbers on their membership. */
+export const TANAKA = { uid: 'staff-1', email: 'staff@example.org', name: 'Tanaka', phone: '+81300000000' };
+
 export function makeResident(id: string, overrides: Record<string, unknown> = {}): Resident {
   return buildResident(residentInputSchema.parse(residentInput({
     callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version },
     ...overrides,
-  })) as ResidentInput, id, 'org-1', NOW, { uid: 'staff-1', email: 'staff@example.org' });
+  })) as ResidentInput, id, 'org-1', NOW, TANAKA, TANAKA);
 }
 
 export function detection(overrides: Partial<Detection> = {}): Detection {
@@ -175,15 +177,18 @@ export function membership(orgId: string, token: keyof typeof TOKENS, role: OrgR
   };
 }
 
-/** org-1: staff (owner), admin, otherStaff (member). org-2: outsider (owner). */
+/**
+ * org-1: staff (owner), admin, otherStaff (member). org-2: outsider (owner). Everyone has a phone
+ * number on their account, so can be put in charge of a resident.
+ */
 export function seedAccounts(store: MemoryStore): void {
   store.seedAccounts({
     organizations: [organization('org-1'), organization('org-2')],
     memberships: [
-      membership('org-1', 'staff', 'owner'),
-      membership('org-1', 'admin', 'admin'),
-      membership('org-1', 'otherStaff', 'member'),
-      membership('org-2', 'outsider', 'owner'),
+      membership('org-1', 'staff', 'owner', { phone: TANAKA.phone }),
+      membership('org-1', 'admin', 'admin', { phone: '+81333333333' }),
+      membership('org-1', 'otherStaff', 'member', { phone: '+81322222222', sms: '+819022222222' }),
+      membership('org-2', 'outsider', 'owner', { phone: '+81344444444' }),
     ],
   });
 }

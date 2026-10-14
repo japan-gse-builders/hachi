@@ -1,13 +1,13 @@
 import type { Resident } from '../types';
 import { PORTRAITS, portraitSrc } from './ResidentAvatar';
+import { StaffInChargeField } from './StaffInChargeField';
 
 /**
- * The resident's details, their care-team contact and their family contact, as one set of fields
- * for both adding and editing. Read back with `readResidentForm`.
+ * The resident's details, the staff member in charge and their family contact, as one set of
+ * fields for both adding and editing. Read back with `readResidentForm`.
  */
 export function ResidentFields({ resident }: { resident?: Resident }) {
   const v = resident?.vulnerability;
-  const staff = resident?.staff;
   const family = resident?.family;
   return (
     <>
@@ -50,16 +50,7 @@ export function ResidentFields({ resident }: { resident?: Resident }) {
         <label><span>Ongoing conditions, separated by commas <span className="hint">(optional)</span></span><input name="conditions" defaultValue={v?.chronicConditions.join(', ')} /></label>
         <label><span>Household notes <span className="hint">(optional)</span></span><textarea name="householdNotes" rows={2} maxLength={1000} defaultValue={resident?.householdNotes} /></label>
       </fieldset>
-      <fieldset>
-        <legend>Staff in charge</legend>
-        <p className="meta">Alerts go by text message or email, so enter at least one of them.</p>
-        <div className="field-grid">
-          <label>Staff name<input name="staffName" required maxLength={100} defaultValue={staff?.name} /></label>
-          <label>Staff phone, for emergency calls<input name="staffPhone" type="tel" required placeholder="+81312345678" spellCheck={false} defaultValue={staff?.phone} /></label>
-          <label>Staff mobile for text alerts<input name="staffSms" type="tel" placeholder="+819012345678" spellCheck={false} defaultValue={staff?.sms} /></label>
-          <label>Staff email<input name="staffEmail" type="email" spellCheck={false} defaultValue={staff?.email} /></label>
-        </div>
-      </fieldset>
+      <StaffInChargeField resident={resident} />
       <fieldset>
         <legend>Family member (optional)</legend>
         <p className="meta">
@@ -99,7 +90,7 @@ export function readResidentForm(form: FormData, { clearing = false }: { clearin
     },
     ...(clearing ? { householdNotes: text('householdNotes') } : optional('householdNotes', 'householdNotes')),
     ...(portrait ? { portrait } : clearing ? { portrait: null } : {}),
-    staff: { name: text('staffName'), phone: text('staffPhone'), ...optional('sms', 'staffSms'), ...optional('email', 'staffEmail') },
+    ...(clearing ? {} : optional('staffUid', 'staffUid')),
     ...(hasFamily
       ? {
           family: {

@@ -72,6 +72,12 @@ export interface Membership {
   /** Normalized; copied from the verified account so the team list needs no Auth lookups. */
   email: string;
   name?: string;
+  /**
+   * Where alerts reach them as the staff member in charge of a resident. Kept on every membership
+   * of the account, like the name. Nobody can be put in charge until they have a phone number.
+   */
+  phone?: string;
+  sms?: string;
   role: OrgRole;
   /** A disabled member keeps their place in the history but cannot act for the organization. */
   status: 'active' | 'disabled';

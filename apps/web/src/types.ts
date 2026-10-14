@@ -358,8 +358,8 @@ export interface Resident {
   portrait?: Portrait;
   vulnerability?: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
   householdNotes?: string;
-  /** The care team's contact for this resident, who gets the alerts. */
-  staff?: { name: string; phone: string; sms?: string; email?: string };
+  /** The staff member in charge, who gets the alerts: copied from the responsible staff member's account. */
+  staff?: { uid?: string; name: string; phone: string; sms?: string; email?: string };
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
   consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
   callConsent?: import('./privacy').CallConsent;

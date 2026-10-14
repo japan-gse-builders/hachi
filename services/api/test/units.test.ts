@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { familyContacts, normalizeEmail, normalizePhone, toIdentity } from '../src/auth.js';
 import { applyStaffUpdate } from '../src/caseUpdate.js';
-import { addPushToken, patchResident } from '../src/residents.js';
-import { staffContactSchema } from '../src/schemas.js';
+import { addPushToken, claimResident, patchResident, refreshStaffContact, releaseResident } from '../src/residents.js';
+import { profilePatchSchema } from '../src/schemas.js';
 import { idGen, makeResident, NOW, storedCase } from './helpers.js';
 
 describe('auth helpers', () => {
@@ -13,7 +13,7 @@ describe('auth helpers', () => {
   });
 
   it('accepts phone numbers as typed on Japanese keyboards and rejects ones without a country', () => {
-    const sms = (v: string) => staffContactSchema.safeParse({ name: 'Tanaka', phone: v, sms: v });
+    const sms = (v: string) => profilePatchSchema.safeParse({ name: 'Tanaka', phone: v, sms: v });
     const fullWidth = (s: string) => s.replace(/[+0-9]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
     for (const typed of ['+81 90-0000-0002', fullWidth('+819000000002'), '090-0000-0002', fullWidth('090 0000 0002')]) {
       expect(sms(typed).data?.sms).toBe('+819000000002');
@@ -78,9 +78,28 @@ describe('resident helpers', () => {
     expect(patchResident(r, { family: { name: 'New', sms: '+819033333333' } }, NOW).family?.pushTokens).toEqual([]);
   });
 
-  it('updates the staff voice number with the staff phone', () => {
-    const r = patchResident(makeResident('r'), { staff: { name: 'Sato', phone: '+81311111111', sms: '+81311111111' } }, NOW);
-    expect(r.staff.voice).toBe('+81311111111');
+  it('puts whoever takes a resident on in charge, with their account numbers', () => {
+    const sato = { uid: 'staff-2', email: 'sato@example.org', name: 'Sato', phone: '+81311111111', sms: '+819011111111' };
+    const r = claimResident(makeResident('r'), sato, NOW);
+    expect(r.owner?.uid).toBe('staff-2');
+    expect(r.staff).toEqual({ uid: 'staff-2', name: 'Sato', phone: '+81311111111', voice: '+81311111111', sms: '+819011111111', email: 'sato@example.org' });
+  });
+
+  it('keeps alerts going to the staff member who was in charge after they hand a resident over', () => {
+    const r = releaseResident(makeResident('r'), NOW);
+    expect(r.owner).toBeUndefined();
+    expect(r.staff.uid).toBe('staff-1');
+  });
+
+  it('refreshes the contact from its account, and replaces a typed-in one only for its owner', () => {
+    const tanaka = { uid: 'staff-1', email: 'staff@example.org', name: 'Tanaka', phone: '+81322222222' };
+    const r = makeResident('r');
+    expect(refreshStaffContact(r, tanaka, NOW).staff.phone).toBe('+81322222222');
+    expect(refreshStaffContact(r, { ...tanaka, uid: 'staff-2' }, NOW)).toBe(r);
+    const { uid: _uid, ...typed } = r.staff;
+    const legacy = { ...r, staff: { ...typed, name: 'Front desk' } };
+    expect(refreshStaffContact(legacy, tanaka, NOW).staff).toMatchObject({ uid: 'staff-1', name: 'Tanaka' });
+    expect(refreshStaffContact({ ...legacy, owner: undefined }, tanaka, NOW).staff.name).toBe('Front desk');
   });
 
   it('sets the portrait, keeps it when not sent, and clears it with null', () => {

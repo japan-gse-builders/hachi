@@ -1,6 +1,6 @@
 import { extractSpeechSample, hasCallConsent } from '@hachi/core';
 import { normalizeEmail, normalizePhone } from './auth.js';
-import type { CallRecord, FamilyAccess, FamilyContact, Resident, ResidentOwner } from '@hachi/store';
+import type { CallRecord, FamilyAccess, FamilyContact, Resident, ResidentOwner, StaffContact } from '@hachi/store';
 import type { CallImport, ResidentInput, ResidentPatch } from './schemas.js';
 
 type FamilyInput = NonNullable<ResidentInput['family']>;
@@ -10,6 +10,27 @@ export interface StaffActor {
   uid: string;
   email?: string;
   name?: string;
+  phone?: string;
+  sms?: string;
+}
+
+/** A member of the team who can be put in charge of a resident: one alerts can reach by phone. */
+export type ResponsibleStaff = StaffActor & { phone: string };
+
+export function canBeInCharge(staff: StaffActor): staff is ResponsibleStaff {
+  return Boolean(staff.phone);
+}
+
+/** The responsible staff member is the one in charge, so the alerts go to their account's numbers. */
+export function staffContactOf(staff: ResponsibleStaff): StaffContact {
+  return {
+    uid: staff.uid,
+    name: staff.name ?? staff.email ?? 'Care team',
+    phone: staff.phone,
+    voice: staff.phone,
+    ...(staff.sms ? { sms: staff.sms } : {}),
+    ...(staff.email ? { email: staff.email } : {}),
+  };
 }
 
 /** Enough for a family; each one is a person who can read about the resident's days. */
@@ -48,21 +69,31 @@ function toFamily(f: FamilyInput, previous?: FamilyContact): FamilyContact {
   };
 }
 
-/** Whoever registers a resident is responsible for them until they hand them over. */
-export function buildResident(input: ResidentInput, id: string, orgId: string, now: Date, staff: StaffActor): Resident {
+/**
+ * `inCharge` is responsible for the resident until they hand them over: whoever registers them,
+ * unless an admin registers them for a colleague.
+ */
+export function buildResident(
+  input: ResidentInput,
+  id: string,
+  orgId: string,
+  now: Date,
+  staff: StaffActor,
+  inCharge: ResponsibleStaff,
+): Resident {
   const at = now.toISOString();
-  const { family, serviceStartedAt, callConsent, ...rest } = input;
+  const { family, serviceStartedAt, callConsent, staffUid: _staffUid, ...rest } = input;
   return {
     ...rest,
     id,
     orgId,
-    staff: { ...input.staff, voice: input.staff.phone },
+    staff: staffContactOf(inCharge),
     ...(family ? { family: toFamily(family) } : {}),
     ...(callConsent ? {
       callConsent: { ...callConsent, recordedAt: at, recordedBy: staff.uid },
       consent: { shareMood: true, recordedAt: at, recordedBy: staff.uid },
     } : {}),
-    owner: ownerOf(staff, at),
+    owner: ownerOf(inCharge, at),
     familyAccess: [],
     familyLookup: lookupOf(family, []),
     serviceStartedAt: serviceStartedAt ?? at,
@@ -74,9 +105,8 @@ export function buildResident(input: ResidentInput, id: string, orgId: string, n
 }
 
 export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown'): Resident {
-  const { family, staff, shareMood, callConsent, portrait, ...rest } = patch;
+  const { family, shareMood, callConsent, portrait, ...rest } = patch;
   const next: Resident = { ...r, ...rest, updatedAt: now.toISOString() };
-  if (staff) next.staff = { ...staff, voice: staff.phone };
   if (portrait === null) delete next.portrait;
   else if (portrait) next.portrait = portrait;
   // Who heard it and when is the point of recording consent at all, so it is written here, not sent.
@@ -105,16 +135,32 @@ export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staf
   return next;
 }
 
-export function claimResident(r: Resident, staff: StaffActor, now: Date): Resident {
-  return { ...r, owner: ownerOf(staff, now.toISOString()), updatedAt: now.toISOString() };
+export function claimResident(r: Resident, staff: ResponsibleStaff, now: Date): Resident {
+  return { ...r, owner: ownerOf(staff, now.toISOString()), staff: staffContactOf(staff), updatedAt: now.toISOString() };
 }
 
 /** An admin deciding who is responsible, whoever was before. */
-export function assignResident(r: Resident, to: StaffActor, now: Date): Resident {
+export function assignResident(r: Resident, to: ResponsibleStaff, now: Date): Resident {
   if (isOwner(r, to.uid)) return r;
   return claimResident(r, to, now);
 }
 
+/**
+ * Brings the contact up to date with the account it was copied from, after its numbers changed.
+ * A contact typed in before staff were chosen from the team is replaced by the owner's.
+ */
+export function refreshStaffContact(r: Resident, staff: ResponsibleStaff, now: Date): Resident {
+  const theirs = r.staff?.uid ? r.staff.uid === staff.uid : r.owner?.uid === staff.uid;
+  if (!theirs) return r;
+  const staffContact = staffContactOf(staff);
+  if (JSON.stringify(staffContact) === JSON.stringify(r.staff)) return r;
+  return { ...r, staff: staffContact, updatedAt: now.toISOString() };
+}
+
+/**
+ * Nobody is responsible until someone takes them on, but the alerts still need somewhere to go,
+ * so they keep going to the staff member who was in charge.
+ */
 export function releaseResident(r: Resident, now: Date): Resident {
   const { owner: _owner, ...rest } = r;
   return { ...rest, updatedAt: now.toISOString() };

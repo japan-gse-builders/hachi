@@ -26,6 +26,9 @@ export interface Me {
   email: string | null;
   emailVerified: boolean;
   name: string | null;
+  /** Where alerts reach them when they are in charge of a patient; null until they add it. */
+  phone: string | null;
+  sms: string | null;
   memberships: MembershipSummary[];
   invitations: PendingInvitation[];
 }
@@ -37,6 +40,12 @@ export interface Member {
   role: OrgRole;
   status: 'active' | 'disabled';
   joinedAt: string;
+  /** Has a phone number on their account, so alerts can reach them as staff in charge. */
+  canBeInCharge: boolean;
+}
+
+export function memberLabel(m: Member): string {
+  return m.name ? `${m.name} (${m.email})` : m.email;
 }
 
 export interface OrgInvitation {
