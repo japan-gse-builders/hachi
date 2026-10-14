@@ -76,14 +76,14 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      - name: Deploy to Firebase
-        run: >-
-          npx --yes firebase-tools@15 deploy
-          --only hosting:hachi-call,firestore
-          --project "$FIREBASE_PROJECT_ID"
-          --non-interactive
-          --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
-
+     - name: Deploy to Firebase
+    run: >-
+      npx --yes firebase-tools@15 deploy
+      --only hosting,firestore
+      --project "$FIREBASE_PROJECT_ID"
+      --non-interactive
+      --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
+    
       - name: Check the live site serves this build
         run: |
           set -e
