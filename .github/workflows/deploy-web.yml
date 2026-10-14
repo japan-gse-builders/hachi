@@ -1,34 +1,80 @@
+# Builds apps/web from main and deploys it to Firebase Hosting, together with the Firestore rules
+# and indexes (additive only: without --force, indexes missing from firestore.indexes.json are kept).
+# Cloud Run services are not deployed here; use infra/deploy-*.sh.
+#
+# Repository or `production` environment variables (Settings > Secrets and variables > Actions):
+#   FIREBASE_PROJECT_ID, VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_API_BASE,
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOY_SERVICE_ACCOUNT
+#   optional: VITE_FIREBASE_MESSAGING_SENDER_ID, VITE_FIREBASE_APP_ID, VITE_FIREBASE_VAPID_KEY
+# The VITE_* values are public web config compiled into the bundle, so they are variables, not
+# secrets. Authentication is keyless (Workload Identity Federation); no key file is stored.
 name: Deploy web
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
-
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://hachicall.web.app/
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Check configuration
+        # A build without these still succeeds but ships a site where nobody can sign in.
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          for name in FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_API_BASE WIF_PROVIDER DEPLOY_SA; do
+            if [ -z "${!name}" ]; then echo "::error::Variable for $name is not set"; missing=1; fi
+          done
+          exit "$missing"
 
-      - name: Build web
-        run: npm run build --workspace=apps/web
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w @hachi/web
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Deploy to Firebase
-        env:
-          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+        # firebase.json selects `hachicall` for the app and `hachicall-nao` for the old URL's redirect.
+        # The Google Cloud project ID is separate from these Hosting site IDs.
         run: >-
           npx --yes firebase-tools@15 deploy
           --only hosting,firestore
@@ -36,17 +82,28 @@ jobs:
           --non-interactive
           --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
 
-      - name: Verify live site
+      - name: Check the live site serves this build
+        # The app is served from the `hachicall` site; the project's default site only redirects there.
         run: |
-          set -e
-          curl -fsS --retry 5 --retry-delay 10 \
-            -H 'Cache-Control: no-cache' \
-            https://hachicall.web.app/ \
-            -o /tmp/live-index.html
-
-          if ! grep -q '<html' /tmp/live-index.html; then
-            echo "::error::The live site did not return the expected HTML"
-            exit 1
-          fi
-
-          echo "Live site is responding: https://hachicall.web.app/"
+          expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
+          base="https://hachicall.web.app"
+          old="https://${FIREBASE_PROJECT_ID}.web.app"
+          for _ in 1 2 3 4 5 6; do
+            verified=1
+            for path in / /staff; do
+              url="${base}${path}"
+              if ! location=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code} %{redirect_url}' "${old}${path}") ||
+                 ! curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "$url" | grep -Fq "$expected" ||
+                 [ "$location" != "301 $url" ]; then
+                verified=0
+                break
+              fi
+            done
+            if [ "$verified" -eq 1 ]; then
+              echo "Live: $base/ and $base/staff serve $expected (${GITHUB_SHA::7}); the old URLs redirect to the same paths"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$url should serve $expected and ${old}${path} should answer 301 to it (got: $location)"
+          exit 1
