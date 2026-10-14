@@ -337,8 +337,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
   });
 
   /**
-   * Nothing is emailed yet: the invitee signs in with the invited address and finds the invitation
-   * waiting. The admin tells them, which for a care team is a conversation in the office anyway.
+   * Save access before the web app sends a Firebase sign-in email. Email delivery can be retried
+   * without creating another invitation; accepting still requires the verified invited address.
    */
   app.post('/api/organization/invitations', async (req, reply) => {
     const staff = await requireStaff(req);

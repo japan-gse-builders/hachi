@@ -273,6 +273,12 @@ stops accepting the old origin, and until Hosting redirects, the app is still be
 The first person to sign in on the staff side creates the organization and becomes its owner, then
 invites colleagues from the Team page. To add someone directly instead:
 `node infra/add-member.mjs "$PROJECT_ID" <org-id> staff@your-org.example admin`.
+The Team page emails a Firebase sign-in link after saving an invitation; **Send sign-in email**
+also works for invitations that were saved before email sending was available. Recipients enter
+the invited address, then review the invitation and choose **Join**. Enable **Email link
+(passwordless sign-in)** under Authentication → Sign-in method → Email/Password, and keep the
+Hosting domain in Authorized domains. If sending fails, the invitation stays saved and the Team
+page explains how to retry. Email delivery is disabled in the local preview.
 A new organization rings, messages and shows nobody until it is verified:
 `node infra/verify-organization.mjs "$PROJECT_ID" <org-id> --by you@hachi.example --apply`.
 Deployments from before organizations existed are moved over with `infra/migrate-organizations.mjs`,

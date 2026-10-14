@@ -71,8 +71,18 @@ cannot leave. Nobody can change their own role or access.
 Self-serve: anyone with a verified email can create an organization and becomes its owner (at most
 three owned organizations per account). Everyone else joins by invitation. Invitations are bound to
 the email address, not a secret link: only an account that has verified that address can accept, so
-a forwarded link gives nobody access. No invitation emails are sent yet; the invitee sees pending
-invitations when they sign in. "Not found" and "not yours" give the same response.
+a forwarded link gives nobody access. After saving an invitation, the web app sends a Firebase
+Authentication sign-in email. Opening it asks for the invited address, signs in or creates the
+account, then takes it to the welcome page to review and accept the invitation. It never accepts
+on the recipient's behalf. "Not found" and "not yours" give the same response.
+
+Pending invitations have a **Send sign-in email** action for invitations saved before email was
+supported, failed sends, or expired sign-in links. It does not create another invitation, change
+the role, or extend the invitation's 14-day lifetime. Email failure is shown separately from a
+successful invitation save. Delivery uses the existing Firebase email-link configuration and
+quotas; these are authentication emails, not the notifier's optional SendGrid care alerts. The
+administrator's session and remembered sign-in address are not changed. Invitation links contain
+no email address, and opening one never reuses another person's remembered address.
 
 ### Verification
 
@@ -199,7 +209,8 @@ Not built yet, on purpose:
   versions; using the organization time zone for every date shown to staff (it is used for new
   residents today).
 - **Data lifecycle:** export of an organization's data, deleting an organization, retention periods.
-- **Invitations:** sending invitation emails; resending.
+- **Invitations:** custom organization-branded emails and persisted delivery receipts (Firebase
+  accepts the send request, but the app cannot confirm receipt in the invitee's inbox).
 - **Audit:** export, retention, and writing entries in the same transaction as the change.
 - **API keys** for integrations.
 - **The legacy claim:** removing `role: "staff"` from existing accounts. The web app still uses it

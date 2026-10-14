@@ -6,6 +6,7 @@ import { useAuth } from '../auth';
 import { LoadError, Loading } from '../components/States';
 import { TeamNav } from '../components/TeamNav';
 import { formatWhen } from '../format';
+import { invitationEmailError, inviteColleague } from '../invitations';
 import { atLeast, ROLE_LABEL, ROLE_MEANING, type Member, type OrgInvitation, type OrgRole } from '../orgs';
 import { useDocumentTitle } from '../title';
 
@@ -68,7 +69,7 @@ export function TeamPage() {
 }
 
 function InviteForm({ onInvited }: { onInvited: () => Promise<void> }) {
-  const { token } = useAuth();
+  const { token, sendInvitationEmail } = useAuth();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'member' | 'admin'>('member');
   const [busy, setBusy] = useState(false);
@@ -81,8 +82,9 @@ function InviteForm({ onInvited }: { onInvited: () => Promise<void> }) {
     setError('');
     setStatus('');
     try {
-      const res = await api<{ email: string }>('/api/organization/invitations', await token(), { method: 'POST', body: JSON.stringify({ email: email.trim(), role }) });
-      setStatus(`Invitation saved for ${res.email}. Nothing is emailed yet: ask them to sign in to Hachi staff with this address, and the invitation will be waiting.`);
+      const { invitation, emailError } = await inviteColleague({ email: email.trim(), role }, await token(), sendInvitationEmail);
+      if (emailError) setError(`The invitation for ${invitation.email} was saved, but its first email attempt failed. ${emailError}`);
+      else setStatus(`Sign-in email sent to ${invitation.email}. They can open the link, confirm their email address, and choose Join to accept your invitation.`);
       setEmail('');
       await onInvited();
     } catch (err) {
@@ -110,7 +112,7 @@ function InviteForm({ onInvited }: { onInvited: () => Promise<void> }) {
           </select>
         </label>
       </div>
-      <p className="meta">Only an account that has confirmed this address can accept. Invitations are open for 14 days. To make someone an owner, invite them first, then change their role.</p>
+      <p className="meta">We will email them a sign-in link. They can create an account or sign in, then review and accept the invitation. Only an account that has confirmed this address can join. Invitations are open for 14 days.</p>
       <div className="form-actions">
         <button type="submit" disabled={busy || !email.trim()}>{busy ? 'Inviting…' : 'Invite'}</button>
       </div>
@@ -119,13 +121,30 @@ function InviteForm({ onInvited }: { onInvited: () => Promise<void> }) {
 }
 
 function PendingInvitations({ invitations, onChanged }: { invitations: OrgInvitation[]; onChanged: () => Promise<void> }) {
-  const { token } = useAuth();
+  const { token, sendInvitationEmail } = useAuth();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+
+  const send = async (invitation: OrgInvitation) => {
+    if (invitation.expired) return;
+    setBusy(`${invitation.id}/email`);
+    setError('');
+    setStatus('');
+    try {
+      await sendInvitationEmail(invitation.email);
+      setStatus(`Sign-in email sent to ${invitation.email}. If it does not arrive in a few minutes, ask them to check their spam or junk folder.`);
+    } catch (err) {
+      setError(`Email to ${invitation.email} was not sent. ${invitationEmailError(err)}`);
+    } finally {
+      setBusy('');
+    }
+  };
 
   const withdraw = async (id: string) => {
-    setBusy(id);
+    setBusy(`${id}/withdraw`);
     setError('');
+    setStatus('');
     try {
       await api(`/api/organization/invitations/${encodeURIComponent(id)}`, await token(), { method: 'DELETE' });
       await onChanged();
@@ -140,6 +159,8 @@ function PendingInvitations({ invitations, onChanged }: { invitations: OrgInvita
     <section className="card stack" aria-labelledby="pending-heading">
       <h2 id="pending-heading">Waiting to join</h2>
       {error && <p className="error" role="alert">{error}</p>}
+      {status && <p className="notice-success" role="status">{status}</p>}
+      <p className="meta">Send a new sign-in email if the first one was not received or its link expired. This keeps the existing invitation and role.</p>
       <ul className="access-list">
         {invitations.map((i) => (
           <li key={i.id}>
@@ -151,9 +172,14 @@ function PendingInvitations({ invitations, onChanged }: { invitations: OrgInvita
                   {i.expired ? 'Withdraw it and invite them again.' : `Open until ${formatWhen(i.expiresAt)}.`}
                 </p>
               </div>
-              <button type="button" className="ghost" disabled={busy === i.id} onClick={() => void withdraw(i.id)}>
-                {busy === i.id ? 'Withdrawing…' : 'Withdraw'}
-              </button>
+              <div className="member-controls">
+                <button type="button" className="ghost" disabled={Boolean(busy) || i.expired} onClick={() => void send(i)}>
+                  {busy === `${i.id}/email` ? 'Sending…' : 'Send sign-in email'}
+                </button>
+                <button type="button" className="ghost" disabled={Boolean(busy)} onClick={() => void withdraw(i.id)}>
+                  {busy === `${i.id}/withdraw` ? 'Withdrawing…' : 'Withdraw'}
+                </button>
+              </div>
             </div>
           </li>
         ))}
