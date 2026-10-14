@@ -25,7 +25,7 @@ const NOT_PLACED: Record<string, string> = {
   paused: 'Calls were paused for them before Hachi could call, so the call was not made.',
   consent_required: 'They have not agreed to calls from Hachi, so the call was not made.',
   organization_unverified: 'Hachi has not verified your organization yet, so the call was not made.',
-  synthetic: 'This is a demo resident, so Hachi does not call them.',
+  synthetic: 'This is a demo patient, so Hachi does not call them.',
   not_placed: 'The call did not start within a few minutes. You can ask again.',
 };
 

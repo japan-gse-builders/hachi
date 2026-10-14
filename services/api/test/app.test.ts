@@ -257,18 +257,19 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(items[0]).toMatchObject({ status: 'open', statusLabel: 'Not started' });
   });
 
-  it('tells staff where the month stands, and says so plainly when calls have stopped', async () => {
+  it('tells staff nothing about the budget until it stops their calls, and then says so plainly', async () => {
     const spend = parseSpendSettings({ AI_MONTHLY_CAP_USD: '100' });
     const { app, as, store } = setup({ spend });
     const month = spendMonth(NOW);
+    await store.mutateSpendLedger(month, (l) => charge(l, 50 * USD, NOW));
     const quiet = await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') });
-    expect(quiet.json()).toMatchObject({ month, paused: false, cap: '$100.00', committed: '$0.00', usedPercent: 0 });
+    expect(quiet.statusCode).toBe(200);
+    expect(quiet.body).toBe('null');
 
-    await store.mutateSpendLedger(month, (l) => charge(l, 95 * USD, NOW));
+    await store.mutateSpendLedger(month, (l) => charge(l, 45 * USD, NOW));
     const used = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') })).json();
-    expect(used).toMatchObject({ paused: true, usedPercent: 95, remaining: '$0.00' });
-    // The sentence has to say that an emergency still gets through, or staff will assume it does not.
-    expect(used.note).toContain('Emergency contact is unaffected');
+    // No figures: not the cap, not what was spent, not how far along the month is.
+    expect(used).toEqual({ month, paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
     const ja = (await app.inject({ method: 'GET', url: '/api/spend', ...as('staff') })).json();
     expect(ja.note).toContain('緊急時の連絡は止まりません');
   });
@@ -361,6 +362,24 @@ describe('triage queue and cases (QUE-01..03)', () => {
       { id: 'mood.lonely', label: 'Lonely', domain: 'mood', polarity: 'concern', audience: 'family_with_consent', turn: 7, basis: 'inferred', confidence: 0.8, quote: null },
     ]);
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').wellbeing).toBeNull();
+  });
+
+  it('names the resident’s other open cases on a case, so handling one does not hide another', async () => {
+    const { app, as, store } = await seeded();
+    await store.putCase(storedCase({ id: 'meals', residentId: 'res-1', rule: 'R2' }));
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/emergency?locale=en', ...as('staff') })).json();
+    expect(d.otherOpenCases).toEqual([{
+      id: 'meals',
+      ruleName: expect.any(String),
+      urgency: 'watch',
+      urgencyLabel: expect.any(String),
+      urgencyMeaning: expect.any(String),
+      summary: 'Barely ate yesterday',
+      statusLabel: 'Not started',
+      firstDetectedAt: '2026-10-01T01:05:00.000Z',
+    }]);
+    expect((await app.inject({ method: 'GET', url: '/api/cases/meals', ...as('staff') })).json().otherOpenCases.map((o: { id: string }) => o.id)).toEqual(['emergency']);
+    expect((await app.inject({ method: 'GET', url: '/api/cases/watch', ...as('staff') })).json().otherOpenCases).toEqual([]);
   });
 
   it('shows details for closed cases and returns 404 for unknown ones', async () => {
@@ -622,7 +641,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const { app, as } = await seeded();
     for (const who of ['familyPhone', 'familyEmail'] as const) {
       const res = await app.inject({ method: 'GET', url: '/api/family/residents', ...as(who) });
-      expect(res.json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
+      expect(res.json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith', portrait: null }]);
     }
     expect((await app.inject({ method: 'GET', url: '/api/family/residents', ...as('stranger') })).json().residents).toEqual([]);
   });
@@ -701,7 +720,7 @@ describe('who is responsible for a resident, and which family can see them (FAM-
   async function seeded() {
     const ctx = setup();
     await ctx.store.createResident(makeResident('res-1'));
-    const inject = (who: 'staff' | 'otherStaff' | 'relative' | 'unverifiedRelative' | 'familyPhone', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
+    const inject = (who: 'staff' | 'otherStaff' | 'admin' | 'relative' | 'unverifiedRelative' | 'familyPhone', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
       ctx.app.inject({ method, url, ...ctx.as(who), ...(payload ? { payload } : {}) });
     const grant = (email: string, who: 'staff' | 'otherStaff' = 'staff') => inject(who, 'POST', '/api/residents/res-1/family-access', { email });
     return { ...ctx, inject, grant };
@@ -722,11 +741,34 @@ describe('who is responsible for a resident, and which family can see them (FAM-
     expect((await store.getResident('res-1'))?.active).toBe(true);
   });
 
+  it('lets an admin change the details of a resident someone else is responsible for, and logs it', async () => {
+    const { inject, store } = await seeded();
+    const saved = await inject('admin', 'PATCH', '/api/residents/res-1', { preferredName: 'Peggy', family: null });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ preferredName: 'Peggy', owner: { uid: 'staff-1' } });
+    expect(saved.json().family).toBeUndefined();
+    const [entry] = await store.listAudit('org-1', { limit: 1 });
+    expect(entry).toMatchObject({ action: 'resident.updated', actor: { uid: 'staff-3' }, detail: { fields: 'family,preferredName', asAdmin: true, owner: 'staff-1' } });
+
+    await store.updateResident('res-1', (r) => ({ ...r, owner: undefined }));
+    expect((await inject('admin', 'PATCH', '/api/residents/res-1', { callTime: '09:30' })).json().callTime).toBe('09:30');
+    expect((await store.listAudit('org-1', { limit: 1 }))[0]?.detail).toMatchObject({ asAdmin: true, owner: null });
+
+    expect((await inject('admin', 'POST', '/api/residents/res-1/family-access', { email: 'bob@example.org' })).statusCode).toBe(403);
+  });
+
+  it('does not mark the responsible staff member’s own changes as an admin’s', async () => {
+    const { inject, store } = await seeded();
+    expect((await inject('staff', 'PATCH', '/api/residents/res-1', { callTime: '11:00' })).statusCode).toBe(200);
+    const [entry] = await store.listAudit('org-1', { limit: 1 });
+    expect(entry?.detail).toEqual({ fields: 'callTime' });
+  });
+
   it('takes on unassigned residents, refuses someone else’s, and hands over', async () => {
     const { inject, store } = await seeded();
     await store.updateResident('res-1', (r) => ({ ...r, owner: undefined }));
 
-    const unassigned = await inject('staff', 'PATCH', '/api/residents/res-1', { active: false });
+    const unassigned = await inject('otherStaff', 'PATCH', '/api/residents/res-1', { active: false });
     expect(unassigned.statusCode).toBe(403);
     expect(unassigned.json().reason).toBe('unassigned');
 
@@ -756,7 +798,7 @@ describe('who is responsible for a resident, and which family can see them (FAM-
     expect(added.json()).toEqual({ outcome: 'added', familyAccess: [{ email: 'bob@example.org', addedAt: NOW.toISOString(), addedBy: 'staff-1' }] });
     expect((await grant('bob@example.org')).json().outcome).toBe('already_has_access');
 
-    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
+    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith', portrait: null }]);
     expect((await inject('relative', 'GET', '/api/family/residents/res-1/dashboard')).statusCode).toBe(200);
     expect((await inject('unverifiedRelative', 'GET', '/api/family/residents')).statusCode).toBe(403);
 

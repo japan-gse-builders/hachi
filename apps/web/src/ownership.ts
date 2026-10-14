@@ -1,3 +1,4 @@
+import { atLeast, type OrgRole } from './orgs';
 import type { Resident, ResidentOwner } from './types';
 
 export type Ownership = 'mine' | 'theirs' | 'unassigned';
@@ -6,6 +7,11 @@ export type Ownership = 'mine' | 'theirs' | 'unassigned';
 export function ownershipOf(r: Pick<Resident, 'owner'>, uid: string | undefined): Ownership {
   if (!r.owner) return 'unassigned';
   return uid !== undefined && r.owner.uid === uid ? 'mine' : 'theirs';
+}
+
+/** Admins can also change anyone's details and contacts; family access stays with the responsible member. */
+export function mayEditDetails(r: Pick<Resident, 'owner'>, uid: string | undefined, role: OrgRole | undefined | null): boolean {
+  return ownershipOf(r, uid) === 'mine' || atLeast(role, 'admin');
 }
 
 export function ownerName(owner: ResidentOwner): string {

@@ -83,6 +83,13 @@ describe('resident helpers', () => {
     expect(r.staff.voice).toBe('+81311111111');
   });
 
+  it('sets the portrait, keeps it when not sent, and clears it with null', () => {
+    const set = patchResident(makeResident('r'), { portrait: 'grandmother-2' }, NOW);
+    expect(set.portrait).toBe('grandmother-2');
+    expect(patchResident(set, { preferredName: 'Mags' }, NOW).portrait).toBe('grandmother-2');
+    expect('portrait' in patchResident(set, { portrait: null }, NOW)).toBe(false);
+  });
+
   it('caps and de-duplicates push tokens; ignores residents without family', () => {
     let r = makeResident('r');
     for (let i = 0; i < 12; i++) r = addPushToken(r, `t${i}`);

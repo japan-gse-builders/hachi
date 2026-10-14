@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
+import { ResidentAvatar } from '../components/ResidentAvatar';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
 import { atLeast, type Member } from '../orgs';
-import { FAMILY_ACCESS_MAX, ownerName, ownershipOf } from '../ownership';
+import { FAMILY_ACCESS_MAX, mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { useDocumentTitle } from '../title';
 import type { FamilyAccess, Resident } from '../types';
 
@@ -20,10 +21,12 @@ const FIELD_REASONS = new Set(['family_contact', 'access_full']);
 export function ResidentDetailPage() {
   const { id = '' } = useParams();
   const { token, user } = useAuth();
+  const location = useLocation();
+  const saved = Boolean((location.state as { saved?: boolean } | null)?.saved);
   const [resident, setResident] = useState<Resident | null>(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  useDocumentTitle(resident ? `${resident.name} · Family access` : 'Resident');
+  useDocumentTitle(resident ? resident.name : 'Patient');
 
   useEffect(() => {
     setLoadError('');
@@ -31,32 +34,90 @@ export function ResidentDetailPage() {
       .then((t) => api<Resident>(`/api/residents/${encodeURIComponent(id)}`, t))
       .then(setResident)
       .catch((err: unknown) => setLoadError(err instanceof ApiError && err.status === 404
-        ? 'This resident is not registered, or the link is out of date.'
-        : err instanceof Error ? err.message : 'Could not load this resident'));
+        ? 'This patient is not registered, or the link is out of date.'
+        : err instanceof Error ? err.message : 'Could not load this patient'));
   }, [id, token, attempt]);
 
   const back = (
     <p className="back-link">
-      <Link to="/staff/residents"><span aria-hidden="true">← </span>Back to residents</Link>
+      <Link to="/staff/residents"><span aria-hidden="true">← </span>Back to patients</Link>
     </p>
   );
   if (loadError) return <div className="stack page">{back}<LoadError message={loadError} onRetry={() => setAttempt((n) => n + 1)} /></div>;
-  if (!resident) return <div className="stack page">{back}<Loading layout="detail" label="Loading resident…" /></div>;
+  if (!resident) return <div className="stack page">{back}<Loading layout="detail" label="Loading patient…" /></div>;
 
   return (
     <div className="stack page">
       {back}
       <header className="page-header">
-        <div>
-          <h1>{resident.name}</h1>
-          <p className="meta">{[resident.preferredName, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</p>
+        <div className="resident-heading">
+          <ResidentAvatar id={resident.id} name={resident.name} portrait={resident.portrait} />
+          <div>
+            <h1>{resident.name}</h1>
+            <p className="meta">{[resident.preferredName, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</p>
+          </div>
         </div>
       </header>
+      {saved && <p className="notice-success" role="status">Saved. The new details apply from the next call and the next alert.</p>}
       <div className="resident-detail">
+        <DetailsCard resident={resident} uid={user?.uid} />
         <Responsibility resident={resident} uid={user?.uid} onSaved={setResident} />
         <FamilyAccessCard resident={resident} uid={user?.uid} onSaved={(familyAccess) => setResident({ ...resident, familyAccess })} />
       </div>
     </div>
+  );
+}
+
+/** What is on record and who gets contacted, with the way to change it for whoever may. */
+function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
+  const { current } = useAccount();
+  const ownership = ownershipOf(resident, uid);
+  const canEdit = mayEditDetails(resident, uid, current?.role);
+  const who = resident.preferredName || resident.name;
+  const v = resident.vulnerability;
+  const staff = resident.staff;
+  const family = resident.family;
+  const phone = (n: string | undefined) => n && phoneDisplay(n);
+  return (
+    <section className="card stack details-card" aria-labelledby="details-heading">
+      <div className="row details-head">
+        <h2 id="details-heading">Details and contacts</h2>
+        {canEdit && <Link className="button ghost" to={`/staff/residents/${encodeURIComponent(resident.id)}/edit`}>Edit details</Link>}
+      </div>
+      <dl className="person-context">
+        <div>
+          <dt>Patient</dt>
+          <dd>{[resident.name, resident.preferredName && `called “${resident.preferredName}”`, phoneDisplay(resident.phone), `daily call ${resident.callTime}`].filter(Boolean).join(' · ')}</dd>
+        </div>
+        {v && (
+          <div>
+            <dt>Circumstances</dt>
+            <dd>
+              {[v.livesAlone ? 'Lives alone' : 'Lives with others', v.hasCloseSupporter ? 'Has someone nearby' : 'Nobody nearby', v.needsCare ? 'Needs care' : 'No care needs recorded', ...v.chronicConditions].join(' · ')}
+              {resident.householdNotes && <><br /><span className="meta">{resident.householdNotes}</span></>}
+            </dd>
+          </div>
+        )}
+        {staff && (
+          <div>
+            <dt>Staff in charge</dt>
+            <dd>{[staff.name, phone(staff.phone) && `phone ${phone(staff.phone)}`, phone(staff.sms) && `texts ${phone(staff.sms)}`, staff.email].filter(Boolean).join(' · ')}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Family contact</dt>
+          <dd>{family ? [family.name, family.relationship, phone(family.sms), family.email].filter(Boolean).join(' · ') : 'None recorded'}</dd>
+        </div>
+      </dl>
+      {!canEdit && ownership === 'theirs' && <p className="meta">Only {ownerName(resident.owner!)} or an admin can change {who}’s details.</p>}
+      {!canEdit && ownership === 'unassigned' && <p className="meta">Take {who} on to change their details.</p>}
+      {canEdit && ownership !== 'mine' && (
+        <p className="meta">
+          {ownership === 'theirs' ? `${ownerName(resident.owner!)} is responsible for ${who}.` : `Nobody is responsible for ${who} yet.`}
+          {' '}As an admin you can still change their details and contacts.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -87,7 +148,7 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
       <h2 id="responsible-heading">Responsible staff member</h2>
       {ownership === 'mine' && (
         <>
-          <p>You are responsible for {who} since {date(resident.owner!.since)}. Only you can change their details and who in their family can see their calls.</p>
+          <p>You are responsible for {who} since {date(resident.owner!.since)}. Only you can change who in their family can see their calls; you and the admins can change their details.</p>
           {!confirming && <p><button className="ghost" type="button" onClick={() => { setError(''); setConfirming(true); }}>Hand over</button></p>}
           {confirming && (
             <div className="stack confirm notice">

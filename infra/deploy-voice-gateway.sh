@@ -19,6 +19,9 @@ BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
 
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
+source infra/lib.sh
+# Where the case and dashboard links in emergency and no-response notifications point.
+APP_BASE_URL="${APP_BASE_URL:-$(web_origin)}"
 
 echo "==> Enabling APIs"
 gcloud services enable aiplatform.googleapis.com storage.googleapis.com
@@ -102,7 +105,7 @@ done
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 1Gi \
   --concurrency 20 --timeout 3600 --no-cpu-throttling --cpu-boost \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA}${NOTIFY_ENV}${ANALYZE_ENV}${BREAKER_ENV}${DROP_ENV}${TURN_ENV}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=${GEMINI_LOCATION:-$REGION},GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-live},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},TELEPHONY_BASE_URL=${TELEPHONY_URL},TASKS_LOCATION=${TASKS_REGION},EMERGENCY_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},APP_BASE_URL=${APP_BASE_URL}${NOTIFY_ENV}${ANALYZE_ENV}${BREAKER_ENV}${DROP_ENV}${TURN_ENV}"
 
 GATEWAY_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
 echo "==> Health check"

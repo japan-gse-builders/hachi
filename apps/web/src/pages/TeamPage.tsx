@@ -51,7 +51,7 @@ export function TeamPage() {
       <TeamNav />
       {created && (
         <p className="notice-success card" role="status">
-          Your organization is ready. Invite your colleagues below, then add your first resident.
+          Your organization is ready. Invite your colleagues below, then add your first patient.
         </p>
       )}
       {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
@@ -254,7 +254,7 @@ function MemberRow({ member, self, myRole, onChanged }: { member: Member; self: 
       {confirmRemove && (
         <div className="stack confirm notice">
           <p>
-            Remove {who} from the organization? Residents they are responsible for become unassigned. To keep things as they
+            Remove {who} from the organization? Patients they are responsible for become unassigned. To keep things as they
             are for someone who will be back, turn off their access instead.
           </p>
           <div className="row">

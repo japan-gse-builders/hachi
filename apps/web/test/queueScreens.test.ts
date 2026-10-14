@@ -80,4 +80,16 @@ describe('queue cards with indicators', () => {
     expect(html).toContain('<span class="sr-only">Speech: Clear change</span>');
     expect(html).not.toContain('<span class="sr-only">Review today: </span>');
   });
+
+  it('put a patient’s other open cases on their one card, each linking to its case', () => {
+    const lanes = queueLanes([
+      item({ caseId: 'e', urgency: 'emergency', urgencyLabel: 'Act now', summary: 'Trouble breathing' }),
+      item({ caseId: 'w', urgency: 'watch', urgencyLabel: 'Monitor', summary: 'Not eating enough' }),
+    ]);
+    const html = render(QueueLanes, { lanes, queue, now, linkState: null });
+    expect(html.match(/class="card queue-case /g)).toHaveLength(1);
+    expect(html).toContain('Also open for Margaret Ellis');
+    expect(html).toMatch(/<a href="\/staff\/cases\/w"[^>]*>Not eating enough<\/a>/);
+    expect(html).toContain('1<span class="sr-only"> patient</span>');
+  });
 });

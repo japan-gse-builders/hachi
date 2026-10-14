@@ -72,7 +72,7 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
         </div>
       </div>
       <div className="resident-heading">
-        <ResidentAvatar id={r.id} name={r.name} />
+        <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
         <h1>{r.name}</h1>
         <LastReachedChip reach={signals.reach} now={now} />
         {facts.length > 0 && (
@@ -108,6 +108,29 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
   );
 }
 
+/** What else is open for the same patient, so settling this case does not leave another unseen. */
+function OtherOpenCases({ detail, linkState }: { detail: CaseDetail; linkState: unknown }) {
+  const others = detail.otherOpenCases ?? [];
+  if (!others.length) return null;
+  const who = detail.resident.preferredName || detail.resident.name;
+  return (
+    <section className="card notice stack stack-s case-others" aria-labelledby="other-cases-heading">
+      <h2 id="other-cases-heading" className="case-others-title">
+        {who} has {others.length} more open {others.length === 1 ? 'case' : 'cases'}
+      </h2>
+      <ul className="case-others-list">
+        {others.map((o) => (
+          <li key={o.id}>
+            <SeverityChip spoken={false} severity={urgencySeverity(o.urgency)} label={o.urgencyLabel} detail={o.urgencyMeaning} />
+            <Link to={`/staff/cases/${o.id}`} state={linkState}>{o.summary || o.ruleName}</Link>
+            <span className="meta">{o.ruleName} · {o.statusLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function CaseSaid({ detail, now }: { detail: CaseDetail; now: Date }) {
   const callById = new Map(detail.calls.map((c) => [c.id, c]));
   const silences = detail.detections.filter((d) => d.noResponse);
@@ -118,7 +141,7 @@ function CaseSaid({ detail, now }: { detail: CaseDetail; now: Date }) {
       <h2 id="said-heading">What was said</h2>
       {silences.map((d, i) => (
         <p key={`no-response-${i}`} className="case-silence">
-          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no resident quote.
+          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no patient quote.
         </p>
       ))}
       {evidence.map((e, i) => {
@@ -231,6 +254,7 @@ export function CasePage() {
       {back}
       {error && <LoadError message={error} onRetry={loadOrReport} compact />}
       <CaseHeader detail={detail} now={now} unchecked={unchecked} />
+      <OtherOpenCases detail={detail} linkState={location.state} />
       {/* Read, then decide: evidence, the decision beside it, then the records to compare with. */}
       <div className="case-layout">
         <div className="case-col case-col-evidence">

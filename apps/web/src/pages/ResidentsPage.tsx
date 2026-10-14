@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { useAccount } from '../account';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import type { IncompleteAnalyses, Queue, Resident } from '../types';
@@ -10,7 +11,7 @@ import { ResidentAvatar } from '../components/ResidentAvatar';
 import { IndicatorBar, SeverityChip, SignalsLegend } from '../components/Signals';
 import { LoadError, Loading } from '../components/States';
 import { phoneDisplay } from '../format';
-import { ownerName, ownershipOf } from '../ownership';
+import { mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { hasCallConsent, PRIVACY_NOTICE } from '../privacy';
 import { knownSignals, needsAttention, residentChips } from '../queue';
 import { bySeverity, uncheckedFor, worstSeverity } from '../signals';
@@ -35,8 +36,9 @@ function glanceOf(r: Resident, queue: Queue | null, incomplete: IncompleteAnalys
 }
 
 export function ResidentsPage() {
-  useDocumentTitle('Residents');
+  useDocumentTitle('Patients');
   const { token, user } = useAuth();
+  const { current } = useAccount();
   const location = useLocation();
   const navigate = useNavigate();
   const [added] = useState((location.state as { added?: string } | null)?.added);
@@ -65,7 +67,7 @@ export function ResidentsPage() {
         setResidents(data.residents);
         setListed(data.residents);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load residents'));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load patients'));
   }, [token, attempt]);
   // Secondary: the residents still show if these cannot be loaded, with a line saying what is missing.
   useEffect(() => {
@@ -161,7 +163,7 @@ export function ResidentsPage() {
       <article className={`card residents-card residents-stripe sev-${severity}${signals ? ' has-signals' : ''}`} key={r.id}>
         <div className="residents-who">
           <h3 className="resident-heading">
-            <ResidentAvatar id={r.id} name={r.name} />
+            <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
             <Link to={`/staff/residents/${r.id}`}>{r.name}</Link>
           </h3>
           <p className="meta">
@@ -198,8 +200,9 @@ export function ResidentsPage() {
             <p className="meta">Responsible: {mine ? <strong>you</strong> : ownerName(r.owner!)}</p>
           )}
           <p className="meta">
-            <Link to={`/staff/residents/${r.id}`}>Family access{r.familyAccess?.length ? ` (${r.familyAccess.length})` : ''}</Link>
+            <Link to={`/staff/residents/${r.id}`}>Details and family access{r.familyAccess?.length ? ` (${r.familyAccess.length})` : ''}</Link>
           </p>
+          {mayEditDetails(r, user?.uid, current?.role) && <p className="meta"><Link to={`/staff/residents/${r.id}/edit`}>Edit details and contacts</Link></p>}
         </div>
         <div className="tile-actions residents-actions">
           {r.active && hasCallConsent(r.callConsent) && (
@@ -213,7 +216,7 @@ export function ResidentsPage() {
         <IncompleteAnalysisList items={incomplete?.items.filter((i) => i.residentId === r.id) ?? null} showResident={false} />
         {!hasCallConsent(r.callConsent) && (
           <div className="stack notice notice-warning">
-            <p role="status"><strong>Approval needed.</strong> Daily calls will wait until the resident agrees.</p>
+            <p role="status"><strong>Approval needed.</strong> Daily calls will wait until the patient agrees.</p>
             {mine && consentFor !== r.id && <p><button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button></p>}
             {!mine && <p className="meta">{r.owner ? `${ownerName(r.owner)} can record it.` : 'Take them on to record it.'}</p>}
             {consentFor === r.id && (
@@ -254,22 +257,22 @@ export function ResidentsPage() {
     <div className="stack page residents-page">
       <header className="page-header">
         <div>
-          <h1>Residents</h1>
-          {residents && <p className="meta">{residents.length} {residents.length === 1 ? 'resident' : 'residents'} registered with the care team.</p>}
+          <h1>Patients</h1>
+          {residents && <p className="meta">{residents.length} {residents.length === 1 ? 'patient' : 'patients'} registered with the care team.</p>}
         </div>
-        <Link className="button" to="/staff/residents/new">Add resident</Link>
+        <Link className="button" to="/staff/residents/new">Add patient</Link>
       </header>
       {added && <p className="notice-success" role="status">{added} was added.</p>}
       {/* A failed save shows on its own resident, where the person who pressed the button is looking. */}
       {error && !failedId && (residents ? <p className="error" role="alert">{error}</p> : <LoadError message={error} onRetry={retry} />)}
       {residents && queueError && <LoadError compact message={queueError} onRetry={retryExtra} />}
       {residents && incompleteError && <LoadError compact message={incompleteError} onRetry={retryExtra} />}
-      {!error && (residents === null || (residents.length > 0 && !settled)) && <Loading layout="tiles" label="Loading residents…" />}
+      {!error && (residents === null || (residents.length > 0 && !settled)) && <Loading layout="tiles" label="Loading patients…" />}
       {residents && residents.length === 0 && (
         <div className="card stack empty">
-          <h2>No residents yet</h2>
-          <p>Add a resident to start their daily check-in calls.</p>
-          <p><Link className="button" to="/staff/residents/new">Add resident</Link></p>
+          <h2>No patients yet</h2>
+          <p>Add a patient to start their daily check-in calls.</p>
+          <p><Link className="button" to="/staff/residents/new">Add patient</Link></p>
         </div>
       )}
       {settled && ranked.length > 0 && (

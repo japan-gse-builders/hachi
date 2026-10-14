@@ -91,11 +91,11 @@ describe('an organization Hachi has not verified', () => {
     const { app, as, unverify } = await seeded();
     const list = async () => (await app.inject({ method: 'GET', url: '/api/family/residents', ...as('familyPhone') })).json().residents;
     expect(await list()).toEqual([
-      { id: 'res-1', name: 'Margaret Smith' },
-      { id: 'res-2', name: 'Hana Ito' },
+      { id: 'res-1', name: 'Margaret Smith', portrait: null },
+      { id: 'res-2', name: 'Hana Ito', portrait: null },
     ]);
     await unverify();
-    expect(await list()).toEqual([{ id: 'res-2', name: 'Hana Ito' }]);
+    expect(await list()).toEqual([{ id: 'res-2', name: 'Hana Ito', portrait: null }]);
     const dashboard = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') });
     expect(dashboard.statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/family/residents/res-2/dashboard', ...as('familyPhone') })).statusCode).toBe(200);

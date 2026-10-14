@@ -202,7 +202,7 @@ function CreateOrganization() {
           {timeZoneOptions().map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
       </label>
-      <p className="meta">New residents get this time zone for their daily call. Starts on the trial plan: up to 20 residents and 10 staff.</p>
+      <p className="meta">New patients get this time zone for their daily call. Starts on the trial plan: up to 20 patients and 10 staff.</p>
       <div className="form-actions">
         <button type="submit" disabled={busy || !name.trim()}>{busy ? 'Creating…' : 'Create organization'}</button>
       </div>

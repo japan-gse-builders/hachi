@@ -19,7 +19,7 @@ describe('staff display helpers', () => {
   it('labels transcript turns with the resident name, not the greeting name', () => {
     expect(speakerLabel('agent', 'Test Resident')).toBe('Hachi');
     expect(speakerLabel('resident', 'Test Resident')).toBe('Test Resident');
-    expect(speakerLabel('resident', '  ')).toBe('Resident');
+    expect(speakerLabel('resident', '  ')).toBe('Patient');
   });
 
   it('describes calls, history events and speech in plain words', () => {

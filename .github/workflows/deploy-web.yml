@@ -79,15 +79,18 @@ jobs:
           --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
 
       - name: Check the live site serves this build
+        # The app is served from the `hachicall` site; the project's default site only redirects there.
         run: |
           expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
-          url="https://${FIREBASE_PROJECT_ID}.web.app/"
+          url="https://hachicall.web.app/staff"
+          old="https://${FIREBASE_PROJECT_ID}.web.app/staff"
           for _ in 1 2 3 4 5 6; do
-            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected"; then
-              echo "Live: $url serves $expected (${GITHUB_SHA::7})"
+            location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old")
+            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected" && [ "$location" = "301 $url" ]; then
+              echo "Live: $url serves $expected (${GITHUB_SHA::7}); $old redirects there"
               exit 0
             fi
             sleep 10
           done
-          echo "::error::$url does not serve $expected"
+          echo "::error::$url should serve $expected and $old should answer 301 to it (got: $location)"
           exit 1

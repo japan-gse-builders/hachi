@@ -1,4 +1,5 @@
 import { isValidTimeZone, PRIVACY_NOTICE, URGENCIES } from '@hachi/core';
+import { RESIDENT_PORTRAITS } from '@hachi/store';
 import { z } from 'zod';
 
 const e164 = z
@@ -45,6 +46,7 @@ const residentFields = {
   timeZone: z.string().refine(isValidTimeZone, 'Unknown time zone'),
   vulnerability: vulnerabilitySchema,
   householdNotes: z.string().trim().max(1000),
+  portrait: z.enum(RESIDENT_PORTRAITS),
   staff: staffContactSchema,
 };
 
@@ -59,6 +61,7 @@ export const residentInputSchema = z.object({
   ...residentFields,
   channel: residentFields.channel.default('pstn'),
   householdNotes: residentFields.householdNotes.optional(),
+  portrait: residentFields.portrait.optional(),
   family: familyContactSchema.optional(),
   serviceStartedAt: z.iso.datetime().optional(),
   callConsent: callConsentSchema.optional(),
@@ -69,6 +72,8 @@ export const residentPatchSchema = z
   .object(residentFields)
   .partial()
   .extend({
+    /** `null` goes back to initials. */
+    portrait: residentFields.portrait.nullable().optional(),
     family: familyContactSchema.nullable().optional(),
     active: z.boolean().optional(),
     /** Staff record what the resident told them; `recordedAt` and `recordedBy` are the server's. */

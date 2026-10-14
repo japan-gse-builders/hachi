@@ -130,7 +130,8 @@ Spend Cap の予算は `creditTypesTreatment: EXCLUDE_ALL_CREDITS` に**強制�
 
 - 止まるのは**新しい日次見守り通話だけ**。`placeCall` が `skipped / budget_exhausted` を返し、その試行は `failure.code = budget_exhausted` として記録される。何も起きなかったのではなく、理由があって起きなかったことが残る。
 - **緊急時の経路は止まらない**。R1 の検知から家族・職員への SMS と架電、会議へのブリッジは上限と無関係に動く。母親が倒れたことを家族に伝えるのを止める上限は、置く意味がない。
-- **職員に見える**。キュー画面の先頭に「Check-in calls have stopped.」と理由が出る。止まった理由を聞かれるのは職員なので。
+- **職員に見える**。キュー画面の先頭に「New check-in calls have stopped for this month. Emergency contact is unaffected.」と出る。止まった理由を聞かれるのは職員なので。
+- **止まるまでは何も見えない**。金額・上限・割合は職員の画面にも `GET /api/spend` にも出さない（どのプランの組織でも同じ）。職員にはその数字で取れる行動がなく、予算は組織ごとではなくデプロイ全体のものだから。運営者は Firestore の `spend/{YYYY-MM}` と Cloud Billing で見る。
 
 打ち切りは上限の **90%** で起きる（`AI_SPEND_STOP_FRACTION`）。残り 10% は、進行中の通話がまだ見積もりでしかないことと、Google の実請求が我々の計算と一致しないことのための余裕。
 

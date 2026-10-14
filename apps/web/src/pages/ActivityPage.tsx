@@ -47,7 +47,7 @@ export function ActivityPage() {
       <header className="page-header">
         <div>
           <h1>Activity</h1>
-          <p className="meta">Changes to members, settings, residents and cases in {current?.orgName ?? 'this organization'}.</p>
+          <p className="meta">Changes to members, settings, patients and cases in {current?.orgName ?? 'this organization'}.</p>
         </div>
       </header>
       <TeamNav />

@@ -96,6 +96,30 @@
   .queue-filters .segmented button .sev-mark { font-size: 18px; }
   .queue-filters .segmented button[aria-pressed="true"] .sev-mark { color: inherit; }
 
+  .urgency-filter { position: relative; display: inline-flex; }
+  /* What the level asks of staff, on hover or keyboard focus. */
+  .urgency-tip {
+    display: none;
+    position: absolute;
+    inset-block-start: calc(100% + 8px);
+    inset-inline-start: 50%;
+    z-index: 30;
+    translate: -50% 0;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-inner);
+    background: var(--ink);
+    color: #fff;
+    box-shadow: var(--shadow-raised);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .urgency-tip::before { content: ""; position: absolute; inset-block-end: 100%; inset-inline-start: 50%; translate: -50% 0; border: 6px solid transparent; border-block-end-color: var(--ink); }
+  .urgency-filter:hover > .urgency-tip,
+  .urgency-filter:has(> .urgency-option:focus-visible) > .urgency-tip { display: block; }
+  .queue-case-sev .sev-chip { background: color-mix(in srgb, var(--sev-fill) 16%, var(--surface)); border-color: color-mix(in srgb, var(--sev-line) 55%, var(--surface)); }
+
   .queue-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-4); }
   .queue-list-head > .meta { margin: 0; }
   .queue-legend > summary { min-height: 44px; font-size: var(--text-sm); }
@@ -132,7 +156,7 @@
   .queue-case-state { grid-area: state; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); font-size: var(--text-sm); }
 
   .queue-case-name { margin: 0; font-family: var(--font-body); font-size: var(--text-lg); font-weight: 700; gap: var(--space-2); }
-  .queue-case .resident-avatar { width: 36px; height: 36px; flex-basis: 36px; font-size: 15px; }
+  .queue-case .resident-avatar { width: 44px; height: 44px; flex-basis: 44px; font-size: 16px; }
   .queue-case-summary { margin: 0; font-weight: 600; line-height: 1.35; }
   .queue-case-facts { margin: 0; font-size: var(--text-xs); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   .queue-status { padding: 1px 10px; border: 1px solid var(--line-control); border-radius: 999px; font-weight: 600; white-space: nowrap; }
@@ -154,6 +178,11 @@
   .queue-notified-mark { margin-inline-end: 3px; color: var(--sev-good); font-weight: 800; }
   .queue-notified .is-failed { color: var(--danger-ink); font-weight: 700; }
   .queue-notified .is-failed .queue-notified-mark { color: var(--danger); }
+  .queue-case-also { position: relative; z-index: 2; display: grid; gap: 2px; margin-block-start: var(--space-1); padding-block-start: var(--space-1); border-block-start: 1px dashed var(--line); }
+  .queue-case-also > .meta { margin: 0; font-size: var(--text-xs); }
+  .queue-case-also ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .queue-case-also li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); font-size: var(--text-sm); }
+  .queue-case-also a { font-weight: 600; }
   .queue-notification.is-open > .sev-tip { display: block; }
   .queue-notification-tip {
     inset-block-start: var(--notification-tip-top, calc(100% + 6px));

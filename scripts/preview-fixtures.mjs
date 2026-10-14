@@ -38,7 +38,6 @@ export const fixtures = {
     legend: levels.map(([urgency, label, action]) => ({urgency, label, action})),
     unreached: {items: [], note: null},
   },
-  spend: {month: '2026-10', paused: false, usedPercent: 15, cap: '$70.00', committed: '$10.50', inFlight: '$0.00', remaining: '$59.50', note: 'AI calls have used 15% of this month’s budget.'},
   detail: {
     case: {id: 'case-1', rule: 'R2', ruleName: 'Food and drink', urgency: 'urgent', urgencyLabel: 'Review today', urgencyMeaning: 'Check on this resident today.',
       autoUrgency: 'urgent', staffUrgency: null, staffScoreOffset: 0, status: 'open', statusLabel: 'Not started',

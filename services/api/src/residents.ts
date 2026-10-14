@@ -74,9 +74,11 @@ export function buildResident(input: ResidentInput, id: string, orgId: string, n
 }
 
 export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown'): Resident {
-  const { family, staff, shareMood, callConsent, ...rest } = patch;
+  const { family, staff, shareMood, callConsent, portrait, ...rest } = patch;
   const next: Resident = { ...r, ...rest, updatedAt: now.toISOString() };
   if (staff) next.staff = { ...staff, voice: staff.phone };
+  if (portrait === null) delete next.portrait;
+  else if (portrait) next.portrait = portrait;
   // Who heard it and when is the point of recording consent at all, so it is written here, not sent.
   if (shareMood !== undefined) next.consent = { shareMood, recordedAt: now.toISOString(), recordedBy: staffUid };
   // Preserve the first approval, even when an old form is resubmitted or the notice has changed.

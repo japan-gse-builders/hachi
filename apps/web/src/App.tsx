@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OrganizationPage } from './pages/OrganizationPage';
 import { QueuePage } from './pages/QueuePage';
 import { ResidentDetailPage } from './pages/ResidentDetailPage';
+import { ResidentEditPage } from './pages/ResidentEditPage';
 import { ResidentPage } from './pages/ResidentPage';
 import { ResidentsPage } from './pages/ResidentsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
@@ -70,7 +71,7 @@ function Shell({ children }: { children: ReactNode }) {
         {staff && current && (
           <nav className="nav" aria-label="Staff">
             <NavItem to="/staff" label="Action" section={(p) => p.startsWith('/staff/cases/')} />
-            <NavItem to="/staff/residents" label="Residents" section={(p) => p.startsWith('/staff/residents/')} />
+            <NavItem to="/staff/residents" label="Patients" section={(p) => p.startsWith('/staff/residents/')} />
             <NavItem to="/staff/team" label="Team" section={(p) => p === '/staff/organization' || p === '/staff/activity'} />
           </nav>
         )}
@@ -115,8 +116,8 @@ function UnverifiedNotice({ orgName }: { orgName: string }) {
   return (
     <div className="notice unverified-notice" role="status">
       <p>
-        <strong>Hachi has not verified {orgName} yet.</strong> You can set up your team and residents now. Hachi will not call residents,
-        send alerts or show residents to their family until it has.
+        <strong>Hachi has not verified {orgName} yet.</strong> You can set up your team and patients now. Hachi will not call patients,
+        send alerts or show patients to their family until it has.
       </p>
       <p>
         To get verified, contact Hachi support (<Link to="/privacy">Privacy and support</Link>).
@@ -180,6 +181,7 @@ function AppRoutes() {
       <Route path="/staff/residents" element={<StaffGuard><ResidentsPage /></StaffGuard>} />
       <Route path="/staff/residents/new" element={<StaffGuard><ResidentPage /></StaffGuard>} />
       <Route path="/staff/residents/:id" element={<StaffGuard><ResidentDetailPage /></StaffGuard>} />
+      <Route path="/staff/residents/:id/edit" element={<StaffGuard><ResidentEditPage /></StaffGuard>} />
       <Route path="/staff/team" element={<StaffGuard><TeamPage /></StaffGuard>} />
       <Route path="/staff/organization" element={<StaffGuard><OrganizationPage /></StaffGuard>} />
       <Route path="/staff/activity" element={<StaffGuard><ActivityPage /></StaffGuard>} />

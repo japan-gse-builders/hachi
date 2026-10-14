@@ -1,11 +1,11 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { channelList, deliveryLabel, formatWhen } from '../format';
-import { ageLabel, knownSignals, notifiedSummary, type QueueLane } from '../queue';
+import { ageLabel, knownSignals, notifiedSummary, type QueueCard, type QueueLane } from '../queue';
 import { uncheckedFor, urgencySeverity } from '../signals';
 import type { Queue, QueueItem, UrgencyLegendItem } from '../types';
 import { ResidentAvatar } from './ResidentAvatar';
-import { IndicatorBar, placeTip, SeverityMark } from './Signals';
+import { IndicatorBar, placeTip, SeverityChip, SeverityMark } from './Signals';
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -93,8 +93,26 @@ function Notified({ item }: { item: QueueItem }) {
   );
 }
 
-/** One case on one card. The resident's name is the link and covers the card; the indicator bar sits above it. */
-function QueueCaseCard({ item, queue, now, linkState }: { item: QueueItem; queue: Queue; now: Date; linkState: unknown }) {
+/** The patient's other open cases, each its own link above the one that covers the card. */
+function AlsoOpen({ item, linkState }: { item: QueueCard; linkState: unknown }) {
+  if (!item.alsoOpen.length) return null;
+  return (
+    <div className="queue-case-also">
+      <p className="meta">Also open for {item.residentName}</p>
+      <ul aria-label={`Other open cases for ${item.residentName}`}>
+        {item.alsoOpen.map((o) => (
+          <li key={o.caseId}>
+            <SeverityChip spoken={false} severity={urgencySeverity(o.urgency)} label={o.urgencyLabel} detail={o.urgencyMeaning} />
+            <Link to={`/staff/cases/${o.caseId}`} state={linkState}>{o.summary || 'See case'}</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** One patient on one card. Their name is the link and covers the card; the indicator bar sits above it. */
+function QueueCaseCard({ item, queue, now, linkState }: { item: QueueCard; queue: Queue; now: Date; linkState: unknown }) {
   const severity = urgencySeverity(item.urgency);
   const closed = item.status === 'closed';
   const signals = knownSignals(item.signals, {
@@ -104,12 +122,13 @@ function QueueCaseCard({ item, queue, now, linkState }: { item: QueueItem; queue
   return (
     <li className={`card queue-case queue-stripe sev-${closed ? 'good' : severity}${signals ? ' has-signals' : ''}${closed ? ' is-closed' : ''}`}>
       <h4 className="resident-heading queue-case-name">
-        <ResidentAvatar id={item.residentId} name={item.residentName} />
+        <ResidentAvatar id={item.residentId} name={item.residentName} portrait={item.residentPortrait} />
         <Link className="queue-case-link" to={`/staff/cases/${item.caseId}`} state={linkState}>{item.residentName}</Link>
       </h4>
       <div className="queue-case-what">
         <p className="queue-case-summary">{item.summary}</p>
         {item.residentFacts?.length ? <p className="queue-case-facts meta">{item.residentFacts.join(' · ')}</p> : null}
+        <AlsoOpen item={item} linkState={linkState} />
         {signals && (
           <div className="queue-case-signals hide-from-lg">
             <IndicatorBar signals={signals} now={now} compact />
@@ -136,14 +155,15 @@ function Lane({ lane, legend, queue, now, linkState }: { lane: QueueLane; legend
   const id = useId();
   const level = legend.find((l) => l.urgency === lane.urgency);
   const label = lane.urgency === null ? 'Closed' : (level?.label ?? lane.items[0]!.urgencyLabel);
-  const ask = lane.urgency === null ? 'No action needed' : level?.action;
   const n = lane.items.length;
+  const unit = lane.urgency === null ? (n === 1 ? 'case' : 'cases') : (n === 1 ? 'patient' : 'patients');
+  const ask = lane.urgency === null ? 'No action needed' : level?.action;
   return (
     <section className="queue-lane" aria-labelledby={id}>
       <h3 id={id} className="queue-lane-title">
         <SeverityMark severity={lane.severity} />
         <span>{label}</span>
-        <span className="queue-count-pill">{n}<span className="sr-only"> {n === 1 ? 'case' : 'cases'}</span></span>
+        <span className="queue-count-pill">{n}<span className="sr-only"> {unit}</span></span>
         {ask && <span className="queue-lane-ask">{ask}</span>}
       </h3>
       <ol className="queue-lane-items">

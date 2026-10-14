@@ -18,6 +18,9 @@ BUILD_SA="hachi-build@${PROJECT_ID}.iam.gserviceaccount.com"
 
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
+source infra/lib.sh
+# Where the case and dashboard links in its notifications point.
+APP_BASE_URL="${APP_BASE_URL:-$(web_origin)}"
 
 echo "==> Enabling APIs"
 gcloud services enable aiplatform.googleapis.com cloudtasks.googleapis.com cloudscheduler.googleapis.com
@@ -64,7 +67,7 @@ fi
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --no-allow-unauthenticated --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi \
   --concurrency 8 --timeout 180 --cpu-boost \
-  --set-env-vars "PUBLIC_BASE_URL=${URL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=global,GEMINI_MODEL=gemini-3.8-flash,STAFF_LOCALE=en,TASKS_LOCATION=${REGION},ANALYSIS_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA}${NOTIFY_ENV}"
+  --set-env-vars "PUBLIC_BASE_URL=${URL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=global,GEMINI_MODEL=gemini-3.8-flash,STAFF_LOCALE=en,TASKS_LOCATION=${REGION},ANALYSIS_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA},APP_BASE_URL=${APP_BASE_URL}${NOTIFY_ENV}"
 gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
   --member "serviceAccount:$INVOKER_SA" --role roles/run.invoker >/dev/null
 

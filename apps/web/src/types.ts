@@ -2,6 +2,7 @@ export interface QueueItem {
   caseId: string;
   residentId: string;
   residentName: string;
+  residentPortrait?: Portrait | null;
   rule: string;
   urgency: string;
   urgencyLabel: string;
@@ -105,15 +106,10 @@ export interface Queue {
   incomplete?: IncompleteAnalyses;
 }
 
-/** This month's AI spend. Null when the API was started without a budget configured. */
-export interface Spend {
+/** Sent only while the AI budget has stopped check-in calls; null otherwise. */
+export interface SpendNotice {
   month: string;
-  paused: boolean;
-  usedPercent: number;
-  cap: string;
-  committed: string;
-  inFlight: string;
-  remaining: string;
+  paused: true;
   note: string;
 }
 
@@ -199,10 +195,22 @@ export interface CaseDetail {
     notifications: (NotificationItem & { address: string })[];
     outcome: { anomalyConfirmed: boolean; note?: string } | null;
   };
+  /** The patient's other open cases, most urgent first. Missing from servers older than it. */
+  otherOpenCases?: {
+    id: string;
+    ruleName: string;
+    urgency: string;
+    urgencyLabel: string;
+    urgencyMeaning: string;
+    summary: string;
+    statusLabel: string;
+    firstDetectedAt: string;
+  }[];
   resident: {
     id: string;
     name: string;
     preferredName: string;
+    portrait?: Portrait | null;
     phone: string;
     vulnerability: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
     householdNotes: string | null;
@@ -333,6 +341,11 @@ export interface FamilyDashboard {
   receivesAlerts?: boolean;
 }
 
+/** The illustration beside a resident's name (`PORTRAITS`); without one their initials are shown. */
+export type Portrait =
+  | 'grandmother-1' | 'grandmother-2' | 'grandmother-3' | 'grandmother-4' | 'grandmother-5'
+  | 'grandfather-1' | 'grandfather-2' | 'grandfather-3' | 'grandfather-4' | 'grandfather-5';
+
 export interface Resident {
   id: string;
   name: string;
@@ -341,6 +354,11 @@ export interface Resident {
   callTime: string;
   timeZone: string;
   active: boolean;
+  portrait?: Portrait;
+  vulnerability?: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
+  householdNotes?: string;
+  /** The care team's contact for this resident, who gets the alerts. */
+  staff?: { name: string; phone: string; sms?: string; email?: string };
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
   consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
   callConsent?: import('./privacy').CallConsent;

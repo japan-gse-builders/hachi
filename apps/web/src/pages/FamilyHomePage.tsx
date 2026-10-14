@@ -5,10 +5,12 @@ import { useAuth } from '../auth';
 import { ResidentAvatar } from '../components/ResidentAvatar';
 import { LoadError, Loading } from '../components/States';
 import { useDocumentTitle } from '../title';
+import type { Portrait } from '../types';
 
 interface FamilyResident {
   id: string;
   name: string;
+  portrait?: Portrait | null;
 }
 
 export function FamilyHomePage() {
@@ -79,7 +81,7 @@ export function FamilyHomePage() {
         {residents.map((r) => (
           <Link key={r.id} className="card card-link" to={`/family/residents/${r.id}`}>
             <span className="resident-heading">
-              <ResidentAvatar id={r.id} name={r.name} />
+              <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
               <h2>{r.name}</h2>
             </span>
           </Link>

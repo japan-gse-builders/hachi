@@ -251,6 +251,25 @@ npm run build -w @hachi/web
 firebase deploy --project "$PROJECT_ID" --only hosting,firestore
 ```
 
+The web app is served from its own Hosting site rather than the project's default one, whose name
+is the project ID and so ends up in every link staff and families see. `firebase.json` names both:
+the first entry is the app, the second (the default site) redirects every path to it. To use your
+own, replace both site names in `firebase.json`, then once per project:
+
+1. `firebase hosting:sites:create <site> --project "$PROJECT_ID"` (site names are global, so the
+   command is also how you find out whether one is free).
+2. Authentication → Settings → Authorized domains: add `<site>.web.app`.
+3. Google Cloud console → APIs & Services → Credentials → the web OAuth client: add
+   `https://<site>.web.app/__/auth/handler` to the authorized redirect URIs, and set
+   `VITE_FIREBASE_AUTH_DOMAIN=<site>.web.app` in `apps/web/.env.local`. The Google sign-in window and
+   consent screen show this domain.
+4. Authentication → Templates → each template → Customize action URL:
+   `https://<site>.web.app/__/auth/action`. Sign-in, verification and reset emails link through it.
+
+The analyzer and voice gateway scripts point notification links at the first site, and the API
+script allows it as an origin, so redeploy those three after a change. Deploy Hosting first: the API
+stops accepting the old origin, and until Hosting redirects, the app is still being used there.
+
 The first person to sign in on the staff side creates the organization and becomes its owner, then
 invites colleagues from the Team page. To add someone directly instead:
 `node infra/add-member.mjs "$PROJECT_ID" <org-id> staff@your-org.example admin`.

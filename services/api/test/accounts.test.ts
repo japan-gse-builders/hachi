@@ -560,9 +560,12 @@ describe('admins deciding who is responsible for a resident', () => {
       actor: { uid: 'staff-3' },
       detail: { from: 'staff-1', fromName: 'staff@example.org', to: 'staff-2', toName: 'Sato' },
     });
-    // The new owner can now edit; the old one cannot.
+    // The new owner can now edit and give family access; the old one, an organization owner, can still edit but not give access.
     expect((await app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('otherStaff'), payload: { preferredName: 'Mags' } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload: { preferredName: 'M' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload: { preferredName: 'M' } })).statusCode).toBe(200);
+    const access = (token: string) => app.inject({ method: 'POST', url: '/api/residents/res-1/family-access', ...as(token as never), payload: { email: 'bob@example.org' } });
+    expect((await access('staff')).json().reason).toBe('not_owner');
+    expect((await access('otherStaff')).statusCode).toBe(201);
     // Nobody whose access is off can be made responsible.
     await app.inject({ method: 'PATCH', url: '/api/organization/members/staff-2', ...as('admin'), payload: { status: 'disabled' } });
     expect((await put('staff', 'staff-1')).statusCode).toBe(200);
@@ -667,17 +670,20 @@ describe('the activity log', () => {
   });
 });
 
-describe('what a customer organization sees of the AI budget', () => {
-  it('says only whether calls have stopped, never the deployment’s figures', async () => {
+describe('what an organization sees of the AI budget', () => {
+  it('is the same on every plan: only whether calls have stopped, never the deployment’s figures', async () => {
     const { charge, parseSpendSettings, spendMonth, USD } = await import('@hachi/core');
     const spend = parseSpendSettings({ AI_MONTHLY_CAP_USD: '10' });
     const { app, as, store } = setup({ spend });
     await store.updateOrganization('org-2', (o) => ({ ...o, billing: { ...o.billing, plan: 'trial' } }));
-    expect((await app.inject({ method: 'GET', url: '/api/spend', ...as('outsider') })).body).toBe('null');
+    expect((await store.getOrganization('org-1'))?.billing.plan).toBe('internal');
+    for (const who of ['outsider', 'staff'] as const) {
+      expect((await app.inject({ method: 'GET', url: '/api/spend', ...as(who) })).body).toBe('null');
+    }
     await store.mutateSpendLedger(spendMonth(NOW), (l) => charge(l, 10 * USD, NOW));
-    const paused = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('outsider') })).json();
-    expect(paused).toEqual({ month: spendMonth(NOW), paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
-    // Our own organization still sees the figures.
-    expect((await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as('staff') })).json().cap).toBe('$10.00');
+    for (const who of ['outsider', 'staff'] as const) {
+      const paused = (await app.inject({ method: 'GET', url: '/api/spend?locale=en', ...as(who) })).json();
+      expect(paused).toEqual({ month: spendMonth(NOW), paused: true, note: 'New check-in calls have stopped for this month. Emergency contact is unaffected.' });
+    }
   });
 });

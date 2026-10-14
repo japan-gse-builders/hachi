@@ -10,8 +10,10 @@ import { SeverityMark } from '../components/Signals';
 import { LoadError, Loading } from '../components/States';
 import { urgencySeverity } from '../signals';
 import { useDocumentTitle } from '../title';
-import type { Queue, Spend } from '../types';
+import type { Queue, SpendNotice } from '../types';
 import '../styles/queue.css';
+
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function QueuePage() {
   useDocumentTitle('Triage queue');
@@ -29,7 +31,7 @@ export function QueuePage() {
     setParams(next);
   };
   const [queue, setQueue] = useState<Queue | null>(null);
-  const [spend, setSpend] = useState<Spend | null>(null);
+  const [spend, setSpend] = useState<SpendNotice | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const filtered = Boolean(filters.urgency || filters.query.trim() || filters.includeClosed);
@@ -40,7 +42,7 @@ export function QueuePage() {
     const load = async () => {
       try {
         const t = await token();
-        const [data, money] = await Promise.all([api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t), api<Spend | null>('/api/spend?locale=en', t)]);
+        const [data, money] = await Promise.all([api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t), api<SpendNotice | null>('/api/spend?locale=en', t)]);
         if (!stop) {
           setQueue(data);
           setSpend(money);
@@ -83,11 +85,7 @@ export function QueuePage() {
       {error && <LoadError message={error} onRetry={retry} />}
       {queue === null && !error && <Loading layout="queue" label="Loading the queue…" />}
       {/* Staff are the ones who get asked why nobody was called today, so they can see the answer. */}
-      {spend?.paused && (
-        <p className="card card-emergency">
-          <strong>Check-in calls have stopped.</strong> {spend.note}
-        </p>
-      )}
+      {spend?.paused && <p className="card card-emergency"><strong>{spend.note}</strong></p>}
       {(queue || error) && (
         <div className="queue-layout">
           {queue && (
@@ -107,11 +105,16 @@ export function QueuePage() {
                           <button type="button" className="ghost" aria-pressed={!filters.urgency} onClick={() => changeFilter('urgency', '')}>All levels</button>
                           {queue.legend.map((level) => {
                             const severity = urgencySeverity(level.urgency);
+                            const tipId = `urgency-tip-${level.urgency}`;
                             return (
-                              <button key={level.urgency} type="button" className="ghost" aria-pressed={filters.urgency === level.urgency} onClick={() => changeFilter('urgency', level.urgency)}>
-                                <SeverityMark severity={severity} />
-                                {level.label}
-                              </button>
+                              <span key={level.urgency} className="urgency-filter">
+                                <button type="button" className="ghost urgency-option" aria-pressed={filters.urgency === level.urgency}
+                                  aria-describedby={tipId} onClick={() => changeFilter('urgency', level.urgency)}>
+                                  <SeverityMark severity={severity} />
+                                  {level.label}
+                                </button>
+                                <span id={tipId} role="tooltip" className="urgency-tip">{capital(level.action)}</span>
+                              </span>
                             );
                           })}
                         </div>
@@ -122,7 +125,7 @@ export function QueuePage() {
                     <p id="urgency-explanation" className="meta">{selectedLevel?.meaning ?? selectedLevel?.action ?? 'All urgency levels, in priority order.'}</p>
                   </div>
                   <div className="queue-search">
-                    <label>Search by resident or case summary
+                    <label>Search by patient or case summary
                       <input type="search" value={filters.query} maxLength={200} autoComplete="off" spellCheck={false} onChange={(event) => changeFilter('q', event.target.value)} />
                     </label>
                   </div>
@@ -149,7 +152,7 @@ export function QueuePage() {
                   <p><button type="button" className="ghost" onClick={clearFilters}>Show all open cases</button></p>
                 </div>
               )}
-              {visible.length > 0 && <QueueLanes lanes={queueLanes(visible)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
+              {visible.length > 0 && <QueueLanes lanes={queueLanes(visible, queue.items)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
             </section>
           )}
           {/* Contact requests load separately, after the case list. */}
@@ -157,11 +160,6 @@ export function QueuePage() {
             <ContactRequests />
           </div>
         </div>
-      )}
-      {spend && !spend.paused && (
-        <p className="meta">
-          {spend.note} {spend.inFlight !== '$0.00' && `${spend.inFlight} is held by calls in progress.`}
-        </p>
       )}
     </div>
   );

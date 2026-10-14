@@ -3,23 +3,35 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "hosting": {
-    "public": "apps/web/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
-    "headers": [
-      {
-        "comment": "Every route is rewritten to index.html, so matching only /index.html left the app itself cached for an hour and staff kept seeing the previous deploy.",
-        "source": "**",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
-      },
-      {
-        "comment": "Asset file names carry a content hash, so a cached one is never stale.",
-        "source": "/assets/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "site": "hachicall",
+      "public": "apps/web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "headers": [
+        {
+          "comment": "Every route is rewritten to index.html, so matching only /index.html left the app itself cached for an hour and staff kept seeing the previous deploy.",
+          "source": "**",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "comment": "Asset file names carry a content hash, so a cached one is never stale.",
+          "source": "/assets/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    },
+    {
+      "site": "hachicall-nao",
+      "public": "apps/web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "redirects": [
+        { "source": "/", "destination": "https://hachicall.web.app/", "type": 301 },
+        { "source": "/:path*", "destination": "https://hachicall.web.app/:path*", "type": 301 }
+      ]
+    }
+  ],
   "emulators": {
     "firestore": { "port": 8080 },
     "auth": { "port": 9099 },
