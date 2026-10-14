@@ -27,7 +27,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: production
+    environment:
+      name: production
+      url: https://hachicall.web.app/
     permissions:
       contents: read
       id-token: write
@@ -71,12 +73,11 @@ jobs:
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Deploy to Firebase
-        run: >-
-         ```yaml
-      - name: Deploy to Firebase
+        # firebase.json selects `hachicall` for the app and `hachicall-nao` for the old URL's redirect.
+        # The Google Cloud project ID is separate from these Hosting site IDs.
         run: >-
           npx --yes firebase-tools@15 deploy
-          --only hosting:hachi-call,firestore
+          --only hosting,firestore
           --project "$FIREBASE_PROJECT_ID"
           --non-interactive
           --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
@@ -85,15 +86,24 @@ jobs:
         # The app is served from the `hachicall` site; the project's default site only redirects there.
         run: |
           expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
-          url="https://hachicall.web.app/"
-          old="https://${FIREBASE_PROJECT_ID}.web.app/staff"
+          base="https://hachicall.web.app"
+          old="https://${FIREBASE_PROJECT_ID}.web.app"
           for _ in 1 2 3 4 5 6; do
-            location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old")
-            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected" && [ "$location" = "301 $url" ]; then
-              echo "Live: $url serves $expected (${GITHUB_SHA::7}); $old redirects there"
+            verified=1
+            for path in / /staff; do
+              url="${base}${path}"
+              if ! location=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code} %{redirect_url}' "${old}${path}") ||
+                 ! curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "$url" | grep -Fq "$expected" ||
+                 [ "$location" != "301 $url" ]; then
+                verified=0
+                break
+              fi
+            done
+            if [ "$verified" -eq 1 ]; then
+              echo "Live: $base/ and $base/staff serve $expected (${GITHUB_SHA::7}); the old URLs redirect to the same paths"
               exit 0
             fi
             sleep 10
           done
-          echo "::error::$url should serve $expected and $old should answer 301 to it (got: $location)"
+          echo "::error::$url should serve $expected and ${old}${path} should answer 301 to it (got: $location)"
           exit 1
