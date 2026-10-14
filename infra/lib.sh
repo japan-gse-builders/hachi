@@ -18,6 +18,13 @@ web_origin() {
   printf 'https://%s.web.app' "$site"
 }
 
+# Every Hosting site in firebase.json, comma-separated, for the API's allowed origins. The redirecting
+# sites serve no app, but a page loaded there before they began redirecting keeps running and
+# calling the API until it is reloaded; refusing it shows staff "Failed to fetch" on every screen.
+web_origins() {
+  node -e 'process.stdout.write([].concat(require("./firebase.json").hosting).filter((h)=>h.site).flatMap((h)=>[`https://${h.site}.web.app`,`https://${h.site}.firebaseapp.com`]).join(","))'
+}
+
 # Twilio numbers are not kept in the repository: take them from the environment, else keep what
 # the service already runs with, else stop.
 twilio_number() {

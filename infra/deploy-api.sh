@@ -21,8 +21,7 @@ STAFF_CALL_COOLDOWN_MIN="${STAFF_CALL_COOLDOWN_MIN:-10}"
 cd "$(dirname "$0")/.."
 gcloud config set project "$PROJECT_ID" >/dev/null
 source infra/lib.sh
-# The project's default site only redirects to the web app now, so the app never runs there.
-WEB_ORIGINS="${WEB_ORIGINS:-http://localhost:5173,$(web_origin)}"
+WEB_ORIGINS="${WEB_ORIGINS:-http://localhost:5173,$(web_origins)}"
 
 echo "==> Service account"
 gcloud iam service-accounts describe "$RUNTIME_SA" >/dev/null 2>&1 \

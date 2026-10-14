@@ -26,7 +26,10 @@
       "site": "hachicall-nao",
       "public": "apps/web/dist",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "redirects": [{ "source": "/:path*", "destination": "https://hachicall.web.app/:path*", "type": 301 }]
+      "redirects": [
+        { "source": "/", "destination": "https://hachicall.web.app/", "type": 301 },
+        { "source": "/:path*", "destination": "https://hachicall.web.app/:path*", "type": 301 }
+      ]
     }
   ],
   "emulators": {
