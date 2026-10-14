@@ -71,7 +71,7 @@ function summarize(a: Omit<LonelinessAssessment, 'summary'>): string {
   const heard = a.callsWithSignal
     ? ` Said they were on their own in ${a.callsWithSignal} of the last ${a.calls} calls.`
     : '';
-  const asked = a.contactRequests ? ` Asked for someone to ring them ${a.contactRequests > 1 ? `${a.contactRequests} times` : 'once'}.` : '';
+  const asked = a.contactRequests ? ` Asked for someone to call them ${a.contactRequests > 1 ? `${a.contactRequests} times` : 'once'}.` : '';
   const scale = {
     incomplete: `Loneliness screen answered ${a.current.answered} of ${a.current.of}, so it cannot be read yet.`,
     settled: 'Loneliness screen is below its cutoff.',

@@ -95,7 +95,7 @@ export function checkedLevel(unchecked: number | undefined): Level {
 const TZ = 'Asia/Tokyo';
 const DAY = 86_400_000;
 const localDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);
-const clock = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+const clock = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
 const dayMs = (date: string) => Date.parse(`${date}T00:00:00Z`);
 const shiftDate = (date: string, days: number) => new Date(dayMs(date) + days * DAY).toISOString().slice(0, 10);
 

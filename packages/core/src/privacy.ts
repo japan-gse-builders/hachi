@@ -7,20 +7,20 @@ export const PRIVACY_NOTICE = {
     {
       title: 'Talking with an AI',
       paragraphs: [
-        'You will be talking with Hachi, an AI assistant, rather than a person. Google Gemini processes the call audio and transcript to hold the conversation and help review it afterwards.',
+        'You will be talking with Hachi, an AI assistant, rather than a person. Google Gemini processes the call audio and transcript to hold the conversation and help review it afterward.',
         'Hachi looks at what you say and changes in how you speak, including pauses, hesitations, vocabulary and staying on topic. These checks help staff decide what to follow up. They are not a medical diagnosis.',
       ],
     },
     {
       title: 'What we save',
       paragraphs: [
-        'Calls are recorded and transcribed. Hachi saves summaries, wellbeing observations, speech measurements and short notes to help with your next conversation. It also keeps your name, phone number, call time, care circumstances, and the staff and family contacts registered for you.',
+        'Calls are recorded and transcribed. Hachi saves summaries, well-being observations, speech measurements and short notes to help with your next conversation. It also keeps your name, phone number, call time, care circumstances, and the staff and family contacts registered for you.',
       ],
     },
     {
       title: 'What staff and family can see',
       paragraphs: [
-        'Authorised care staff can see recordings, transcripts, analysis and care cases. Your registered family contact can see short plain-language summaries, call times, alerts, case status and your care team’s contact details. Family cannot access recordings, transcripts, direct quotes or speech analysis.',
+        'Authorized care staff can see recordings, transcripts, analysis and care cases. Your registered family contact can see short plain-language summaries, call times, alerts, case status and your care team’s contact details. Family cannot access recordings, transcripts, direct quotes or speech analysis.',
         'Your first-use approval includes short family updates about your mood and loneliness. There is no separate approval question. Ask your care team if you want to change what is shared with your family.',
         'If Hachi notices a possible emergency, it may alert and phone your registered staff and family contacts without asking again during that call.',
       ],
@@ -34,7 +34,7 @@ export const PRIVACY_NOTICE = {
     {
       title: 'Keeping your information',
       paragraphs: [
-        'Hachi does not automatically delete care records or recordings. They remain until the organisation running your service deletes them under its retention policy. Ask your care team how long they keep them and how to request access, corrections or deletion.',
+        'Hachi does not automatically delete care records or recordings. They remain until the organization running your service deletes them under its retention policy. Ask your care team how long they keep them and how to request access, corrections or deletion.',
         'Stopping calls does not delete past records. A deletion request is a separate request to your care team.',
       ],
     },
@@ -53,7 +53,7 @@ export const PRIVACY_NOTICE = {
       ],
     },
   ],
-  firstUsePrompt: 'Hachi is an AI that calls daily. Calls are recorded and analysed with Google Gemini to help your care team. Staff can review them; your family gets short summaries, including mood and loneliness, and alerts, including in emergencies. Taking part is optional. Ask your care team to stop calls at any time. Is that OK?',
+  firstUsePrompt: 'Hachi is an AI that calls daily. Calls are recorded and analyzed with Google Gemini to help your care team. Staff can review them; your family gets short summaries, including mood and loneliness, and alerts, including in emergencies. Taking part is optional. Ask your care team to stop calls at any time. Is that OK?',
   agreement: 'Yes, I agree.',
 } as const;
 

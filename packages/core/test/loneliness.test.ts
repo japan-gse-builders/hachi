@@ -86,7 +86,7 @@ describe('assessLoneliness: what the calls themselves say', () => {
   it('treats asking for someone to ring them as a sign on its own', () => {
     const a = assessLoneliness([], [signal(back(1), { askedForContact: true })], ASOF);
     expect(a).toMatchObject({ contactRequests: 1, heardInCalls: true });
-    expect(a.summary).toContain('Asked for someone to ring them once');
+    expect(a.summary).toContain('Asked for someone to call them once');
   });
 
   it('counts missed groups and days without contact, not low mood on its own', () => {

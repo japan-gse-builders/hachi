@@ -72,7 +72,7 @@ async function makeApi() {
       phone: '+81900000000' + (i + 1),
       callTime: '10:00', timeZone: 'Asia/Tokyo',
       vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
-      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas at weekends.' : 'A neighbour looks in most days.',
+      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas on weekends.' : 'A neighbor looks in most days.',
       family: {name: 'Sarah ' + item.residentName.split(' ').at(-1), relationship: 'Daughter', email: 'family@example.invalid'},
       serviceStartedAt: new Date(now.getTime() - 35 * 86400_000).toISOString(),
       callConsent: {accepted: true, noticeVersion: PRIVACY_NOTICE.version},

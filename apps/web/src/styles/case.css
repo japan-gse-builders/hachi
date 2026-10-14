@@ -39,6 +39,9 @@
   .case-phone { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
   .case-phone .control-label { margin: 0; }
   .case-phone a { font-weight: 700; }
+  .case-signals-legend { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+  .case-signals-legend > summary { font-size: var(--text-sm); min-height: 44px; }
+  .case-signals-legend .disclosure-body { padding-block: var(--space-2); }
 
   /* ---------- Columns ---------- */
 

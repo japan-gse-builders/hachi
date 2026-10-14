@@ -4,7 +4,7 @@ import { pageTitle } from '../src/title';
 
 describe('page titles', () => {
   it('names the screen before the product, and falls back to the product alone', () => {
-    expect(pageTitle('Needs attention')).toBe('Needs attention · Hachi');
+    expect(pageTitle('Triage queue')).toBe('Triage queue · Hachi');
     expect(pageTitle()).toBe('Hachi');
     expect(pageTitle('')).toBe('Hachi');
   });

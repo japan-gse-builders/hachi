@@ -50,6 +50,25 @@ function Icon({ name }: { name: IndicatorKey }) {
   );
 }
 
+const SEVERITY_ICONS: Record<Severity, ReactNode> = {
+  emergency: <><path d="m12 3 10 18H2Z" /><path d="M12 9v5m0 3h.01" /></>,
+  today: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  soon: <><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M8 3v4m8-4v4M4 11h16m-11 5h6" /></>,
+  monitor: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" /></>,
+  good: <path d="m5 12 4 4L19 6" />,
+  system: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.3 2.4c-.8.3-.8 1.1-.8 2.1m0 3h.01" /></>,
+  none: <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></>,
+};
+
+/** A simple line icon. The neighboring label supplies its accessible name. */
+export function SeverityMark({ severity }: { severity: Severity }) {
+  return (
+    <span className={`sev-mark sev-${severity}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">{SEVERITY_ICONS[severity]}</svg>
+    </span>
+  );
+}
+
 /**
  * A severity mark with a word. `label` replaces the severity's own word; `detail` is the tooltip and
  * is read after the label. Screen readers hear `spoken` before the label, by default the severity's
@@ -61,7 +80,7 @@ export function SeverityChip({ severity, label, detail, spoken }: { severity: Se
   const prefix = spoken === false ? '' : (spoken ?? (label && label !== s.label ? s.label : ''));
   return (
     <span className={`sev-chip sev-${severity}`} title={detail || undefined}>
-      <span className="sev-mark" aria-hidden="true">{s.symbol}</span>
+      <SeverityMark severity={severity} />
       {prefix && <span className="sr-only">{prefix}: </span>}
       <span>{label ?? s.label}</span>
       {detail && <span className="sr-only"> {detail}</span>}
@@ -97,10 +116,10 @@ function barItems(signals: ResidentSignals | undefined, now: Date, compact: bool
 const EDGE = 8;
 
 /**
- * Starts a tooltip at its indicator, shifted back inside the card and the window when it would run
+ * Starts a tooltip at its trigger, shifted back inside the card and the window when it would run
  * off the end, and no wider than the room there is. Call it once the tip is displayed.
  */
-function placeTip(item: HTMLElement) {
+export function placeTip(item: HTMLElement) {
   const tip = item.querySelector<HTMLElement>('.sev-tip');
   if (!tip || !tip.offsetWidth) return;
   const at = item.getBoundingClientRect();
@@ -200,18 +219,18 @@ export function IndicatorBar({
   );
 }
 
-/** The colour key and what each of the nine indicators is about, for once per page. */
-export function SignalsLegend() {
+/** The color key and what each of the nine indicators is about, for once per page. */
+export function SignalsLegend({ showIndicators = true }: { showIndicators?: boolean } = {}) {
   return (
     <div className="sev-legend">
-      <ul className="sev-legend-colours" aria-label="Colour key">
+      <ul className="sev-legend-colors" aria-label="Color key">
         {SEVERITIES.map((s) => (
           <li key={s}>
             <SeverityChip severity={s} />
           </li>
         ))}
       </ul>
-      <ul className="sev-legend-indicators" aria-label="Indicators">
+      {showIndicators && <ul className="sev-legend-indicators" aria-label="Indicators">
         {INDICATORS.map((d) => (
           <li key={d.key}>
             <span className="sev-ind sev-none" aria-hidden="true">
@@ -222,7 +241,7 @@ export function SignalsLegend() {
             </span>
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   );
 }

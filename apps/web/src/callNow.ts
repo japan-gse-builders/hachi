@@ -22,7 +22,7 @@ const NOT_PLACED: Record<string, string> = {
   budget_exhausted: "This month's AI budget is used up, so the call was not made.",
   gateway_unavailable: "Hachi's conversations are not working at the moment, so the call was not made.",
   line_busy: 'Another call to them was already under way, so this one was not made.',
-  paused: 'Calls were paused for them before Hachi could ring, so the call was not made.',
+  paused: 'Calls were paused for them before Hachi could call, so the call was not made.',
   consent_required: 'They have not agreed to calls from Hachi, so the call was not made.',
   organization_unverified: 'Hachi has not verified your organization yet, so the call was not made.',
   synthetic: 'This is a demo patient, so Hachi does not call them.',
@@ -33,7 +33,7 @@ const NOT_PLACED: Record<string, string> = {
 export function callProgressLine(p: CallProgress, name: string): string {
   switch (p.status) {
     case 'requested':
-      return `Hachi will ring ${name} in a moment.`;
+      return `Hachi will call ${name} in a moment.`;
     case 'scheduled':
       return `Ringing ${name}…`;
     case 'in_progress':
@@ -46,6 +46,6 @@ export function callProgressLine(p: CallProgress, name: string): string {
       if (p.endedBy === 'emergency') return `${name} was put through to family and staff as an emergency.`;
       if (p.endedBy === 'gateway_error') return 'The call dropped because of a technical problem on our side.';
       if (p.endedBy === 'silent_after_greeting' || p.endedBy === 'stopped_responding') return `The call connected, but ${name} did not speak with Hachi.`;
-      return `Call ended${p.durationSec !== null ? ` after ${minutes(p.durationSec)}` : ''}. Its notes appear once it has been analysed.`;
+      return `Call ended${p.durationSec !== null ? ` after ${minutes(p.durationSec)}` : ''}. Its notes appear once it has been analyzed.`;
   }
 }

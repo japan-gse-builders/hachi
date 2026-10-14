@@ -1,27 +1,47 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { openCounts, sortUnreached } from '../queue';
-import { reachLevel, SEVERITY, worstSeverity } from '../signals';
+import { reachLevel, SEVERITY, urgencySeverity, worstSeverity } from '../signals';
 import type { IncompleteAnalyses, Queue, UnreachedResident } from '../types';
 import { IncompleteAnalysisList } from './IncompleteAnalyses';
-import { LastReachedChip } from './Signals';
+import { LastReachedChip, SeverityChip, SeverityMark } from './Signals';
 
-/** Open cases at each urgency, coloured as the lanes are; a zero stays grey so it reads as calm. */
+/** The triage key describes its urgency lanes, without the separate health indicator key. */
+export function QueueLegend({ queue, includeClosed }: { queue: Queue; includeClosed: boolean }) {
+  return (
+    <ul className="queue-urgency-legend" aria-label="Urgency key">
+      {queue.legend.map((level) => (
+        <li key={level.urgency}>
+          <SeverityChip spoken={false} severity={urgencySeverity(level.urgency)} label={level.label} />
+          <span className="meta">{level.meaning ?? level.action}</span>
+        </li>
+      ))}
+      {includeClosed && (
+        <li>
+          <SeverityChip spoken={false} severity="good" label="Closed" />
+          <span className="meta">No further action needed for this case.</span>
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/** Open cases at each urgency, colored as the lanes are; a zero stays gray so it reads as calm. */
 export function QueueCounts({ queue }: { queue: Queue }) {
   return (
-    <section className="queue-overview-panel" aria-label="Queue overview">
+    <section className="queue-overview-panel" aria-label="Triage overview">
       <dl className="queue-counts">
         {openCounts(queue.items).map((c) => (
           <div key={c.urgency} className={`queue-count sev-${c.severity}${c.count ? '' : ' is-zero'}`}>
             <dt>
-              <span className="sev-mark" aria-hidden="true">{SEVERITY[c.severity].symbol}</span>
+              <SeverityMark severity={c.severity} />
               {queue.legend.find((l) => l.urgency === c.urgency)?.label ?? SEVERITY[c.severity].label}
             </dt>
             <dd>{c.count}</dd>
           </div>
         ))}
         {queue.summary && (
-          <div className="queue-count queue-count-residents hide-below-sm">
+          <div className="queue-count queue-count-residents">
             <dt>Patients registered</dt>
             <dd>{queue.summary.residents}</dd>
           </div>
@@ -66,8 +86,8 @@ export function QueueUnreached({ unreached, now }: { unreached: { items: Unreach
   );
 }
 
-/** A 1020px window gives the page the 960px at which notices move beside the cases (queue.css). */
-const besideCases = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1020px)').matches === true;
+/** Wide screens show the check details; phones begin with the notice folded to its count. */
+const wideScreen = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1020px)').matches === true;
 
 /**
  * Calls nothing finished looking at: our side, not a finding, so blue and dashed rather than an
@@ -75,7 +95,7 @@ const besideCases = () => typeof window !== 'undefined' && window.matchMedia?.('
  */
 export function QueueUnchecked({ incomplete }: { incomplete: IncompleteAnalyses }) {
   const n = incomplete.items.length;
-  const [open] = useState(besideCases);
+  const [open] = useState(wideScreen);
   return (
     <section className="card queue-notice queue-stripe sev-system" aria-labelledby="unchecked-heading">
       <details className="disclosure queue-notice-fold" open={open}>

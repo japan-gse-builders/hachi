@@ -18,7 +18,7 @@ export function speakerLabel(speaker: 'resident' | 'agent', residentName: string
 export function formatWhen(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Tokyo',
     month: 'short',
     day: 'numeric',
@@ -92,7 +92,7 @@ const DELIVERY: Record<string, string> = {
   failed: 'Not delivered',
   no_answer: 'No answer',
   busy: 'Line busy',
-  canceled: 'Cancelled',
+  canceled: 'Canceled',
 };
 
 /** Twilio error codes staff are likely to see for texts to Japanese phones. */

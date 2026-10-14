@@ -9,7 +9,7 @@ const severity = (meets: boolean | null): Severity => (meets === null ? 'none' :
 
 /**
  * What the set questions add up to. The point of this card is what it refuses to claim: Hachi asks
- * English questions about the same behaviour as the numbered items of Japan's Kihon Checklist, so
+ * English questions about the same behavior as the numbered items of Japan's Kihon Checklist, so
  * every domain is shown with how many of its items have an answer at all, and anything the answers
  * cannot settle is shown as unsettled rather than as a result.
  *
@@ -64,7 +64,7 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
         </summary>
         <div className="stack disclosure-body">
           <p className="meta">
-            Hachi asks English questions about the same behaviour as the numbered items of the Kihon Checklist, two per call. This is not a
+            Hachi asks English questions about the same behavior as the numbered items of the Kihon Checklist, two per call. This is not a
             Kihon Checklist score and not an assessment.
           </p>
 
@@ -113,7 +113,7 @@ export function ScreeningCard({ screening }: { screening: Screening }) {
             <h3>The instruments' own results</h3>
             <p className="meta">
               The same answers read the other way round: what each published instrument makes of its own items, on its own cutoff. This is
-              the frame the patient's own doctor is likely to recognise.
+              the frame the patient's own doctor is likely to recognize.
             </p>
             {screening.instruments.map((i) => (
               <p key={i.instrument}>

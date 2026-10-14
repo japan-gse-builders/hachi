@@ -9,6 +9,7 @@ export * from './gateway.js';
 export * from './reach.js';
 export * from './analysisGaps.js';
 export * from './callSlot.js';
+export * from './ending.js';
 export * from './voice.js';
 export * from './cases.js';
 export * from './priority.js';

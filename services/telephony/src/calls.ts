@@ -260,7 +260,7 @@ const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required' | 'organizat
   inactive: { code: 'paused', message: 'Calls were paused for this resident before the call could be made' },
   synthetic: { code: 'synthetic', message: 'A synthetic demo resident is never called' },
   consent_required: { code: 'consent_required', message: 'The resident has not agreed to calls from Hachi' },
-  organization_unverified: { code: 'organization_unverified', message: 'Hachi has not verified this organization yet, so it does not ring anyone for it' },
+  organization_unverified: { code: 'organization_unverified', message: 'Hachi has not verified this organization yet, so it does not call anyone for it' },
   // The same code the API reports once the request's hold has run out, so both say the same thing.
   request_lapsed: { code: 'not_placed', message: 'The request lapsed before the call could be made' },
 };

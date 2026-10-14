@@ -61,12 +61,12 @@ describe('glance helpers', () => {
   });
 
   it('labels days, the latest call and the next call in Japan time', () => {
-    expect(dayLabel('2026-10-01')).toBe('1 Oct');
+    expect(dayLabel('2026-10-01')).toBe('Oct 1');
     expect(dayOfMonth('2026-09-07')).toBe('7');
     const now = new Date('2026-10-05T05:00:00.000Z');
     expect(latestCallLabel('2026-10-05T01:02:00.000Z', now)).toBe("Today's call, 10:02");
     expect(latestCallLabel('2026-10-04T01:02:00.000Z', now)).toBe("Yesterday's call, 10:02");
-    expect(latestCallLabel('2026-10-01T01:02:00.000Z', now)).toBe('Latest call, 1 Oct, 10:02');
+    expect(latestCallLabel('2026-10-01T01:02:00.000Z', now)).toBe('Latest call, Oct 1, 10:02');
     expect(nextCallLabel('2026-10-06T01:00:00.000Z', now)).toBe('Next call tomorrow, 10:00 (Japan time)');
     expect(nextCallLabel(null, now)).toBe('Daily calls are paused');
     expect(todayCallNote('2026-10-05T09:00:00.000Z', now)).toBe("Today's call is at 18:00.");
@@ -107,18 +107,18 @@ describe('glance helpers', () => {
 });
 
 describe('family days', () => {
-  // 14:00 on 13 Oct in Japan.
+  // 14:00 on Oct 13 in Japan.
   const now = new Date('2026-10-13T05:00:00.000Z');
   const window = [day('2026-10-10', quiet), day('2026-10-11', null), day('2026-10-12', null), day('2026-10-13', null)];
 
   it('marks the last day today only while it is still today in Japan', () => {
     expect(familyDays(window, [], now, true).map((d) => d.isToday)).toEqual([false, false, false, true]);
-    // 00:30 on 14 Oct in Japan, though still 13 Oct in UTC: the window has gone stale.
+    // 00:30 on Oct 14 in Japan, though still Oct 13 in UTC: the window has gone stale.
     expect(familyDays(window, [], new Date('2026-10-13T15:30:00.000Z'), true).some((d) => d.isToday)).toBe(false);
   });
 
   it('puts attempts on the Japan-time day, not the UTC one', () => {
-    // 01:00 on 12 Oct in Japan is still 11 Oct in UTC.
+    // 01:00 on Oct 12 in Japan is still Oct 11 in UTC.
     const days = familyDays(window, [call('2026-10-11T16:00:00.000Z', false)], now, true);
     expect(kinds(days)).toEqual(['reached', 'nocall', 'missed', 'notyet']);
   });
@@ -157,7 +157,7 @@ describe('family days', () => {
     expect(lastTalkedLevel('2026-10-13T01:02:00.000Z', 0, now)).toEqual({ severity: 'good', word: 'Talked today, 10:02', detail: '' });
     expect(lastTalkedLevel('2026-10-12T01:02:00.000Z', 0, now).severity).toBe('good');
     expect(lastTalkedLevel('2026-10-12T01:02:00.000Z', 1, now)).toMatchObject({ severity: 'soon', word: 'Last talked yesterday, 10:02' });
-    expect(lastTalkedLevel('2026-10-10T01:02:00.000Z', 2, now)).toMatchObject({ severity: 'today', word: 'Last talked 10 Oct, 10:02', detail: 'No call has got through for 2 days.' });
+    expect(lastTalkedLevel('2026-10-10T01:02:00.000Z', 2, now)).toMatchObject({ severity: 'today', word: 'Last talked Oct 10, 10:02', detail: 'No call has got through for 2 days.' });
     expect(lastTalkedLevel('2026-10-01T01:02:00.000Z', 9, now).severity).toBe('today');
     expect(lastTalkedLevel('2026-10-08T01:02:00.000Z', 0, now).severity).toBe('none');
     expect(lastTalkedLevel(null, 3, now)).toMatchObject({ severity: 'today', word: 'No call in two weeks' });
@@ -210,7 +210,7 @@ describe('family status', () => {
     expect(familyStatus(input({ latest: calm, days: missedYesterday })).title).toBe('No call reached Margaret Smith yesterday');
     const twoDays = familyDays([day('2026-10-11', quiet), day('2026-10-12', null), day('2026-10-13', null)], [call('2026-10-12T01:00:00.000Z', false), call('2026-10-13T01:00:00.000Z', false)], now, true);
     expect(familyStatus(input({ latest: calm, days: twoDays }))).toMatchObject({ severity: 'today', title: 'No call has reached Margaret Smith for 2 days', askCareTeam: true });
-    expect(familyStatus(input({ latest: { ...latest, startedAt: '2026-10-11T01:02:00.000Z' }, days: twoDays })).body).toMatch(/^Last talked 11 Oct: something came up worth asking about\./);
+    expect(familyStatus(input({ latest: { ...latest, startedAt: '2026-10-11T01:02:00.000Z' }, days: twoDays })).body).toMatch(/^Last talked Oct 11: something came up worth asking about\./);
   });
 
   it('covers no calls at all, paused calls and two weeks without getting through', () => {
@@ -273,12 +273,12 @@ describe('family dashboard view', () => {
   });
 
   it('outlines today in the two-week grid and gives a day without a call one cell', () => {
-    expect(html).toContain('<th scope="col" class="is-today"><span class="family-today-tab">Today</span><span aria-hidden="true">5</span><span class="sr-only">, 5 Oct</span></th>');
-    expect(html).toContain('title="Food, Today, 5 Oct: Worth a call"');
-    expect(html).toContain('title="Food, 4 Oct: No details"');
-    expect(html).toContain('title="3 Oct: Didn&#x27;t get through."');
+    expect(html).toContain('<th scope="col" class="is-today"><span class="family-today-tab">Today</span><span aria-hidden="true">5</span><span class="sr-only">, Oct 5</span></th>');
+    expect(html).toContain('title="Food, Today, Oct 5: Worth a call"');
+    expect(html).toContain('title="Food, Oct 4: No details"');
+    expect(html).toContain('title="Oct 3: Didn&#x27;t get through."');
     expect(html).toContain('<td rowSpan="6" class="family-gap">');
-    expect(html).not.toContain('title="Food, 3 Oct');
+    expect(html).not.toContain('title="Food, Oct 3');
     expect(html).toContain('class="is-today is-end"');
     expect(html).toContain('does not mean all is well');
   });
@@ -294,7 +294,7 @@ describe('family dashboard view', () => {
       nextCallAt: '2026-10-05T09:00:00.000Z',
       glance: { ...data.glance!, latest: { ...data.glance!.latest!, startedAt: '2026-10-04T01:02:00.000Z' }, days: [day('2026-10-03', null), day('2026-10-04', today), day('2026-10-05', null)] },
     });
-    expect(before).toContain('title="Today, 5 Oct: Not called yet. Today&#x27;s call is at 18:00."');
+    expect(before).toContain('title="Today, Oct 5: Not called yet. Today&#x27;s call is at 18:00."');
     expect(before).toContain('<p class="family-today-note">Today&#x27;s call is at 18:00.</p>');
     expect(before).toContain('Talked yesterday, 10:02');
   });
@@ -306,7 +306,7 @@ describe('family dashboard view', () => {
       calls: [call('2026-10-05T01:00:00.000Z', false), call('2026-10-04T01:00:00.000Z', false), call('2026-10-03T01:00:00.000Z', true)],
     });
     expect(missed).toContain('No call has reached Margaret Smith for 2 days');
-    expect(missed).toContain('Last talked 3 Oct, 10:02');
+    expect(missed).toContain('Last talked Oct 3, 10:02');
     expect(missed).toContain('Call the care team');
     expect(missed).not.toContain('sev-emergency');
   });
