@@ -176,7 +176,7 @@ function triedSentence(attempts: number, lastReached: string | null, locale: Loc
     const n = `${attempts} 回かけました。`;
     return lastReached ? `${n}最後に話せたのは ${lastReached}。` : `${n}この ${UNREACHED_LOOKBACK_DAYS} 日間、通話がつながっていません。`;
   }
-  const n = attempts === 1 ? 'Rang once.' : `Rang ${attempts} times.`;
+  const n = attempts === 1 ? 'Called once.' : `Called ${attempts} times.`;
   return lastReached ? `${n} Last talked on ${lastReached}.` : `${n} No call has connected in ${UNREACHED_LOOKBACK_DAYS} days.`;
 }
 

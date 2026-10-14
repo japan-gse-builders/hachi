@@ -63,17 +63,12 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    min-inline-size: 1.5em;
-    block-size: 1.5em;
-    padding-inline: 2px;
-    border: 1.5px var(--sev-line-style) var(--sev-line);
-    border-radius: 999px;
-    background: var(--sev-fill);
-    color: var(--sev-on);
-    font-size: 0.8em;
-    font-weight: 800;
+    inline-size: 1.25em;
+    block-size: 1.25em;
+    color: var(--sev-line);
     line-height: 1;
   }
+  .sev-mark svg { inline-size: 100%; block-size: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
   /* Indicator bar: intrinsically sized, wraps onto more lines rather than overflowing. */
   .sev-bar {

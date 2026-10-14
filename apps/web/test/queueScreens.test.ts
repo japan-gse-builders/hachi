@@ -23,7 +23,7 @@ const miss = (residentId: string, missedDays: number, ourFault = false): Unreach
   at: now.toISOString(),
   ourFault,
   lastReachedAt: new Date(now.getTime() - missedDays * 86_400_000).toISOString(),
-  tried: 'Rang 3 times',
+  tried: 'Called 3 times',
   missedDays,
 });
 

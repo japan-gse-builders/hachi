@@ -42,7 +42,7 @@ export const MISSED_MEANINGS: Record<Locale, Record<MissedReason, string>> = {
     service_fault: 'A fault on our side, not theirs. Nobody has heard from them today, so call them.',
     budget: "This month's AI budget is used up and calls have stopped. Nobody has heard from them today.",
     provider_fault: 'The phone call could not be placed at all. Check the number and the phone line.',
-    no_answer: 'We rang and nobody picked up. Why they could not answer is the thing we watch for, so call them.',
+    no_answer: 'We called and no one answered. Why they could not answer is the thing we watch for, so call them.',
   },
 };
 

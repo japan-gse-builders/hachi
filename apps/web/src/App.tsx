@@ -69,7 +69,7 @@ function Shell({ children }: { children: ReactNode }) {
         </Link>
         {staff && current && (
           <nav className="nav" aria-label="Staff">
-            <NavItem to="/staff" label="Queue" section={(p) => p.startsWith('/staff/cases/')} />
+            <NavItem to="/staff" label="Action" section={(p) => p.startsWith('/staff/cases/')} />
             <NavItem to="/staff/residents" label="Residents" section={(p) => p.startsWith('/staff/residents/')} />
             <NavItem to="/staff/team" label="Team" section={(p) => p === '/staff/organization' || p === '/staff/activity'} />
           </nav>
@@ -115,7 +115,7 @@ function UnverifiedNotice({ orgName }: { orgName: string }) {
   return (
     <div className="notice unverified-notice" role="status">
       <p>
-        <strong>Hachi has not verified {orgName} yet.</strong> You can set up your team and residents now. Hachi will not ring residents,
+        <strong>Hachi has not verified {orgName} yet.</strong> You can set up your team and residents now. Hachi will not call residents,
         send alerts or show residents to their family until it has.
       </p>
       <p>

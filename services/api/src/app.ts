@@ -447,7 +447,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!r.active) return new HttpError(409, 'Calls are paused for this resident. Resume them first.', 'paused');
     if (!hasCallConsent(r.callConsent)) return new HttpError(409, 'The resident has not agreed to calls from Hachi yet', 'consent_required');
     if (!mayContactPeople(staff.org)) {
-      return new HttpError(409, 'Hachi has not verified your organization yet, so it does not ring residents for it', 'organization_unverified');
+      return new HttpError(409, 'Hachi has not verified your organization yet, so it does not call residents for it', 'organization_unverified');
     }
     if (deps.spend) {
       const month = spendMonth(t);
@@ -607,7 +607,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
     const r = await getResidentOr404(req.params.id, staff);
     // The sweep only looks at residents whose calls are running.
-    if (!r.active) throw new HttpError(409, 'Calls are paused for this resident, so the call cannot be analysed again until they are resumed');
+    if (!r.active) throw new HttpError(409, 'Calls are paused for this resident, so the call cannot be analyzed again until they are resumed');
     const existing = await store.getCall(r.id, req.params.callId);
     if (!existing) throw new NotFoundError('Call');
     const requestedAt = now().toISOString();
@@ -616,7 +616,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       outcome = c.analysisPending ? 'already_pending' : analysisGaps(c).length === 0 ? 'complete' : 'requested';
       return outcome === 'requested' ? { ...c, analysisPending: true, reanalysis: { requestedAt, requestedBy: staff.uid } } : null;
     });
-    if (outcome === 'complete') throw new HttpError(409, 'This call was fully analysed; there is nothing to check again');
+    if (outcome === 'complete') throw new HttpError(409, 'This call was fully analyzed; there is nothing to check again');
     if (outcome === 'already_pending') return reply.status(202).send({ status: 'already_pending' });
     req.log.info({ residentId: r.id, callId: existing.id, by: staff.uid }, 'reanalysis requested');
     return reply.status(202).send({ status: 'requested', requestedAt });

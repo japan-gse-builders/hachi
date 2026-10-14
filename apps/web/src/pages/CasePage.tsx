@@ -8,7 +8,7 @@ import { CaseDecision } from '../components/CaseDecision';
 import { CaseAbout, CaseHistory, CaseNotifications } from '../components/CaseRecords';
 import { ResidentAvatar } from '../components/ResidentAvatar';
 import { ScreeningCard } from '../components/ScreeningCard';
-import { IndicatorBar, LastReachedChip, SeverityChip } from '../components/Signals';
+import { IndicatorBar, LastReachedChip, SeverityChip, SignalsLegend } from '../components/Signals';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { LoadError, Loading } from '../components/States';
 import { audioAt, clock, formatWhen, phoneDisplay, speakerLabel } from '../format';
@@ -100,6 +100,10 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
       <div className="hide-from-xs">
         <IndicatorBar signals={signals} now={now} label={glance} compact />
       </div>
+      <details className="disclosure case-signals-legend">
+        <summary>What the colors and icons mean</summary>
+        <div className="disclosure-body"><SignalsLegend /></div>
+      </details>
     </header>
   );
 }

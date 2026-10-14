@@ -92,7 +92,7 @@ describe('no-call ladder', () => {
 
   it('says when they were reached, in Japan time', () => {
     expect(reachLevel(reach(0, { lastReachedAt: '2026-10-12T01:02:00.000Z' }), now)).toMatchObject({ word: 'Reached yesterday', detail: 'Last reached yesterday at 10:02.' });
-    expect(reachLevel(reach(3, { lastReachedAt: '2026-10-09T23:30:00.000Z' }), now).detail).toBe('Last reached 10 Oct at 08:30.');
+    expect(reachLevel(reach(3, { lastReachedAt: '2026-10-09T23:30:00.000Z' }), now).detail).toBe('Last reached Oct 10 at 08:30.');
   });
 
   it('counts days since last reached when an older server leaves out missedDays', () => {
@@ -250,10 +250,11 @@ describe('signal components', () => {
     expect(html).toContain('8 fine');
   });
 
-  it('show chips with a symbol, a word and the severity for screen readers', () => {
-    expect(render(createElement(SeverityChip, { severity: 'today' }))).toBe(
-      '<span class="sev-chip sev-today"><span class="sev-mark" aria-hidden="true">!</span><span>Review today</span></span>',
-    );
+  it('show chips with a decorative icon, a word and the severity for screen readers', () => {
+    const today = render(createElement(SeverityChip, { severity: 'today' }));
+    expect(today).toContain('class="sev-chip sev-today"');
+    expect(today).toContain('class="sev-mark sev-today" aria-hidden="true"');
+    expect(today).toContain('<span>Review today</span>');
     const chip = render(createElement(LastReachedChip, { reach: reach(3), now }));
     expect(chip).toContain('sev-emergency');
     expect(chip).toContain('<span class="sr-only">Act now: </span><span>No call for 3 days</span>');
@@ -262,16 +263,16 @@ describe('signal components', () => {
   });
 
   it('let a chip whose word is a status or a fact say only that, or a prefix of its own', () => {
-    expect(render(createElement(SeverityChip, { severity: 'monitor', label: 'In progress', spoken: false }))).toBe(
-      '<span class="sev-chip sev-monitor"><span class="sev-mark" aria-hidden="true">•</span><span>In progress</span></span>',
-    );
+    const progress = render(createElement(SeverityChip, { severity: 'monitor', label: 'In progress', spoken: false }));
+    expect(progress).toContain('<span>In progress</span>');
+    expect(progress).not.toContain('sr-only');
     expect(render(createElement(SeverityChip, { severity: 'system', label: 'Approval needed', spoken: 'Waiting' }))).toContain(
       '<span class="sr-only">Waiting: </span><span>Approval needed</span>',
     );
     expect(render(createElement(SeverityChip, { severity: 'soon', label: 'No call for 1 day' }))).toContain('<span class="sr-only">Review soon: </span>');
   });
 
-  it('give a legend of colours and indicators', () => {
+  it('give a legend of colors and indicators', () => {
     const html = render(createElement(SignalsLegend));
     for (const s of SEVERITIES) expect(html).toContain(`sev-chip sev-${s}`);
     for (const i of INDICATORS) expect(html).toContain(`<strong>${i.label}</strong>`);

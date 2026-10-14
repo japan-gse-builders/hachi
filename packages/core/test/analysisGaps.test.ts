@@ -9,7 +9,7 @@ describe('describeAnalysisGaps', () => {
   it('names meals (R2) as unchecked when the review failed, and R1 as checked by rules only', () => {
     const t = describeAnalysisGaps([{ part: 'review', failure: 'model_unavailable' }], 'en')!;
     expect(t.notChecked).toContain('Meals and drinks (R2)');
-    expect(t.notChecked).toContain('request to ring someone');
+    expect(t.notChecked).toContain('request to call someone');
     expect(t.checked).toContain('(R1)');
     expect(t.checked).toContain('keyword rules only');
   });

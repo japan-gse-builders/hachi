@@ -12,7 +12,7 @@ import type { FamilyAccess, Resident } from '../types';
 
 type AccessResult = { outcome: string; familyAccess: FamilyAccess[] };
 
-const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** Errors about the address itself belong beside the field; anything else, under the form. */
 const FIELD_REASONS = new Set(['family_contact', 'access_full']);

@@ -92,7 +92,7 @@ export function shortValue(key: string, v: number): string {
 }
 
 export function formatDay(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', day: 'numeric', month: 'short' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', day: 'numeric', month: 'short' }).format(new Date(iso));
 }
 
 export type Side = 'above' | 'below' | null;

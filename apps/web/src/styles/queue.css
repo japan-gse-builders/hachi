@@ -1,6 +1,6 @@
 /*
- * Queue: urgency lanes of one-line cases. The page container decides whether the notices sit above
- * the cases or beside them; each card's own width decides how its parts are arranged.
+ * Triage: overview counts, filters, then urgency lanes. Each card's own width decides how its
+ * parts are arranged; narrow screens scroll the overview and filter rows without clipping text.
  */
 @layer screens {
   /* A severity stripe down the leading edge; blue and grey are dashed or edged so pale fills still show. */
@@ -11,33 +11,20 @@
 
   .queue-layout { display: grid; gap: var(--flow-2); grid-template-columns: minmax(0, 1fr); align-items: start; }
   .queue-requests:empty { display: none; }
-  /* The cases keep the main column from the top and the rest sits beside them: from 1200px always,
-     and from 960px when missed or unchecked calls would otherwise push the first case down. */
-  @container page (min-width: 960px) and (max-width: 1199px) {
-    .queue-layout:has(> .queue-notices) { grid-template-columns: minmax(0, 1fr) minmax(300px, 22rem); grid-template-rows: auto auto 1fr; grid-template-areas: "cases counts" "cases notices" "cases requests"; }
-    .queue-layout:has(> .queue-notices) > .queue-overview-panel { grid-area: counts; }
-    .queue-layout:has(> .queue-notices) > .queue-notices { grid-area: notices; }
-    .queue-layout:has(> .queue-notices) > .queue-cases { grid-area: cases; }
-    .queue-layout:has(> .queue-notices) > .queue-requests { grid-area: requests; }
-    .queue-layout:has(> .queue-notices) .queue-requests > .stack > .tiles { grid-template-columns: minmax(0, 1fr); }
-    .queue-layout:has(> .queue-notices) .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .queue-layout:has(> .queue-notices) .queue-count-residents { grid-column: 1 / -1; }
-  }
-  @container page (min-width: 1200px) {
-    .queue-layout { grid-template-columns: minmax(0, 1fr) minmax(320px, 26rem); grid-template-rows: auto auto 1fr; grid-template-areas: "cases counts" "cases notices" "cases requests"; }
-    .queue-layout > .queue-overview-panel { grid-area: counts; }
-    .queue-layout > .queue-notices { grid-area: notices; }
-    .queue-layout > .queue-cases { grid-area: cases; }
-    .queue-layout > .queue-requests { grid-area: requests; }
-    .queue-layout .queue-requests > .stack > .tiles { grid-template-columns: minmax(0, 1fr); }
-    .queue-layout .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .queue-layout .queue-count-residents { grid-column: 1 / -1; }
-  }
 
   /* ---------- Overview counts ---------- */
 
   .queue-overview-panel { display: grid; gap: var(--space-2); }
-  .queue-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: var(--space-2); margin: 0; }
+  .queue-counts {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(10rem, 1fr);
+    gap: var(--space-2);
+    margin: 0;
+    padding-bottom: var(--space-1);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
   .queue-count {
     display: flex;
     flex-direction: column-reverse;
@@ -49,23 +36,17 @@
     border: 1px solid var(--line);
     border-top: 5px var(--sev-line-style, solid) var(--sev-fill, var(--brand));
     border-radius: var(--radius-control);
+    scroll-snap-align: start;
   }
   .queue-count:is(.sev-system, .sev-none) { border-top-color: var(--sev-line); }
   .queue-count-residents { border-top-color: var(--line-control); }
   .queue-count dt { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); font-weight: 700; color: var(--ink-muted); }
-  .queue-count dt .sev-mark { font-size: 15px; }
+  .queue-count dt .sev-mark { font-size: 18px; }
   .queue-count dd { margin: 0; font-size: clamp(26px, 1.6cqi + 18px, 36px); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .queue-count.is-zero { border-top-color: var(--line); }
   .queue-count.is-zero dd { color: var(--ink-muted); font-weight: 600; }
   .queue-count.is-zero .sev-mark { opacity: 0.45; }
   .queue-overview-panel > .meta { font-size: var(--text-xs); }
-  /* Four counts on two lines read better on a phone than a tall column of boxes. */
-  @container page (max-width: 599px) {
-    .queue-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .queue-count { flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: var(--space-2); }
-    .queue-count dd { font-size: 24px; min-width: 1.4em; }
-    .queue-count dt { font-size: var(--text-xs); }
-  }
 
   .queue-count-pill {
     display: inline-flex;
@@ -102,19 +83,26 @@
 
   .card.queue-filters { padding-block: var(--space-2); }
   .queue-filters > summary { font-size: var(--text-md); }
-  .queue-filters-grid { display: grid; gap: var(--flow-2); padding-bottom: var(--space-2); }
-  .queue-filters-grid fieldset { gap: var(--space-2); }
-  @container card (min-width: 900px) {
-    .queue-filters-grid { grid-template-columns: auto minmax(18rem, 1fr); align-items: start; gap: var(--space-6); }
-  }
-  .segmented button .sev-mark { font-size: 14px; }
-  .segmented button[aria-pressed="true"] .sev-mark { box-shadow: 0 0 0 1.5px #fff; }
+  .queue-filters-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4) var(--space-5); padding-bottom: var(--space-2); }
+  .queue-filter-controls { flex: 1 1 62rem; min-width: 0; }
+  .queue-filter-row { display: flex; align-items: flex-end; gap: var(--space-4); overflow-x: auto; padding: var(--space-1); }
+  .queue-filter-row > * { flex: none; }
+  .queue-filter-row fieldset { gap: 0; }
+  .queue-filter-row :is(.segmented, .check) { flex-wrap: nowrap; white-space: nowrap; }
+  .queue-filter-row :is(button, .check) { font-size: var(--text-sm); }
+  .queue-filter-row .segmented button { flex: none; }
+  .queue-filter-controls > .meta { margin-top: var(--space-2); }
+  .queue-filters .queue-search { flex: 1 1 18rem; min-width: 0; }
+  .queue-filters .segmented button .sev-mark { font-size: 18px; }
+  .queue-filters .segmented button[aria-pressed="true"] .sev-mark { color: inherit; }
 
   .queue-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-4); }
   .queue-list-head > .meta { margin: 0; }
   .queue-legend > summary { min-height: 44px; font-size: var(--text-sm); }
   .queue-legend[open] { flex-basis: 100%; }
   .queue-legend .disclosure-body { padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); }
+  .queue-urgency-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+  .queue-urgency-legend li { display: grid; justify-items: start; align-content: start; gap: var(--space-2); }
 
   /* ---------- Lanes ---------- */
 
@@ -132,12 +120,11 @@
     display: grid;
     gap: var(--space-1) var(--space-3);
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "sev when" "name name" "what what" "state state";
+    grid-template-areas: "name when" "what what" "state state";
     align-items: center;
     padding: var(--space-3) var(--space-4);
   }
   .queue-case > * { min-width: 0; margin: 0; }
-  .queue-case-sev { grid-area: sev; }
   .queue-case-name { grid-area: name; }
   .queue-case-what { grid-area: what; display: grid; gap: var(--space-1); }
   .queue-case-bar { grid-area: bar; }
@@ -149,10 +136,39 @@
   .queue-case-summary { margin: 0; font-weight: 600; line-height: 1.35; }
   .queue-case-facts { margin: 0; font-size: var(--text-xs); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   .queue-status { padding: 1px 10px; border: 1px solid var(--line-control); border-radius: 999px; font-weight: 600; white-space: nowrap; }
-  .queue-notified { display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin: 0; padding: 0; list-style: none; color: var(--ink-muted); }
+  .queue-notified { position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin: 0; padding: 0; list-style: none; color: var(--ink-muted); }
+  .queue-notification { position: relative; }
+  .queue-notified-trigger, .queue-notified-trigger:hover {
+    min-height: 24px;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+  .queue-notified-name { text-decoration: underline dotted; text-underline-offset: 3px; }
+  .queue-notified-trigger:hover .queue-notified-name { text-decoration-style: solid; }
   .queue-notified-mark { margin-inline-end: 3px; color: var(--sev-good); font-weight: 800; }
   .queue-notified .is-failed { color: var(--danger-ink); font-weight: 700; }
   .queue-notified .is-failed .queue-notified-mark { color: var(--danger); }
+  .queue-notification.is-open > .sev-tip { display: block; }
+  .queue-notification-tip {
+    inset-block-start: var(--notification-tip-top, calc(100% + 6px));
+    max-inline-size: min(21rem, var(--tip-room, calc(100vw - 16px)));
+    max-block-size: min(24rem, var(--notification-tip-room, calc(100dvh - 32px)));
+    overflow-y: auto;
+  }
+  .queue-notification-tip::before { display: none; }
+  .queue-notification::after { content: ""; position: absolute; inset-inline: 0; inset-block: -6px; z-index: -1; }
+  .queue-notification-tip p { margin: var(--space-2) 0; }
+  .queue-notification-tip p:last-child { margin-bottom: 0; }
+  .queue-notification-tip ul { margin: var(--space-2) 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+  .queue-notification-tip li { display: grid; gap: 2px; }
+  .queue-notification-tip time { font-size: var(--text-xs); color: #e6dfd2; }
+  @media (pointer: coarse) { .queue-notified-trigger { min-height: 44px; } }
   .queue-case.is-closed { background: var(--surface-sunken); }
   .queue-case.is-closed .queue-case-summary { font-weight: 400; }
 
@@ -171,10 +187,11 @@
   @container lanes (min-width: 600px) {
     .card.queue-case {
       grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) auto;
-      grid-template-areas: "sev what when" "name what state";
+      grid-template-areas: "name what when" "name what state";
       align-items: start;
       column-gap: var(--space-4);
     }
+    .queue-case-name { align-self: center; }
     .queue-case-state { flex-direction: column; align-items: flex-end; justify-self: end; text-align: end; }
     .queue-case-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   }
@@ -184,7 +201,7 @@
     .card.queue-case { grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) 11rem; }
     .card.queue-case.has-signals {
       grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) var(--sev-bar-full) 11rem;
-      grid-template-areas: "sev what bar when" "name what bar state";
+      grid-template-areas: "name what bar when" "name what bar state";
     }
   }
 }

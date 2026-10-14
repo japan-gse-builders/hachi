@@ -237,7 +237,7 @@ export function ResidentsPage() {
           <summary>More</summary>
           <div className="disclosure-body stack stack-s">
             {hasCallConsent(r.callConsent) && (
-              <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-GB')}.</p>
+              <p className="meta">First-use approval recorded on {new Date(r.callConsent!.recordedAt).toLocaleDateString('en-US')}.</p>
             )}
             <label className="file">Import past calls (JSON)
               <input type="file" accept="application/json,.json" onChange={(e) => void importCalls(r.id, e)} />
@@ -275,8 +275,8 @@ export function ResidentsPage() {
       {settled && ranked.length > 0 && (
         <>
           <details className="disclosure residents-legend">
-            <summary>What the colours and icons mean</summary>
-            <div className="disclosure-body"><SignalsLegend /></div>
+            <summary>What the colors and icons mean</summary>
+            <div className="disclosure-body"><SignalsLegend showIndicators={ranked.some(({ r }) => Boolean(r.signals))} /></div>
           </details>
           {groups.map((g) => (
             <section key={g.key} className="stack residents-group" aria-labelledby={`residents-${g.key}`}>

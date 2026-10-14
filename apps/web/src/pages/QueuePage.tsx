@@ -5,19 +5,16 @@ import { useAuth } from '../auth';
 import { filterQueue, queueFilters, queueLanes } from '../queue';
 import { ContactRequests } from '../components/ContactRequests';
 import { QueueLanes } from '../components/QueueLanes';
-import { QueueCounts, QueueUnchecked, QueueUnreached } from '../components/QueueNotices';
-import { SignalsLegend } from '../components/Signals';
+import { QueueCounts, QueueLegend, QueueUnchecked, QueueUnreached } from '../components/QueueNotices';
+import { SeverityMark } from '../components/Signals';
 import { LoadError, Loading } from '../components/States';
-import { SEVERITY, urgencySeverity } from '../signals';
+import { urgencySeverity } from '../signals';
 import { useDocumentTitle } from '../title';
 import type { Queue, Spend } from '../types';
 import '../styles/queue.css';
 
-/** Wide screens open the filters; on a phone they fold to one line so the cases come first. */
-const wideScreen = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 900px)').matches === true;
-
 export function QueuePage() {
-  useDocumentTitle('Needs attention');
+  useDocumentTitle('Triage queue');
   const { token } = useAuth();
   const [params, setParams] = useSearchParams();
   const filters = queueFilters(params);
@@ -36,7 +33,7 @@ export function QueuePage() {
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const filtered = Boolean(filters.urgency || filters.query.trim() || filters.includeClosed);
-  const [filtersOpen, setFiltersOpen] = useState(() => filtered || wideScreen());
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   useEffect(() => {
     let stop = false;
@@ -79,9 +76,10 @@ export function QueuePage() {
   return (
     <div className="stack page queue-page">
       <header className="page-header">
-        <h1>Needs attention</h1>
+        <h1>Triage queue</h1>
         <p className="meta">Open cases, most urgent first. This page refreshes every 15 seconds.</p>
       </header>
+      {queue && <QueueCounts queue={queue} />}
       {error && <LoadError message={error} onRetry={retry} />}
       {queue === null && !error && <Loading layout="queue" label="Loading the queue…" />}
       {/* Staff are the ones who get asked why nobody was called today, so they can see the answer. */}
@@ -92,55 +90,56 @@ export function QueuePage() {
       )}
       {(queue || error) && (
         <div className="queue-layout">
-          {queue && <QueueCounts queue={queue} />}
-          {/* Above the cases on purpose: a resident with no case at all may be the one to worry about. */}
-          {(unreached || incomplete) && (
-            <div className="queue-notices stack">
-              {unreached && <QueueUnreached unreached={unreached} now={now} />}
-              {incomplete && <QueueUnchecked incomplete={incomplete} />}
-            </div>
-          )}
           {queue && (
             <section className="queue-cases stack" aria-labelledby="cases-heading">
-              <h2 id="cases-heading" className="section-title">Cases</h2>
+              <h2 id="cases-heading" className="sr-only">Cases</h2>
               <details className="card disclosure queue-filters" open={filtersOpen} onToggle={(e) => setFiltersOpen(e.currentTarget.open)}>
                 <summary>
                   <span>Filter cases</span>
                   <span className="disclosure-peek">{filterSummary}</span>
                 </summary>
                 <div className="disclosure-body queue-filters-grid" role="search" aria-label="Filter cases">
-                  <fieldset>
-                    <legend className="control-label">Urgency</legend>
-                    <div className="row segmented" aria-describedby="urgency-explanation">
-                      <button type="button" className="ghost" aria-pressed={!filters.urgency} onClick={() => changeFilter('urgency', '')}>All levels</button>
-                      {queue.legend.map((level) => {
-                        const severity = urgencySeverity(level.urgency);
-                        return (
-                          <button key={level.urgency} type="button" className="ghost" aria-pressed={filters.urgency === level.urgency} onClick={() => changeFilter('urgency', level.urgency)}>
-                            <span className={`sev-mark sev-${severity}`} aria-hidden="true">{SEVERITY[severity].symbol}</span>
-                            {level.label}
-                          </button>
-                        );
-                      })}
+                  <div className="queue-filter-controls">
+                    <div className="queue-filter-row">
+                      <fieldset>
+                        <legend className="control-label">Urgency</legend>
+                        <div className="row segmented" aria-describedby="urgency-explanation">
+                          <button type="button" className="ghost" aria-pressed={!filters.urgency} onClick={() => changeFilter('urgency', '')}>All levels</button>
+                          {queue.legend.map((level) => {
+                            const severity = urgencySeverity(level.urgency);
+                            return (
+                              <button key={level.urgency} type="button" className="ghost" aria-pressed={filters.urgency === level.urgency} onClick={() => changeFilter('urgency', level.urgency)}>
+                                <SeverityMark severity={severity} />
+                                {level.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                      <label className="check"><input type="checkbox" checked={filters.includeClosed} onChange={(event) => changeFilter('includeClosed', event.target.checked ? 'true' : '')} />Include closed cases</label>
+                      <button type="button" className="subtle" onClick={clearFilters}>Clear filters</button>
                     </div>
                     <p id="urgency-explanation" className="meta">{selectedLevel?.meaning ?? selectedLevel?.action ?? 'All urgency levels, in priority order.'}</p>
-                  </fieldset>
+                  </div>
                   <div className="queue-search">
                     <label>Search by resident or case summary
                       <input type="search" value={filters.query} maxLength={200} autoComplete="off" spellCheck={false} onChange={(event) => changeFilter('q', event.target.value)} />
                     </label>
-                    <div className="row">
-                      <label className="check"><input type="checkbox" checked={filters.includeClosed} onChange={(event) => changeFilter('includeClosed', event.target.checked ? 'true' : '')} />Include closed cases</label>
-                      <button type="button" className="subtle" onClick={clearFilters}>Clear filters</button>
-                    </div>
                   </div>
                 </div>
               </details>
+              {/* A resident with no case may still need attention, so these stay above the case list. */}
+              {(unreached || incomplete) && (
+                <div className="queue-notices stack">
+                  {unreached && <QueueUnreached unreached={unreached} now={now} />}
+                  {incomplete && <QueueUnchecked incomplete={incomplete} />}
+                </div>
+              )}
               <div className="queue-list-head">
                 <p className="meta" role="status">Showing {visible.length} of {queue.items.length} {filters.includeClosed ? 'open and closed cases' : 'open cases'}.</p>
                 <details className="disclosure queue-legend">
-                  <summary>What the colours and icons mean</summary>
-                  <div className="disclosure-body"><SignalsLegend /></div>
+                  <summary>What the colors and icons mean</summary>
+                  <div className="disclosure-body"><QueueLegend queue={queue} includeClosed={filters.includeClosed} /></div>
                 </details>
               </div>
               {visible.length === 0 && (
@@ -153,7 +152,7 @@ export function QueuePage() {
               {visible.length > 0 && <QueueLanes lanes={queueLanes(visible)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
             </section>
           )}
-          {/* Below the cases, or beside them on a wide screen: it loads after the queue and would push the cases down. */}
+          {/* Contact requests load separately, after the case list. */}
           <div className="queue-requests">
             <ContactRequests />
           </div>

@@ -64,7 +64,7 @@ async function makeApi() {
       phone: '+81900000000' + (i + 1),
       callTime: '10:00', timeZone: 'Asia/Tokyo',
       vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
-      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas at weekends.' : 'A neighbour looks in most days.',
+      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas on weekends.' : 'A neighbor looks in most days.',
       staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
       family: {name: 'Sarah ' + item.residentName.split(' ').at(-1), relationship: 'Daughter', email: 'family@example.invalid'},
       serviceStartedAt: new Date(now.getTime() - 35 * 86400_000).toISOString(),
@@ -145,7 +145,7 @@ export const useAuth = () => ({
 
 const banner = `<aside style="padding:12px 20px;background:#dcebe1;color:#1f4d3a;font:16px/1.5 system-ui;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
 <strong>Local demo · Fictional data · No calls or messages</strong>
-<a href="/staff">Staff queue</a><a href="/staff/residents">Residents</a><a href="/staff/team">Team</a>
+<a href="/staff">Action</a><a href="/staff/residents">Residents</a><a href="/staff/team">Team</a>
 <a href="/family/residents/res-1">Family view</a><a href="/privacy">Privacy</a>
 <button type="button" onclick="fetch('/__preview/reset',{method:'POST'}).then(r=>{if(r.ok)location.reload()})" style="font:inherit;padding:6px 12px">Reset demo</button></aside>`;
 
