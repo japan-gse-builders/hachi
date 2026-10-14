@@ -96,11 +96,7 @@
   .queue-filters .segmented button .sev-mark { font-size: 18px; }
   .queue-filters .segmented button[aria-pressed="true"] .sev-mark { color: inherit; }
 
-  /* Each level's button in its own colour, the same tint as the level's chip on the cases below. */
   .urgency-filter { position: relative; display: inline-flex; }
-  .segmented .urgency-option { --sev-tint: color-mix(in srgb, var(--sev-fill) 16%, var(--surface)); background: var(--sev-tint); border-color: var(--sev-line); color: var(--ink); }
-  .segmented .urgency-option:hover { background: color-mix(in srgb, var(--sev-fill) 30%, var(--surface)); border-color: var(--sev-line); color: var(--ink); }
-  .segmented .urgency-option[aria-pressed="true"] { background: var(--sev-fill); border-color: var(--sev-line); color: var(--sev-on); box-shadow: inset 0 0 0 1px var(--sev-line); }
   /* What the level asks of staff, on hover or keyboard focus. */
   .urgency-tip {
     display: none;
@@ -139,6 +135,7 @@
   .queue-lane { display: grid; gap: var(--space-2); }
   .queue-lane-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; }
   .queue-lane-title > .sev-mark { font-size: 18px; }
+  .queue-lane-ask { color: var(--ink-muted); font-size: var(--text-sm); font-weight: 400; }
   .queue-lane-items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 
   /* ---------- One case ---------- */

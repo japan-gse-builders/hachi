@@ -157,12 +157,14 @@ function Lane({ lane, legend, queue, now, linkState }: { lane: QueueLane; legend
   const label = lane.urgency === null ? 'Closed' : (level?.label ?? lane.items[0]!.urgencyLabel);
   const n = lane.items.length;
   const unit = lane.urgency === null ? (n === 1 ? 'case' : 'cases') : (n === 1 ? 'patient' : 'patients');
+  const ask = lane.urgency === null ? 'No action needed' : level?.action;
   return (
     <section className="queue-lane" aria-labelledby={id}>
       <h3 id={id} className="queue-lane-title">
         <SeverityMark severity={lane.severity} />
         <span>{label}</span>
         <span className="queue-count-pill">{n}<span className="sr-only"> {unit}</span></span>
+        {ask && <span className="queue-lane-ask">{ask}</span>}
       </h3>
       <ol className="queue-lane-items">
         {lane.items.map((item) => <QueueCaseCard key={item.caseId} item={item} queue={queue} now={now} linkState={linkState} />)}

@@ -108,7 +108,7 @@ export function QueuePage() {
                             const tipId = `urgency-tip-${level.urgency}`;
                             return (
                               <span key={level.urgency} className="urgency-filter">
-                                <button type="button" className={`ghost urgency-option sev-${severity}`} aria-pressed={filters.urgency === level.urgency}
+                                <button type="button" className="ghost urgency-option" aria-pressed={filters.urgency === level.urgency}
                                   aria-describedby={tipId} onClick={() => changeFilter('urgency', level.urgency)}>
                                   <SeverityMark severity={severity} />
                                   {level.label}
