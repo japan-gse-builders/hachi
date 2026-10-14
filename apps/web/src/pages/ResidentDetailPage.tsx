@@ -73,7 +73,7 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
   const { current } = useAccount();
   const ownership = ownershipOf(resident, uid);
   const canEdit = mayEditDetails(resident, uid, current?.role);
-  const who = resident.preferredName || resident.name;
+  const who = resident.name;
   const v = resident.vulnerability;
   const staff = resident.staff;
   const family = resident.family;
@@ -103,7 +103,7 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
             <dt>Staff in charge</dt>
             <dd>
               {[staff.name, phone(staff.phone) && `phone ${phone(staff.phone)}`, phone(staff.sms) && `texts ${phone(staff.sms)}`, staff.email].filter(Boolean).join(' · ')}
-              {!resident.owner && <><br /><span className="meta">Alerts still go here until someone takes {who} on.</span></>}
+              {!resident.owner && <><br /><span className="meta">Alerts still go here until a staff member is assigned to {who}.</span></>}
               {resident.owner && staff.uid !== resident.owner.uid && (
                 <><br /><span className="meta">Typed in before staff were chosen from the team. It changes to {ownerName(resident.owner)}’s numbers when they save them in their account.</span></>
               )}
@@ -116,10 +116,10 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
         </div>
       </dl>
       {!canEdit && ownership === 'theirs' && <p className="meta">Only {ownerName(resident.owner!)} or an admin can change {who}’s details.</p>}
-      {!canEdit && ownership === 'unassigned' && <p className="meta">Take {who} on to change their details.</p>}
+      {!canEdit && ownership === 'unassigned' && <p className="meta">Assign yourself to {who} to change their details.</p>}
       {canEdit && ownership !== 'mine' && (
         <p className="meta">
-          {ownership === 'theirs' ? `${ownerName(resident.owner!)} is responsible for ${who}.` : `Nobody is responsible for ${who} yet.`}
+          {ownership === 'theirs' ? `${ownerName(resident.owner!)} is responsible for ${who}.` : `No staff member is assigned to ${who} yet.`}
           {' '}As an admin you can still change their details and contacts.
         </p>
       )}
@@ -134,7 +134,7 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const ownership = ownershipOf(resident, uid);
-  const who = resident.preferredName || resident.name;
+  const who = resident.name;
 
   const change = async (method: 'POST' | 'DELETE') => {
     setBusy(true);
@@ -154,11 +154,11 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
       <h2 id="responsible-heading">Responsible staff member</h2>
       {ownership === 'mine' && (
         <>
-          <p>You are responsible for {who} since {date(resident.owner!.since)}. Only you can change who in their family can see their calls; you and the admins can change their details.</p>
+          <p>You have been responsible for {who} since {date(resident.owner!.since)}. Only you can change who in their family can see their calls; you and the admins can change their details.</p>
           {!confirming && <p><button className="ghost" type="button" onClick={() => { setError(''); setConfirming(true); }}>Hand over</button></p>}
           {confirming && (
             <div className="stack confirm notice">
-              <p>Hand {who} over? Nobody will be responsible for them until another member of staff takes them on. Family access stays as it is.</p>
+              <p>Hand {who} over? They will be unassigned until another staff member is assigned to them. Family access stays as it is.</p>
               <div className="row">
                 <button type="button" disabled={busy} onClick={() => void change('DELETE')}>{busy ? 'Handing over…' : `Hand ${who} over`}</button>
                 <button className="ghost" type="button" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
@@ -169,14 +169,14 @@ function Responsibility({ resident, uid, onSaved }: { resident: Resident; uid?: 
       )}
       {ownership === 'theirs' && (
         <p>
-          <strong>{ownerName(resident.owner!)}</strong> is responsible for {who} since {date(resident.owner!.since)}.
+          <strong>{ownerName(resident.owner!)}</strong> has been responsible for {who} since {date(resident.owner!.since)}.
           Ask them to make changes, or to hand {who} over to you.
         </p>
       )}
       {ownership === 'unassigned' && (
         <div className="stack notice notice-warning">
-          <p role="status"><strong>Nobody is responsible for {who} yet.</strong> Take them on to change their details and who in their family can see their calls.</p>
-          <p><button type="button" disabled={busy} onClick={() => void change('POST')}>{busy ? 'Saving…' : `Take on ${who}`}</button></p>
+          <p role="status"><strong>No staff member is assigned to {who} yet.</strong> Assign yourself to manage their details and family access.</p>
+          <p><button type="button" disabled={busy} onClick={() => void change('POST')}>{busy ? 'Saving…' : 'Assign to me'}</button></p>
         </div>
       )}
       {error && <p className="error" role="alert">{error}</p>}
@@ -193,7 +193,7 @@ function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: R
   const [choice, setChoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const who = resident.preferredName || resident.name;
+  const who = resident.name;
 
   const start = async () => {
     setOpen(true);
@@ -223,15 +223,15 @@ function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: R
   };
 
   if (!open) {
-    return <p><button type="button" className="subtle" onClick={() => void start()}>As an admin: make someone else responsible</button></p>;
+    return <p><button type="button" className="subtle" onClick={() => void start()}>Assign a staff member</button></p>;
   }
   return (
     <form className="stack confirm notice" onSubmit={(e) => void assign(e)}>
       {!members && !error && <p className="meta">Loading the team…</p>}
-      {members && members.length === 0 && <p>There is nobody else active in the organization to make responsible.</p>}
+      {members && members.length === 0 && <p>No other active staff members are available to assign.</p>}
       {members && members.length > 0 && (
         <label>
-          Make responsible for {who}
+          Staff member for {who}
           <select value={choice} onChange={(e) => setChoice(e.target.value)}>
             {members.map((m) => (
               <option key={m.uid} value={m.uid} disabled={!m.canBeInCharge}>{memberLabel(m)}{m.canBeInCharge ? '' : ' (no phone number yet)'}</option>
@@ -239,10 +239,10 @@ function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: R
           </select>
         </label>
       )}
-      {members && members.length > 0 && <p className="meta">They also become the staff in charge: alerts about {who} go to the numbers on their account.</p>}
+      {members && members.length > 0 && <p className="meta">The assigned staff member will receive alerts about {who} using the contact details on their account.</p>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="row">
-        {members && members.length > 0 && <button type="submit" disabled={busy || !choice}>{busy ? 'Saving…' : 'Make responsible'}</button>}
+        {members && members.length > 0 && <button type="submit" disabled={busy || !choice}>{busy ? 'Saving…' : 'Assign staff member'}</button>}
         <button type="button" className="ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </form>
@@ -263,7 +263,7 @@ function FamilyAccessCard({ resident, uid, onSaved }: { resident: Resident; uid?
   const access = resident.familyAccess ?? [];
   const canChange = ownershipOf(resident, uid) === 'mine';
   const full = access.length >= FAMILY_ACCESS_MAX;
-  const who = resident.preferredName || resident.name;
+  const who = resident.name;
   const signInLink = `${window.location.origin}/family/login`;
   const contact = resident.family;
 
@@ -406,7 +406,7 @@ function FamilyAccessCard({ resident, uid, onSaved }: { resident: Resident; uid?
         <p className="meta">
           {resident.owner
             ? `Only ${ownerName(resident.owner)} can change who has access.`
-            : `Take ${who} on to change who has access.`}
+            : `Assign yourself to ${who} to manage family access.`}
         </p>
       )}
 
