@@ -651,7 +651,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') });
     expect(res.statusCode).toBe(200);
     const d = res.json();
-    expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith' });
+    expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith', portrait: null });
     expect(d.nextCallAt).toBe('2026-10-02T01:00:00.000Z');
     expect(d.calls).toEqual([
       {

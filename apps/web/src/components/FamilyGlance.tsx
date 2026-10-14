@@ -13,7 +13,8 @@ import {
   type FamilyStatus,
 } from '../glance';
 import { SEVERITY } from '../signals';
-import type { FamilyGlance, TagLabel, TagTrend } from '../types';
+import type { FamilyGlance, Portrait, TagLabel, TagTrend } from '../types';
+import { ResidentAvatar } from './ResidentAvatar';
 import { SeverityChip } from './Signals';
 
 export function FamilyCell({ state, label, tall = false }: { state: CellState; label?: string; tall?: boolean }) {
@@ -27,13 +28,17 @@ export function FamilyCell({ state, label, tall = false }: { state: CellState; l
 }
 
 export function FamilyStatusCard({
+  id,
   name,
+  portrait,
   status,
   reach,
   next,
   careTeamPhone,
 }: {
+  id: string;
   name: string;
+  portrait?: Portrait | null | undefined;
   status: FamilyStatus | null;
   reach: FamilyLevel | null;
   next: string;
@@ -42,7 +47,12 @@ export function FamilyStatusCard({
   const severity = status?.severity ?? 'none';
   return (
     <section className={`card family-status sev-${severity}`} aria-labelledby="family-name">
-      <h1 className="family-name" id="family-name">Daily calls with {name}</h1>
+      <div className="resident-heading family-heading">
+        <ResidentAvatar id={id} name={name} portrait={portrait} />
+        <h1 className="family-name" id="family-name">
+          <span className="family-name-lead">Daily calls with</span> <span className="family-name-who">{name}</span>
+        </h1>
+      </div>
       <div className="family-status-grid">
         {status && (
           <div className="family-state">

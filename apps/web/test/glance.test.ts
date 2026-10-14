@@ -224,7 +224,7 @@ describe('family status', () => {
 describe('family dashboard view', () => {
   const now = new Date('2026-10-05T05:00:00.000Z');
   const data: FamilyDashboard = {
-    resident: { id: 'res-1', name: 'Margaret Smith' },
+    resident: { id: 'res-1', name: 'Margaret Smith', portrait: 'grandmother-2' },
     nextCallAt: '2026-10-06T01:00:00.000Z',
     glance: {
       shareMood: true,
@@ -252,7 +252,9 @@ describe('family dashboard view', () => {
   const html = render(data);
 
   it('leads with one state for how she is, the last time she was reached and the next call', () => {
-    expect(html.indexOf('Daily calls with Margaret Smith')).toBeLessThan(html.indexOf('Worth a call'));
+    expect(html).toContain('<span class="family-name-lead">Daily calls with</span> <span class="family-name-who">Margaret Smith</span>');
+    expect(html.indexOf('family-name-who')).toBeLessThan(html.indexOf('Worth a call'));
+    expect(html.indexOf('src="/avatars/grandmother-2.png"')).toBeLessThan(html.indexOf('family-name-who'));
     expect(html.indexOf('class="family-state-title">Worth a call<')).toBeLessThan(html.indexOf("Today&#x27;s call, 10:02"));
     expect(html).toContain('class="card family-status sev-today"');
     expect(html).toContain('<p class="family-state-body">Margaret ate little today but enjoyed a chat.</p>');
@@ -326,8 +328,9 @@ describe('family dashboard view', () => {
 
   it('works with servers older than tags', () => {
     const { glance: _g, ...old } = data;
-    const plain = render({ ...old, calls: [{ ...data.calls[2]! }] });
-    expect(plain).toContain('Daily calls with Margaret Smith');
+    const plain = render({ ...old, resident: { id: 'res-1', name: 'Margaret Smith' }, calls: [{ ...data.calls[2]! }] });
+    expect(plain).toContain('<span class="family-name-who">Margaret Smith</span>');
+    expect(plain).toContain('<span class="resident-avatar avatar-0" aria-hidden="true">MS</span>');
     expect(plain).not.toContain('glance');
     expect(plain).not.toContain('tag-list');
   });

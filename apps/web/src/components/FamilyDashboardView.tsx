@@ -24,7 +24,7 @@ export function FamilyDashboardView({ data, now }: { data: FamilyDashboard; now:
 
   return (
     <>
-      <FamilyStatusCard name={data.resident.name} status={status} reach={reach} next={nextCallLabel(data.nextCallAt, now)} careTeamPhone={staff.phone} />
+      <FamilyStatusCard id={data.resident.id} name={data.resident.name} portrait={data.resident.portrait} status={status} reach={reach} next={nextCallLabel(data.nextCallAt, now)} careTeamPhone={staff.phone} />
 
       <div className="family-layout">
         <div className="family-col">

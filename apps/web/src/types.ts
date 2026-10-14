@@ -313,7 +313,8 @@ export interface FamilyGlance {
 }
 
 export interface FamilyDashboard {
-  resident: { id: string; name: string };
+  /** `portrait` is missing from servers older than the family dashboard's picture. */
+  resident: { id: string; name: string; portrait?: Portrait | null };
   nextCallAt: string | null;
   /** Missing from servers older than wellbeing tags. */
   glance?: FamilyGlance;

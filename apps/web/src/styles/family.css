@@ -29,7 +29,12 @@
 
   .family-status { display: grid; gap: var(--space-3); border-inline-start: 6px solid var(--sev-fill); }
   .family-status:is(.sev-none, .sev-system) { border-inline-start: 6px var(--sev-line-style) var(--sev-line); }
-  .family-name { margin: 0; font-size: var(--heading-section); color: var(--ink-muted); }
+  .family-heading { gap: var(--space-4); margin: 0; }
+  .family-heading .resident-avatar { width: 72px; height: 72px; flex-basis: 72px; font-size: 26px; }
+  .family-name { display: grid; gap: 2px; margin: 0; line-height: 1.1; }
+  .family-name-lead { color: var(--ink-muted); font-size: var(--heading-section); font-weight: 600; }
+  /* Keep above .family-state-title's 30px: the name is the largest text on the page. */
+  .family-name-who { font-size: clamp(32px, 2cqi + 24px, 48px); font-weight: 800; overflow-wrap: anywhere; }
   .family-status-grid { display: grid; gap: var(--space-4) var(--space-6); }
   @container card (min-width: 720px) {
     .family-status-grid { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
