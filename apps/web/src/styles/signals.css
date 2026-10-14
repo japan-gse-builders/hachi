@@ -142,10 +142,20 @@
     :root { --sev-ind: 44px; }
   }
 
-  /* Legend: the colour key, then what each indicator covers. */
-  .sev-legend { display: grid; gap: var(--space-3, 12px); }
-  .sev-legend ul { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px) var(--space-4, 16px); margin: 0; padding: 0; list-style: none; }
-  .sev-legend-indicators li { display: flex; align-items: center; gap: var(--space-2, 8px); flex: 1 1 14rem; min-inline-size: 0; }
-  .sev-legend-indicators .sev-ind { cursor: default; }
+  /* Equal columns and fixed swatches keep the color key and indicator descriptions aligned. */
+  .sev-legend { container: legend / inline-size; display: grid; gap: var(--space-4, 16px); }
+  .sev-legend ul { margin: 0; padding: 0; list-style: none; }
+  .sev-legend-colors { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px) var(--space-4, 16px); }
+  .sev-legend-states, .sev-legend-indicators { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3, 12px) var(--space-5, 24px); }
+  .sev-legend-states li, .sev-legend-indicators li { display: grid; grid-template-columns: var(--sev-ind) minmax(0, 1fr); align-items: center; gap: var(--space-3, 12px); min-inline-size: 0; }
+  .sev-legend-states strong, .sev-legend-indicators strong { display: block; }
+  .sev-legend .sev-ind { inline-size: var(--sev-ind); block-size: var(--sev-ind); cursor: default; }
+  .sev-legend-swatch { font-size: 18px; }
   .sev-legend-what { color: var(--ink-muted, #5c564c); font-size: 15px; }
+  @container legend (min-width: 480px) {
+    .sev-legend-states, .sev-legend-indicators { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container legend (min-width: 900px) {
+    .sev-legend-states, .sev-legend-indicators { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
 }

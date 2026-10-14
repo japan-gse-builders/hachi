@@ -1,7 +1,7 @@
 /*
  * Case page. Narrow: one column in reading order (what was said, the decision, who was told, the
- * calls, then the rest). From md (720px of page) the decision stays beside the evidence; from xl
- * (1200px) the records get a third column to compare across calls.
+ * calls, then the rest). From md (720px of page) the controls sit on the right; from xl (1200px)
+ * the records get the middle column. Every column scrolls with the page.
  */
 @layer screens {
   /* ---------- Header ---------- */
@@ -68,13 +68,11 @@
     .case-col-evidence { grid-area: evidence; }
     .case-col-decide { grid-area: decide; }
     .case-col-records { grid-area: records; }
-    /* Room for the cards' shadows and focus rings inside the panel's own scroll box. */
-    .case-col-decide.sticky-panel { margin: -4px -8px; padding: 4px 8px 8px; }
   }
   @container page (min-width: 1200px) {
     .case-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr) minmax(0, 1fr);
-      grid-template-areas: "evidence decide records";
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(360px, 1fr);
+      grid-template-areas: "evidence records decide";
     }
   }
 

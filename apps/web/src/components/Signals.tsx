@@ -219,17 +219,36 @@ export function IndicatorBar({
   );
 }
 
-/** The color key and what each of the nine indicators is about, for once per page. */
-export function SignalsLegend({ showIndicators = true }: { showIndicators?: boolean } = {}) {
+const INDICATOR_STATES: readonly { severity: Severity; label: string; detail: string }[] = [
+  { severity: 'good', label: 'Good', detail: 'A positive sign, usual speech, or a completed check.' },
+  { severity: 'system', label: 'Not checked', detail: 'A call failed on our side or its analysis is incomplete.' },
+  { severity: 'none', label: 'No data', detail: 'Not discussed, not shared, or not enough data yet.' },
+  { severity: 'today', label: 'Concern', detail: 'A concern was reported, or two daily calls were missed.' },
+  { severity: 'soon', label: 'Some concern', detail: 'Mixed signs, a speech change, or one missed daily call.' },
+  { severity: 'monitor', label: 'Slight change', detail: 'Speech differs slightly from their usual pattern.' },
+  { severity: 'emergency', label: 'Not reached', detail: 'Three or more daily calls were missed.' },
+];
+
+/** The indicator key uses the bar's own colors and symbols, rather than case urgency icons. */
+export function SignalsLegend({ showIndicators = true, levels }: { showIndicators?: boolean; levels?: readonly Severity[] } = {}) {
+  // Keep the three basic states as a reference, plus any concern colors used by this page's bar.
+  const states = INDICATOR_STATES.filter((s) => !levels || ['good', 'system', 'none'].includes(s.severity) || levels.includes(s.severity));
   return (
     <div className="sev-legend">
-      <ul className="sev-legend-colors" aria-label="Color key">
+      {showIndicators ? <ul className="sev-legend-states" aria-label="Indicator color key">
+        {states.map((s) => (
+          <li key={s.severity}>
+            <span className={`sev-ind sev-${s.severity} sev-legend-swatch`} aria-hidden="true">{SEVERITY[s.severity].symbol}</span>
+            <span><strong>{s.label}</strong><span className="sev-legend-what">{s.detail}</span></span>
+          </li>
+        ))}
+      </ul> : <ul className="sev-legend-colors" aria-label="Color key">
         {SEVERITIES.map((s) => (
           <li key={s}>
             <SeverityChip severity={s} />
           </li>
         ))}
-      </ul>
+      </ul>}
       {showIndicators && <ul className="sev-legend-indicators" aria-label="Indicators">
         {INDICATORS.map((d) => (
           <li key={d.key}>

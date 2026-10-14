@@ -13,7 +13,7 @@ import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { LoadError, Loading } from '../components/States';
 import { audioAt, clock, formatWhen, phoneDisplay, speakerLabel } from '../format';
 import { queueLink } from '../queue';
-import { caseSignals, uncheckedFor, urgencySeverity, type Severity } from '../signals';
+import { buildIndicators, caseSignals, uncheckedFor, urgencySeverity, type Severity } from '../signals';
 import '../styles/case.css';
 import { useDocumentTitle } from '../title';
 import type { CaseDetail, IncompleteAnalyses } from '../types';
@@ -102,7 +102,7 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
       </div>
       <details className="disclosure case-signals-legend">
         <summary>What the colors and icons mean</summary>
-        <div className="disclosure-body"><SignalsLegend /></div>
+        <div className="disclosure-body"><SignalsLegend levels={buildIndicators(signals, now).map((i) => i.severity)} /></div>
       </details>
     </header>
   );
@@ -112,11 +112,10 @@ function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date;
 function OtherOpenCases({ detail, linkState }: { detail: CaseDetail; linkState: unknown }) {
   const others = detail.otherOpenCases ?? [];
   if (!others.length) return null;
-  const who = detail.resident.preferredName || detail.resident.name;
   return (
     <section className="card notice stack stack-s case-others" aria-labelledby="other-cases-heading">
       <h2 id="other-cases-heading" className="case-others-title">
-        {who} has {others.length} more open {others.length === 1 ? 'case' : 'cases'}
+        Other open cases ({others.length})
       </h2>
       <ul className="case-others-list">
         {others.map((o) => (
@@ -255,21 +254,21 @@ export function CasePage() {
       {error && <LoadError message={error} onRetry={loadOrReport} compact />}
       <CaseHeader detail={detail} now={now} unchecked={unchecked} />
       <OtherOpenCases detail={detail} linkState={location.state} />
-      {/* Read, then decide: evidence, the decision beside it, then the records to compare with. */}
+      {/* Evidence and supporting records first; the case controls stay in the right-hand column. */}
       <div className="case-layout">
         <div className="case-col case-col-evidence">
           <CaseSaid detail={detail} now={now} />
           {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} name={detail.resident.preferredName || detail.resident.name} />}
           {detail.screening && <ScreeningCard screening={detail.screening} />}
         </div>
-        <div className="case-col case-col-decide sticky-panel">
-          <CaseDecision detail={detail} onSave={save} />
-          <CaseNotifications notifications={detail.case.notifications} />
-        </div>
         <div className="case-col case-col-records">
           <CaseCalls calls={detail.calls} now={now} quotedCallIds={quoted} />
           <CaseAbout detail={detail} />
           <CaseHistory events={detail.events} options={[...detail.statusOptions, ...detail.urgencyOptions]} />
+        </div>
+        <div className="case-col case-col-decide">
+          <CaseDecision detail={detail} onSave={save} />
+          <CaseNotifications notifications={detail.case.notifications} />
         </div>
       </div>
       {!decisionInView && (

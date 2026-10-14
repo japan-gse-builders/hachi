@@ -274,7 +274,7 @@ describe('signal components', () => {
 
   it('give a legend of colors and indicators', () => {
     const html = render(createElement(SignalsLegend));
-    for (const s of SEVERITIES) expect(html).toContain(`sev-chip sev-${s}`);
+    for (const s of SEVERITIES) expect(html).toContain(`sev-ind sev-${s} sev-legend-swatch`);
     for (const i of INDICATORS) expect(html).toContain(`<strong>${i.label}</strong>`);
   });
 });
