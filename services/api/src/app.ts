@@ -42,6 +42,7 @@ import {
   assignResident,
   buildImportedCalls,
   buildResident,
+  canBeInCharge,
   claimResident,
   FAMILY_ACCESS_MAX,
   grantFamilyAccess,
@@ -51,7 +52,9 @@ import {
   releaseResident,
   revokeFamilyAccess,
   type GrantOutcome,
+  type ResponsibleStaff,
   type RevokeOutcome,
+  type StaffActor,
 } from './residents.js';
 import {
   callImportSchema,
@@ -128,6 +131,18 @@ function assertOwner(r: Resident, staffUid: string): void {
   throw new HttpError(403, `Only the staff member responsible for ${r.name} (${who}) can change this.`, 'not_owner');
 }
 
+/** Whoever is responsible is in charge and gets the alerts, so they need a phone number on their account first. */
+function inChargeOrRefuse(staff: StaffActor, self: boolean): ResponsibleStaff {
+  if (canBeInCharge(staff)) return staff;
+  throw new HttpError(
+    409,
+    self
+      ? 'Add your phone number in Your account first. Alerts about the patients you are responsible for go to it.'
+      : `${staff.name ?? staff.email ?? 'That member of staff'} has not added a phone number to their account yet, so alerts could not reach them.`,
+    'staff_phone_missing',
+  );
+}
+
 /** Admins can correct any resident's record, whoever is responsible; family access stays with the owner. */
 function assertMayEdit(r: Resident, staff: StaffPrincipal): void {
   if (atLeast(staff.role, 'admin')) return;
@@ -202,6 +217,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       email: id.email,
       // The name set in Hachi wins over the one in the token, which is only refreshed hourly.
       ...((membership.name ?? id.name) ? { name: membership.name ?? id.name } : {}),
+      ...(membership.phone ? { phone: membership.phone } : {}),
+      ...(membership.sms ? { sms: membership.sms } : {}),
       orgId: org.id,
       role: membership.role,
       org,
@@ -252,6 +269,16 @@ export function buildApp(deps: AppDeps): FastifyInstance {
    * limit is a plan allowance, not a safety bound, and one over is cheaper than a lock on every
    * registration.
    */
+  /** Only an active member of the same organization can be put in charge, and only by an admin unless it is themselves. */
+  const memberInCharge = async (staff: StaffPrincipal, uid: string | undefined): Promise<ResponsibleStaff> => {
+    if (!uid || uid === staff.uid) return inChargeOrRefuse(staff, true);
+    requireRole(staff, 'admin');
+    const member = await store.getMembership(staff.orgId, uid);
+    if (!member || member.status !== 'active') throw new HttpError(409, 'Choose an active member of this organization.', 'not_active_member');
+    const { email, name, phone, sms } = member;
+    return inChargeOrRefuse({ uid, email, ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(sms ? { sms } : {}) }, false);
+  };
+
   app.post('/api/residents', async (req, reply) => {
     const staff = await requireStaff(req);
     const input = parse(residentInputSchema, req.body);
@@ -259,9 +286,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if ((await store.listResidents(staff.orgId)).length >= limits.residents) {
       throw new HttpError(409, `This plan allows ${limits.residents} residents. Contact Hachi to raise the limit.`, 'resident_limit');
     }
-    const resident = buildResident(input, newId(), staff.orgId, now(), staff);
+    const inCharge = await memberInCharge(staff, input.staffUid);
+    const resident = buildResident(input, newId(), staff.orgId, now(), staff, inCharge);
     await store.createResident(resident);
-    await auditAs(req, staff, { action: 'resident.created', target: { type: 'resident', id: resident.id, label: resident.name } });
+    await auditAs(req, staff, {
+      action: 'resident.created',
+      target: { type: 'resident', id: resident.id, label: resident.name },
+      ...(inCharge.uid !== staff.uid ? { detail: { owner: inCharge.uid, ownerName: inCharge.name ?? inCharge.email ?? null } } : {}),
+    });
     return reply.status(201).send(resident);
   });
 
@@ -315,6 +347,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   /** Taking on a resident nobody is responsible for. One already taken has to be handed over first. */
   app.post<{ Params: { id: string } }>('/api/residents/:id/owner', async (req) => {
     const staff = await requireStaff(req);
+    const inCharge = inChargeOrRefuse(staff, true);
     let changed = false;
     const saved = await updateOwnResident(req.params.id, staff, (r) => {
       // Firestore may run this more than once; only the attempt that commits counts.
@@ -325,7 +358,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         throw new HttpError(409, `${who} is already responsible for ${r.name}. Ask them to hand ${r.preferredName} over.`, 'owned_by_other');
       }
       changed = true;
-      return claimResident(r, staff, now());
+      return claimResident(r, inCharge, now());
     });
     if (changed) {
       await auditAs(req, staff, {
@@ -360,8 +393,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const staff = await requireStaff(req);
     requireRole(staff, 'admin');
     const { uid } = parse(ownerAssignSchema, req.body);
-    const member = await store.getMembership(staff.orgId, uid);
-    if (!member || member.status !== 'active') throw new HttpError(409, 'Choose an active member of this organization.', 'not_active_member');
+    const member = await memberInCharge(staff, uid);
     let from: Resident['owner'];
     let changed = false;
     const saved = await updateOwnResident(req.params.id, staff, (r) => {
@@ -369,7 +401,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       if (isOwner(r, uid)) return r;
       from = r.owner;
       changed = true;
-      return assignResident(r, { uid, email: member.email, ...(member.name ? { name: member.name } : {}) }, now());
+      return assignResident(r, member, now());
     });
     if (changed) {
       const previous = from as Resident['owner'];
@@ -378,7 +410,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         target: { type: 'resident', id: saved.id, label: saved.name },
         detail: {
           to: uid,
-          toName: member.name ?? member.email,
+          toName: member.name ?? member.email ?? uid,
           ...(previous ? { from: previous.uid, fromName: previous.name ?? previous.email ?? previous.uid } : {}),
         },
       });

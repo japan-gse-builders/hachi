@@ -269,6 +269,8 @@ describe('the signed-in account', () => {
       email: 'kato@example.org',
       emailVerified: true,
       name: 'Kato',
+      phone: null,
+      sms: null,
       memberships: [],
       invitations: [{ id: 'i1', orgName: 'Elsewhere Care', orgVerified: true, role: 'member', invitedBy: 'Kimura', expiresAt: pendingInvitation('i1').expiresAt }],
     });
@@ -290,7 +292,7 @@ describe('the signed-in account', () => {
     const { app, as, store, authAdmin } = setup();
     store.seedAccounts({ memberships: [membership('org-2', 'staff', 'member')] });
     const res = await app.inject({ method: 'PATCH', url: '/api/me', ...as('staff'), payload: { name: ' Tanaka Yui ' } });
-    expect(res.json()).toEqual({ name: 'Tanaka Yui' });
+    expect(res.json()).toEqual({ name: 'Tanaka Yui', phone: '+81300000000', sms: null });
     expect(authAdmin.names.get('staff-1')).toBe('Tanaka Yui');
     expect((await store.getMembership('org-1', 'staff-1'))?.name).toBe('Tanaka Yui');
     expect((await store.getMembership('org-2', 'staff-1'))?.name).toBe('Tanaka Yui');
@@ -299,6 +301,32 @@ describe('the signed-in account', () => {
     await app.inject({ method: 'POST', url: '/api/residents', ...as('staff', 'org-1'), payload: residentInput() });
     const [entry] = await store.listAudit('org-1', { limit: 1 });
     expect(entry!.actor.name).toBe('Tanaka Yui');
+  });
+
+  it('keeps the numbers alerts reach someone on, and brings the residents they are in charge of up to date', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('mine'));
+    await store.createResident({ ...makeResident('legacy'), staff: { name: 'Front desk', phone: '+81355555555', email: 'desk@example.org' } });
+    await store.createResident({ ...makeResident('theirs'), owner: { uid: 'staff-2', since: NOW.toISOString() }, staff: { uid: 'staff-2', name: 'Sato', phone: '+81322222222' } });
+    const patch = (payload: Record<string, unknown>) => app.inject({ method: 'PATCH', url: '/api/me', ...as('staff'), payload });
+    const res = await patch({ name: 'Tanaka', phone: '03-1111-1111', sms: '090-1111-1111' });
+    expect(res.json()).toEqual({ name: 'Tanaka', phone: '+81311111111', sms: '+819011111111' });
+    expect((await store.getResident('mine'))!.staff).toEqual({ uid: 'staff-1', name: 'Tanaka', phone: '+81311111111', voice: '+81311111111', sms: '+819011111111', email: 'staff@example.org' });
+    expect((await store.getResident('legacy'))!.staff).toMatchObject({ uid: 'staff-1', phone: '+81311111111' });
+    expect((await store.getResident('theirs'))!.staff.uid).toBe('staff-2');
+    // The SMS number can be taken away; the phone number only changed.
+    expect((await patch({ name: 'Tanaka', sms: null })).json()).toEqual({ name: 'Tanaka', phone: '+81311111111', sms: null });
+    expect((await store.getResident('mine'))!.staff.sms).toBeUndefined();
+    expect((await patch({ name: 'Tanaka', phone: null })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/me', ...as('staff') })).json()).toMatchObject({ phone: '+81311111111', sms: null });
+  });
+
+  it('carries the numbers over to an organization the account joins', async () => {
+    const { app, as, store } = setup();
+    await invite(app, as, 'outsider', 'staff@example.org');
+    const inv = (await store.listPendingInvitations('org-2'))[0]!;
+    expect((await app.inject({ method: 'POST', url: `/api/invitations/${inv.id}/accept`, ...as('staff') })).statusCode).toBe(200);
+    expect((await store.getMembership('org-2', 'staff-1'))!.phone).toBe('+81300000000');
   });
 
   it('signs out everywhere: sessions from before stop working at once, a fresh sign-in works', async () => {
@@ -456,7 +484,8 @@ describe('managing members', () => {
     const { app, as } = setup();
     const res = await app.inject({ method: 'GET', url: '/api/organization/members', ...as('otherStaff') });
     expect(res.json().members.map((m: { uid: string; role: string }) => `${m.uid}:${m.role}`)).toEqual(['staff-1:owner', 'staff-2:member', 'staff-3:admin']);
-    expect(Object.keys(res.json().members[0]).sort()).toEqual(['email', 'joinedAt', 'name', 'role', 'status', 'uid']);
+    expect(Object.keys(res.json().members[0]).sort()).toEqual(['canBeInCharge', 'email', 'joinedAt', 'name', 'role', 'status', 'uid']);
+    expect(res.json().members[0].canBeInCharge).toBe(true);
   });
 
   it('changes roles within the rules, and records who did it', async () => {
@@ -555,10 +584,11 @@ describe('admins deciding who is responsible for a resident', () => {
     const res = await put('admin', 'staff-2');
     expect(res.statusCode).toBe(200);
     expect(res.json().owner).toMatchObject({ uid: 'staff-2', email: 'sato@example.org', name: 'Sato' });
+    expect(res.json().staff).toMatchObject({ uid: 'staff-2', name: 'Sato', phone: '+81322222222' });
     expect((await store.listAudit('org-1', { limit: 1 }))[0]).toMatchObject({
       action: 'resident.owner_changed',
       actor: { uid: 'staff-3' },
-      detail: { from: 'staff-1', fromName: 'staff@example.org', to: 'staff-2', toName: 'Sato' },
+      detail: { from: 'staff-1', fromName: 'Tanaka', to: 'staff-2', toName: 'Sato' },
     });
     // The new owner can now edit and give family access; the old one, an organization owner, can still edit but not give access.
     expect((await app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('otherStaff'), payload: { preferredName: 'Mags' } })).statusCode).toBe(200);

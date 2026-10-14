@@ -31,7 +31,7 @@ export function AccountPage() {
           <p className="meta">{me.email}{me.emailVerified ? '' : ' · not confirmed yet'}</p>
         </div>
       </header>
-      <ProfileCard name={me.name ?? ''} />
+      <ProfileCard name={me.name ?? ''} phone={me.phone ?? ''} sms={me.sms ?? ''} />
       <PasswordCard email={me.email} />
       <OrganizationsCard memberships={me.memberships} uid={me.uid} />
       <SessionsCard />
@@ -39,13 +39,19 @@ export function AccountPage() {
   );
 }
 
-function ProfileCard({ name: initial }: { name: string }) {
+/** The name colleagues see, and the numbers alerts reach them on as staff in charge of a patient. */
+function ProfileCard({ name: initialName, phone: initialPhone, sms: initialSms }: { name: string; phone: string; sms: string }) {
   const { token } = useAuth();
   const { refresh } = useAccount();
-  const [name, setName] = useState(initial);
+  const [name, setName] = useState(initialName);
+  const [phone, setPhone] = useState(initialPhone);
+  const [sms, setSms] = useState(initialSms);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const changed = name.trim() !== initialName || phone.trim() !== initialPhone || sms.trim() !== initialSms;
+  // Patients they are in charge of would be left with no number for alerts.
+  const removingPhone = Boolean(initialPhone) && !phone.trim();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -53,11 +59,20 @@ function ProfileCard({ name: initial }: { name: string }) {
     setError('');
     setStatus('');
     try {
-      await api('/api/me', await token(), { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
-      await refresh();
-      setStatus('Saved. Colleagues see this name from now on.');
+      await api('/api/me', await token(), {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: name.trim(),
+          ...(phone.trim() ? { phone: phone.trim() } : {}),
+          ...(sms.trim() ? { sms: sms.trim() } : initialSms ? { sms: null } : {}),
+        }),
+      });
+      const next = await refresh();
+      setPhone(next?.phone ?? phone.trim());
+      setSms(next?.sms ?? '');
+      setStatus('Saved. Colleagues see this name, and alerts about patients you are in charge of use these numbers, from now on.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your name');
+      setError(err instanceof Error ? err.message : 'Could not save your details');
     } finally {
       setBusy(false);
     }
@@ -65,7 +80,7 @@ function ProfileCard({ name: initial }: { name: string }) {
 
   return (
     <form className="card stack" onSubmit={(e) => void submit(e)} aria-labelledby="profile-heading">
-      <h2 id="profile-heading">Your name</h2>
+      <h2 id="profile-heading">Your name and numbers</h2>
       {error && <p className="error" role="alert">{error}</p>}
       {status && <p className="notice-success" role="status">{status}</p>}
       <label>
@@ -73,8 +88,21 @@ function ProfileCard({ name: initial }: { name: string }) {
         <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} autoComplete="name" />
       </label>
       <p className="meta">Shown on the team list, beside patients you are responsible for, and in the activity log.</p>
+      <label>
+        Phone, for emergency calls
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required={Boolean(initialPhone)} placeholder="+81312345678" spellCheck={false} autoComplete="tel" />
+      </label>
+      <label>
+        <span>Mobile for text alerts <span className="hint">(optional)</span></span>
+        <input type="tel" value={sms} onChange={(e) => setSms(e.target.value)} placeholder="+819012345678" spellCheck={false} autoComplete="tel" />
+      </label>
+      <p className="meta">
+        You are the staff in charge of the patients you are responsible for, so their alerts come to these numbers and
+        to your email. You can only be made responsible for a patient once you have added a phone number.
+      </p>
+      {removingPhone && <p className="field-error">Patients you are in charge of need a number for alerts. Change it instead of removing it.</p>}
       <div className="form-actions">
-        <button type="submit" disabled={busy || !name.trim() || name.trim() === initial}>{busy ? 'Saving…' : 'Save name'}</button>
+        <button type="submit" disabled={busy || !name.trim() || !changed || removingPhone}>{busy ? 'Saving…' : 'Save'}</button>
       </div>
     </form>
   );

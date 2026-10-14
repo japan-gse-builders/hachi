@@ -108,14 +108,46 @@ describe('residents (USR-01..03)', () => {
       familyLookup: ['+819000000002', 'alice@example.org'],
     });
     expect(r.family.voice).toBe('+819000000002');
-    expect(r.staff.voice).toBe('+81300000000');
+    expect(r.staff).toEqual({ uid: 'staff-1', name: 'staff@example.org', phone: '+81300000000', voice: '+81300000000', email: 'staff@example.org' });
+  });
+
+  it('puts only a member of the team in charge, whatever contact is typed in', async () => {
+    const { app, as } = setup();
+    const typed = { staff: { name: 'Someone else', phone: '+81399999999', email: 'x@example.com' } };
+    const own = await app.inject({ method: 'POST', url: '/api/residents', ...as('otherStaff'), payload: residentInput(typed) });
+    expect(own.json().staff).toEqual({ uid: 'staff-2', name: 'Sato', phone: '+81322222222', voice: '+81322222222', sms: '+819022222222', email: 'sato@example.org' });
+    expect(own.json().owner.uid).toBe('staff-2');
+    // A member registers residents for themselves; an admin can register them for a colleague.
+    const forColleague = residentInput({ staffUid: 'staff-2' });
+    expect((await app.inject({ method: 'POST', url: '/api/residents', ...as('staff'), payload: residentInput({ staffUid: 'staff-1' }) })).statusCode).toBe(201);
+    expect((await app.inject({ method: 'POST', url: '/api/residents', ...as('otherStaff'), payload: residentInput({ staffUid: 'staff-1' }) })).json().reason).toBe('forbidden_role');
+    const byAdmin = await app.inject({ method: 'POST', url: '/api/residents', ...as('admin'), payload: forColleague });
+    expect(byAdmin.json()).toMatchObject({ owner: { uid: 'staff-2' }, staff: { uid: 'staff-2', name: 'Sato' } });
+    expect((await app.inject({ method: 'POST', url: '/api/residents', ...as('admin'), payload: residentInput({ staffUid: 'staff-9' }) })).json().reason).toBe('not_active_member');
+    // Editing the record cannot change who is in charge.
+    const patched = await app.inject({ method: 'PATCH', url: `/api/residents/${own.json().id}`, ...as('otherStaff'), payload: typed });
+    expect(patched.json().staff.uid).toBe('staff-2');
+  });
+
+  it('refuses to put anyone in charge who has no phone number on their account', async () => {
+    const { app, as, store } = setup();
+    await store.mutateMembership('org-1', 'staff-2', ({ phone: _p, sms: _s, ...m }) => m);
+    const own = await app.inject({ method: 'POST', url: '/api/residents', ...as('otherStaff'), payload: residentInput() });
+    expect(own.statusCode).toBe(409);
+    expect(own.json()).toMatchObject({ reason: 'staff_phone_missing', error: expect.stringContaining('Your account') });
+    const forThem = await app.inject({ method: 'POST', url: '/api/residents', ...as('admin'), payload: residentInput({ staffUid: 'staff-2' }) });
+    expect(forThem.json()).toMatchObject({ reason: 'staff_phone_missing', error: expect.stringContaining('Sato') });
+    await store.createResident(makeResident('res-1'));
+    await store.updateResident('res-1', ({ owner: _o, ...r }) => r);
+    expect((await app.inject({ method: 'POST', url: '/api/residents/res-1/owner', ...as('otherStaff') })).json().reason).toBe('staff_phone_missing');
+    expect((await app.inject({ method: 'PUT', url: '/api/residents/res-1/owner', ...as('admin'), payload: { uid: 'staff-2' } })).json().reason).toBe('staff_phone_missing');
+    expect((await store.getResident('res-1'))!.staff.uid).toBe('staff-1');
   });
 
   it.each([
     ['phone without a country code', { phone: '90-1234-5678' }, 'phone'],
     ['bad call time', { callTime: '25:00' }, 'callTime'],
     ['unknown time zone', { timeZone: 'Mars/Base' }, 'timeZone'],
-    ['staff without sms or email', { staff: { name: 'T', phone: '+81300000000' } }, 'staff.sms'],
     ['family without sms or email', { family: { name: 'A' } }, 'family.sms'],
     ['missing name', { name: '' }, 'name'],
   ])('rejects %s', async (_label, overrides, path) => {
@@ -651,7 +683,7 @@ describe('family dashboard (FAM-01..04)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyPhone') });
     expect(res.statusCode).toBe(200);
     const d = res.json();
-    expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith' });
+    expect(d.resident).toEqual({ id: 'res-1', name: 'Margaret Smith', portrait: null });
     expect(d.nextCallAt).toBe('2026-10-02T01:00:00.000Z');
     expect(d.calls).toEqual([
       {

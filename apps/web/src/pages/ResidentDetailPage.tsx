@@ -6,7 +6,7 @@ import { useAuth } from '../auth';
 import { ResidentAvatar } from '../components/ResidentAvatar';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
-import { atLeast, type Member } from '../orgs';
+import { atLeast, memberLabel, type Member } from '../orgs';
 import { FAMILY_ACCESS_MAX, mayEditDetails, ownerName, ownershipOf } from '../ownership';
 import { useDocumentTitle } from '../title';
 import type { FamilyAccess, Resident } from '../types';
@@ -101,7 +101,13 @@ function DetailsCard({ resident, uid }: { resident: Resident; uid?: string }) {
         {staff && (
           <div>
             <dt>Staff in charge</dt>
-            <dd>{[staff.name, phone(staff.phone) && `phone ${phone(staff.phone)}`, phone(staff.sms) && `texts ${phone(staff.sms)}`, staff.email].filter(Boolean).join(' · ')}</dd>
+            <dd>
+              {[staff.name, phone(staff.phone) && `phone ${phone(staff.phone)}`, phone(staff.sms) && `texts ${phone(staff.sms)}`, staff.email].filter(Boolean).join(' · ')}
+              {!resident.owner && <><br /><span className="meta">Alerts still go here until someone takes {who} on.</span></>}
+              {resident.owner && staff.uid !== resident.owner.uid && (
+                <><br /><span className="meta">Typed in before staff were chosen from the team. It changes to {ownerName(resident.owner)}’s numbers when they save them in their account.</span></>
+              )}
+            </dd>
           </div>
         )}
         <div>
@@ -196,7 +202,7 @@ function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: R
       const res = await api<{ members: Member[] }>('/api/organization/members', await token());
       const active = res.members.filter((m) => m.status === 'active' && m.uid !== resident.owner?.uid);
       setMembers(active);
-      setChoice(active[0]?.uid ?? '');
+      setChoice(active.find((m) => m.canBeInCharge)?.uid ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the team');
     }
@@ -227,10 +233,13 @@ function AssignOwner({ resident, onSaved }: { resident: Resident; onSaved: (r: R
         <label>
           Make responsible for {who}
           <select value={choice} onChange={(e) => setChoice(e.target.value)}>
-            {members.map((m) => <option key={m.uid} value={m.uid}>{m.name ? `${m.name} (${m.email})` : m.email}</option>)}
+            {members.map((m) => (
+              <option key={m.uid} value={m.uid} disabled={!m.canBeInCharge}>{memberLabel(m)}{m.canBeInCharge ? '' : ' (no phone number yet)'}</option>
+            ))}
           </select>
         </label>
       )}
+      {members && members.length > 0 && <p className="meta">They also become the staff in charge: alerts about {who} go to the numbers on their account.</p>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="row">
         {members && members.length > 0 && <button type="submit" disabled={busy || !choice}>{busy ? 'Saving…' : 'Make responsible'}</button>}

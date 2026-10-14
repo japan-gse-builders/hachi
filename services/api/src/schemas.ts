@@ -12,14 +12,7 @@ const shortText = (max: number) => z.string().trim().min(1).max(max);
 
 const hasSmsOrEmail = (c: { sms?: string | undefined; email?: string | undefined }) => Boolean(c.sms || c.email);
 
-export const staffContactSchema = z
-  .object({
-    name: shortText(100),
-    phone: e164,
-    sms: e164.optional(),
-    email: email.optional(),
-  })
-  .refine(hasSmsOrEmail, { message: 'Staff needs an SMS number or an email address', path: ['sms'] });
+const accountUid = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 
 export const familyContactSchema = z
   .object({
@@ -47,7 +40,6 @@ const residentFields = {
   vulnerability: vulnerabilitySchema,
   householdNotes: z.string().trim().max(1000),
   portrait: z.enum(RESIDENT_PORTRAITS),
-  staff: staffContactSchema,
 };
 
 /** Only the answer and the notice read are client input. Actor and time come from the server. */
@@ -65,6 +57,11 @@ export const residentInputSchema = z.object({
   family: familyContactSchema.optional(),
   serviceStartedAt: z.iso.datetime().optional(),
   callConsent: callConsentSchema.optional(),
+  /**
+   * The member of the team in charge, who becomes responsible for them; whoever registers them
+   * when absent. Later changes go through who is responsible, never through the record itself.
+   */
+  staffUid: accountUid.optional(),
 });
 export type ResidentInput = z.infer<typeof residentInputSchema>;
 
@@ -152,7 +149,11 @@ export const organizationPatchSchema = z
   .refine((p) => Object.keys(p).length > 0, { message: 'Nothing to update' });
 export type OrganizationPatch = z.infer<typeof organizationPatchSchema>;
 
-export const profilePatchSchema = z.object({ name: displayName }).strict();
+/**
+ * A phone number, once given, can be changed but not taken away: residents the account is in
+ * charge of would be left with nobody alerts can ring. `null` removes the SMS number.
+ */
+export const profilePatchSchema = z.object({ name: displayName, phone: e164.optional(), sms: e164.nullable().optional() }).strict();
 
 export const memberPatchSchema = z
   .object({ role: z.enum(['owner', 'admin', 'member']), status: z.enum(['active', 'disabled']) })
@@ -163,7 +164,7 @@ export type MemberPatch = z.infer<typeof memberPatchSchema>;
 
 export const invitationCreateSchema = z.object({ email: email.pipe(z.string().max(254)), role: z.enum(['admin', 'member']).default('member') }).strict();
 
-export const ownerAssignSchema = z.object({ uid: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/) }).strict();
+export const ownerAssignSchema = z.object({ uid: accountUid }).strict();
 
 export const auditQuerySchema = z.object({
   before: z.string().max(200).optional(),

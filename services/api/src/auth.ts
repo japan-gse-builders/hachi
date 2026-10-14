@@ -35,6 +35,9 @@ export interface StaffPrincipal {
   /** Verified and normalized. */
   email: string;
   name?: string;
+  /** From the membership: where alerts reach them when they are in charge of a resident. */
+  phone?: string;
+  sms?: string;
   orgId: string;
   role: OrgRole;
   org: Organization;

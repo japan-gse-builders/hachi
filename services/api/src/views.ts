@@ -621,7 +621,7 @@ export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: St
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
   const finished = calls.filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress');
   return {
-    resident: { id: r.id, name: r.name },
+    resident: { id: r.id, name: r.name, portrait: r.portrait ?? null },
     nextCallAt: r.active && hasCallConsent(r.callConsent) ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
     glance: familyGlance(r, finished.filter((c) => c.status === 'completed'), cases, now, locale),
     calls: finished.map((c) => {

@@ -25,7 +25,8 @@ const verifier = {
   },
 };
 
-const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka'};
+const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka', phone: '+81300000000'};
+const demoColleague = {uid: 'demo-colleague', email: 'colleague@example.invalid', name: 'Yuki Sato', phone: '+81300000001'};
 const PORTRAIT_BY_NAME = {
   'Margaret Ellis': 'grandmother-2', 'Arthur Nakamura': 'grandfather-1', 'Dorothy Ishii': 'grandmother-1',
   'Harold Brooks': 'grandfather-4', 'Edith Carter': 'grandmother-3',
@@ -44,14 +45,15 @@ function seedAccounts(store, now) {
     billing: {plan, email: 'billing@example.invalid', limits: plan === 'internal' ? {residents: 1000, members: 200} : {residents: 20, members: 10}},
     createdAt: joined, createdBy: 'demo-staff', updatedAt: joined,
   });
-  const member = (orgId, uid, email, name, role) => ({orgId, uid, email, name, role, status: 'active', joinedAt: joined, updatedAt: joined});
+  const member = (orgId, uid, email, name, role, phone) => ({orgId, uid, email, name, ...(phone ? {phone} : {}), role, status: 'active', joinedAt: joined, updatedAt: joined});
+  // The nurse has not added a phone number yet, so cannot be put in charge of anyone.
   store.seedAccounts({
     organizations: [org(ORG, 'Sakura Home Care', 'internal'), org('org-midori', 'Midori Day Service', 'trial')],
     memberships: [
-      member(ORG, 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'owner'),
-      member(ORG, 'demo-colleague', 'colleague@example.invalid', 'Yuki Sato', 'member'),
+      member(ORG, 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'owner', demoStaff.phone),
+      member(ORG, 'demo-colleague', 'colleague@example.invalid', 'Yuki Sato', 'member', demoColleague.phone),
       member(ORG, 'demo-nurse', 'nurse@example.invalid', 'Kenji Mori', 'admin'),
-      member('org-midori', 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'admin'),
+      member('org-midori', 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'admin', demoStaff.phone),
     ],
   });
 }
@@ -71,14 +73,13 @@ async function makeApi() {
       callTime: '10:00', timeZone: 'Asia/Tokyo',
       vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
       householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas on weekends.' : 'A neighbor looks in most days.',
-      staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
       family: {name: 'Sarah ' + item.residentName.split(' ').at(-1), relationship: 'Daughter', email: 'family@example.invalid'},
       serviceStartedAt: new Date(now.getTime() - 35 * 86400_000).toISOString(),
       callConsent: {accepted: true, noticeVersion: PRIVACY_NOTICE.version},
     });
     // One resident belongs to a colleague, so the read-only view can be tried too.
-    const owner = i === 2 ? {uid: 'demo-colleague', email: 'colleague@example.invalid', name: 'Yuki Sato'} : demoStaff;
-    const resident = {...buildResident(input, item.residentId, ORG, now, owner), synthetic: true};
+    const owner = i === 2 ? demoColleague : demoStaff;
+    const resident = {...buildResident(input, item.residentId, ORG, now, owner, owner), synthetic: true};
     await store.createResident(resident);
     const calls = Array.from({length: 14}, (_, day) => {
       const startedAt = new Date(Date.parse(at) - day * 86400_000).toISOString();
@@ -117,10 +118,9 @@ async function makeApi() {
     name: 'Claire Watanabe', preferredName: 'Claire', portrait: 'grandmother-4', phone: '+819000000006',
     callTime: '10:00', timeZone: 'Asia/Tokyo',
     vulnerability: {livesAlone: false, hasCloseSupporter: true, needsCare: false, chronicConditions: []},
-    staff: {name: 'Aiko Tanaka', phone: '+81300000000', email: 'staff@example.invalid'},
   });
   // Nobody responsible yet, as residents registered before ownership existed can be.
-  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', ORG, now, demoStaff);
+  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', ORG, now, demoStaff, demoStaff);
   await store.createResident({...pendingResident, synthetic: true});
   // Margaret has a second open case under another rule, so the queue shows her once with both.
   const meals = (await store.listCasesByResident('res-1'))[0];
