@@ -1,4 +1,14 @@
 import type { Urgency } from './urgency.js';
+import type { Detection } from './types.js';
+
+/** Issue #15's explicit escalation policy; silence is an observation, not a diagnosis. */
+export function exhaustedPromptDetection(residentId: string, kind: NoResponseKind, at: string): Detection {
+  return {
+    residentId, rule: 'R1', urgency: 'emergency', confidence: 1, noResponse: kind,
+    summary: 'No response after all check-in prompts. Contact the resident now; the cause is unknown.',
+    evidence: [], detectedAt: at,
+  };
+}
 
 /**
  * R4 reads the silence on a call. R1, R2 and R3 all need the resident to say something; this is the

@@ -1,0 +1,10 @@
+@layer shared {
+  /* A held slot takes its space from the first frame; only what is drawn inside it waits the 200ms. */
+  .skeleton-slot { display: grid; gap: var(--space-3); }
+
+  .load-error-compact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding-block: var(--space-2); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-block { animation: none; background: #ece6da; }
+  }
+}

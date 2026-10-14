@@ -1,7 +1,8 @@
 import { emptyLedger, healthyGateway, type GatewayBreaker, type SpendLedger } from '@hachi/core';
-import type { Firestore } from 'firebase-admin/firestore';
+import type { Firestore, Transaction } from 'firebase-admin/firestore';
+import { byJoined, membershipId, type AuditEntry, type Invitation, type Membership, type Organization } from './accounts.js';
 import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
-import { NotFoundError, type CaseMutation, type ListCallsOptions, type Store } from './types.js';
+import { NotFoundError, type AccountStore, type CaseMutation, type ListCallsOptions, type Roster, type Store } from './types.js';
 
 const BATCH_LIMIT = 400;
 /** gRPC status code returned by `create()` when the document exists. */
@@ -16,9 +17,14 @@ const ALREADY_EXISTS = 6;
  *   outbox/{sha256(idempotencyKey)}
  *   spend/{YYYY-MM}
  *   service/gateway
+ *   organizations/{orgId}
+ *   organizations/{orgId}/audit/{auditId}
+ *   memberships/{orgId}_{uid}
+ *   invitations/{id}
+ * The composite indexes the queries need are in firestore.indexes.json.
  * The Firestore instance must be created with `ignoreUndefinedProperties: true`.
  */
-export class FirestoreStore implements Store {
+export class FirestoreStore implements Store, AccountStore {
   constructor(private readonly db: Firestore) {}
 
   private residentsCol() {
@@ -53,9 +59,10 @@ export class FirestoreStore implements Store {
     });
   }
 
-  async listResidents(): Promise<Resident[]> {
-    const snap = await this.residentsCol().orderBy('name').get();
-    return snap.docs.map((d) => d.data() as Resident);
+  // Sorted here rather than by the query, so it needs no composite index.
+  async listResidents(orgId: string): Promise<Resident[]> {
+    const snap = await this.residentsCol().where('orgId', '==', orgId).get();
+    return snap.docs.map((d) => d.data() as Resident).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async listActiveResidents(): Promise<Resident[]> {
@@ -121,8 +128,8 @@ export class FirestoreStore implements Store {
     await this.casesCol().doc(c.id).set(c);
   }
 
-  async listOpenCases(): Promise<StoredCase[]> {
-    const snap = await this.casesCol().where('status', 'in', ['open', 'in_progress']).get();
+  async listOpenCases(orgId: string): Promise<StoredCase[]> {
+    const snap = await this.casesCol().where('orgId', '==', orgId).where('status', 'in', ['open', 'in_progress']).get();
     return snap.docs.map((d) => d.data() as StoredCase);
   }
 
@@ -186,17 +193,18 @@ export class FirestoreStore implements Store {
     });
   }
 
-  // Single-field filter only, so no composite index is needed.
   async listPendingOutbox(limit: number): Promise<OutboxEntry[]> {
     return this.outboxByStatus('pending', limit);
   }
 
-  async listOutboxAwaitingApproval(limit: number): Promise<OutboxEntry[]> {
-    return this.outboxByStatus('awaiting_approval', limit);
+  async listOutboxAwaitingApproval(orgId: string, limit: number): Promise<OutboxEntry[]> {
+    return this.outboxByStatus('awaiting_approval', limit, orgId);
   }
 
-  private async outboxByStatus(status: OutboxStatus, limit: number): Promise<OutboxEntry[]> {
-    const snap = await this.db.collection('outbox').where('status', '==', status).limit(limit).get();
+  private async outboxByStatus(status: OutboxStatus, limit: number, orgId?: string): Promise<OutboxEntry[]> {
+    let q = this.db.collection('outbox').where('status', '==', status);
+    if (orgId !== undefined) q = q.where('orgId', '==', orgId);
+    const snap = await q.limit(limit).get();
     return snap.docs.map((d) => d.data() as OutboxEntry);
   }
 
@@ -245,5 +253,153 @@ export class FirestoreStore implements Store {
       tx.set(ref, next);
       return next;
     });
+  }
+
+  // ---- Accounts ----
+
+  private orgsCol() {
+    return this.db.collection('organizations');
+  }
+
+  private membershipsCol() {
+    return this.db.collection('memberships');
+  }
+
+  private invitationsCol() {
+    return this.db.collection('invitations');
+  }
+
+  async createOrganization(org: Organization, owner: Membership): Promise<void> {
+    const batch = this.db.batch();
+    batch.create(this.orgsCol().doc(org.id), org);
+    batch.create(this.membershipsCol().doc(membershipId(owner.orgId, owner.uid)), owner);
+    await batch.commit();
+  }
+
+  async getOrganization(id: string): Promise<Organization | null> {
+    const snap = await this.orgsCol().doc(id).get();
+    return snap.exists ? (snap.data() as Organization) : null;
+  }
+
+  async updateOrganization(id: string, fn: (o: Organization) => Organization): Promise<Organization> {
+    const ref = this.orgsCol().doc(id);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError('Organization');
+      const next = fn(snap.data() as Organization);
+      tx.set(ref, next);
+      return next;
+    });
+  }
+
+  async getMembership(orgId: string, uid: string): Promise<Membership | null> {
+    const snap = await this.membershipsCol().doc(membershipId(orgId, uid)).get();
+    return snap.exists ? (snap.data() as Membership) : null;
+  }
+
+  async listMembers(orgId: string): Promise<Membership[]> {
+    const snap = await this.membershipsCol().where('orgId', '==', orgId).get();
+    return snap.docs.map((d) => d.data() as Membership).sort(byJoined);
+  }
+
+  async listMembershipsByUser(uid: string): Promise<Membership[]> {
+    const snap = await this.membershipsCol().where('uid', '==', uid).get();
+    return snap.docs.map((d) => d.data() as Membership).sort(byJoined);
+  }
+
+  private async rosterIn(tx: Transaction, orgId: string): Promise<Roster> {
+    const [members, pending] = await Promise.all([
+      tx.get(this.membershipsCol().where('orgId', '==', orgId)),
+      tx.get(this.invitationsCol().where('orgId', '==', orgId).where('status', '==', 'pending')),
+    ]);
+    return { members: members.docs.map((d) => d.data() as Membership).sort(byJoined), pending: pending.docs.map((d) => d.data() as Invitation) };
+  }
+
+  async mutateMembership(orgId: string, uid: string, fn: (m: Membership, roster: Roster) => Membership | null): Promise<Membership | null> {
+    const ref = this.membershipsCol().doc(membershipId(orgId, uid));
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError('Member');
+      const next = fn(snap.data() as Membership, await this.rosterIn(tx, orgId));
+      if (next) tx.set(ref, next);
+      else tx.delete(ref);
+      return next;
+    });
+  }
+
+  async updateMembershipsOfUser(uid: string, fn: (m: Membership) => Membership): Promise<Membership[]> {
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(this.membershipsCol().where('uid', '==', uid));
+      const next = snap.docs.map((d) => fn(d.data() as Membership));
+      snap.docs.forEach((d, i) => tx.set(d.ref, next[i]!));
+      return next;
+    });
+  }
+
+  async createInvitation(inv: Invitation, guard: (roster: Roster) => void): Promise<void> {
+    await this.db.runTransaction(async (tx) => {
+      guard(await this.rosterIn(tx, inv.orgId));
+      tx.create(this.invitationsCol().doc(inv.id), inv);
+    });
+  }
+
+  async getInvitation(id: string): Promise<Invitation | null> {
+    const snap = await this.invitationsCol().doc(id).get();
+    return snap.exists ? (snap.data() as Invitation) : null;
+  }
+
+  async listPendingInvitations(orgId: string): Promise<Invitation[]> {
+    const snap = await this.invitationsCol().where('orgId', '==', orgId).where('status', '==', 'pending').get();
+    return snap.docs.map((d) => d.data() as Invitation);
+  }
+
+  async listPendingInvitationsByEmail(email: string): Promise<Invitation[]> {
+    const snap = await this.invitationsCol().where('email', '==', email).where('status', '==', 'pending').get();
+    return snap.docs.map((d) => d.data() as Invitation);
+  }
+
+  async updateInvitation(id: string, fn: (i: Invitation) => Invitation): Promise<Invitation> {
+    const ref = this.invitationsCol().doc(id);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError('Invitation');
+      const next = fn(snap.data() as Invitation);
+      tx.set(ref, next);
+      return next;
+    });
+  }
+
+  async acceptInvitation(
+    id: string,
+    uid: string,
+    fn: (inv: Invitation, existing: Membership | null, members: Membership[]) => { invitation: Invitation; membership: Membership },
+  ): Promise<Membership> {
+    const ref = this.invitationsCol().doc(id);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError('Invitation');
+      const inv = snap.data() as Invitation;
+      const members = (await tx.get(this.membershipsCol().where('orgId', '==', inv.orgId))).docs.map((d) => d.data() as Membership);
+      const { invitation, membership } = fn(inv, members.find((m) => m.uid === uid) ?? null, members);
+      if (membership.orgId !== inv.orgId || membership.uid !== uid) throw new Error('An invitation only makes its own invitee a member of its own organization');
+      tx.set(ref, invitation);
+      tx.set(this.membershipsCol().doc(membershipId(membership.orgId, membership.uid)), membership);
+      return membership;
+    });
+  }
+
+  private auditCol(orgId: string) {
+    return this.orgsCol().doc(orgId).collection('audit');
+  }
+
+  async appendAudit(entry: AuditEntry): Promise<void> {
+    await this.auditCol(entry.orgId).doc(entry.id).create(entry);
+  }
+
+  async listAudit(orgId: string, opts: { limit: number; before?: string }): Promise<AuditEntry[]> {
+    let q = this.auditCol(orgId).orderBy('id', 'desc');
+    if (opts.before) q = q.where('id', '<', opts.before);
+    const snap = await q.limit(opts.limit).get();
+    return snap.docs.map((d) => d.data() as AuditEntry);
   }
 }

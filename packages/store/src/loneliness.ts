@@ -53,6 +53,6 @@ export async function recordLonelinessNotice(
   );
   const createdAt = opts.now.toISOString();
   return store.enqueueOutbox(
-    messages.map((m) => ({ ...m, id: outboxId(m.idempotencyKey), residentId: resident.id, status: 'pending' as const, attempts: 0, createdAt })),
+    messages.map((m) => ({ ...m, id: outboxId(m.idempotencyKey), residentId: resident.id, orgId: resident.orgId, status: 'pending' as const, attempts: 0, createdAt })),
   );
 }

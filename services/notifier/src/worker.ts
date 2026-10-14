@@ -1,5 +1,5 @@
 import { notificationTask, type TaskQueue } from '@hachi/cloud';
-import { NotFoundError, recordNotificationOnCase, type DeliveryFailure, type OutboxEntry, type Store } from '@hachi/store';
+import { NotFoundError, orgMayContactPeople, recordNotificationOnCase, type DeliveryFailure, type OutboxEntry, type Store } from '@hachi/store';
 import { DeliveryError, type Senders } from './channels.js';
 
 export interface WorkerDeps {
@@ -66,6 +66,15 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
       const { leaseUntil: _lease, ...rest } = e;
       return { ...rest, ...patch, updatedAt: deps.now().toISOString() };
     });
+
+  // Not held for later: an alert sent days late, once the organization is verified, would mislead.
+  // An entry written by a service from before organizations has none of its own; its resident's decides.
+  const orgId = entry.orgId || (await store.getResident(entry.residentId))?.orgId;
+  if (!(await orgMayContactPeople(store, orgId))) {
+    const error = { code: 'organization_unverified', message: 'Hachi has not verified this organization yet, so it sends nothing for it', retryable: false };
+    await finish({ status: 'skipped', lastError: error });
+    return { outcome: 'skipped', error };
+  }
 
   const sender = deps.senders[entry.channel];
   if (!sender) {

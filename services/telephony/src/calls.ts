@@ -14,7 +14,7 @@ import {
   STAFF_REQUEST_HOLD_MS,
   staffCallId,
 } from '@hachi/core';
-import type { CallRecord, CallStatus, Resident, Store } from '@hachi/store';
+import { orgMayContactPeople, type CallRecord, type CallStatus, type Resident, type Store } from '@hachi/store';
 import type { TelephonyConfig } from './config.js';
 import { PLACE_CALL_PATH, type TaskQueue } from '@hachi/cloud';
 import { buildCallTwiml, TelephonyError, type TelephonyProvider } from './twilio.js';
@@ -99,11 +99,19 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
   const windowStart = new Date(now.getTime() - deps.config.dispatchLookbackMin * 60_000);
   const residents = await deps.store.listActiveResidents();
   const result: DispatchResult = { checked: residents.length, enqueued: 0, alreadyQueued: 0, errors: [] };
+  // Read once per organization per run. `placeCall` checks again: this only saves the task.
+  const verified = new Map<string, Promise<boolean>>();
+  const mayCall = (orgId: string) => {
+    let known = verified.get(orgId);
+    if (!known) verified.set(orgId, (known = orgMayContactPeople(deps.store, orgId)));
+    return known;
+  };
 
   const handle = async (r: Resident) => {
     try {
       if (!hasCallConsent(r.callConsent)) return;
       if (!isDue(r.callTime, r.timeZone, windowStart, now)) return;
+      if (!(await mayCall(r.orgId))) return;
       const date = localDate(nextCallAt(r.callTime, r.timeZone, windowStart), r.timeZone);
       const outcome = await deps.queue.enqueue({
         name: callTaskId(r.id, date, 0),
@@ -130,6 +138,7 @@ export type PlaceCallOutcome =
         | 'inactive'
         | 'synthetic'
         | 'consent_required'
+        | 'organization_unverified'
         | 'already_handled'
         | 'budget_exhausted'
         | 'gateway_unavailable'
@@ -247,10 +256,11 @@ function withoutLease(c: CallRecord): CallRecord {
   return rest;
 }
 
-const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required' | 'request_lapsed', { code: string; message: string }> = {
+const REFUSED: Record<'inactive' | 'synthetic' | 'consent_required' | 'organization_unverified' | 'request_lapsed', { code: string; message: string }> = {
   inactive: { code: 'paused', message: 'Calls were paused for this resident before the call could be made' },
   synthetic: { code: 'synthetic', message: 'A synthetic demo resident is never called' },
   consent_required: { code: 'consent_required', message: 'The resident has not agreed to calls from Hachi' },
+  organization_unverified: { code: 'organization_unverified', message: 'Hachi has not verified this organization yet, so it does not ring anyone for it' },
   // The same code the API reports once the request's hold has run out, so both say the same thing.
   request_lapsed: { code: 'not_placed', message: 'The request lapsed before the call could be made' },
 };
@@ -312,7 +322,9 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
       ? 'synthetic'
       : !hasCallConsent(r.callConsent)
         ? 'consent_required'
-        : null;
+        : !(await orgMayContactPeople(deps.store, r.orgId))
+          ? 'organization_unverified'
+          : null;
   if (refused) return input.staff ? refuseStaffCall(deps, r, { ...input, staff: input.staff }, refused) : { outcome: 'skipped', reason: refused };
 
   const staff = input.staff;

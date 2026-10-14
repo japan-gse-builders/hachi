@@ -8,8 +8,11 @@ import type { IncompleteAnalysis } from '../types';
  * Issue #11: calls the analysis could not finish. Each says what is unchecked and what still ran,
  * and offers to run the analysis again. Deliberately without an urgency badge: a failure on our side
  * is not a finding about the resident.
+ *
+ * `null` means still loading and shows nothing: most residents have no such call, so a held slot in
+ * every resident card would close again under the reader.
  */
-export function IncompleteAnalysisList({ items, showResident = true }: { items: IncompleteAnalysis[]; showResident?: boolean }) {
+export function IncompleteAnalysisList({ items, showResident = true }: { items: IncompleteAnalysis[] | null; showResident?: boolean }) {
   const { token } = useAuth();
   const [requested, setRequested] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -28,7 +31,7 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
     }
   };
 
-  if (!items.length) return null;
+  if (!items?.length) return null;
   return (
     <ul className="gaps" aria-label="Calls that could not be fully checked">
       {items.map((item) => {
@@ -52,7 +55,7 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
                 {busy === key ? 'Asking…' : 'Analyse again'}
               </button>
             )}
-            {errors[key] && <p className="error">{errors[key]}</p>}
+            {errors[key] && <p className="error" role="alert">{errors[key]}</p>}
           </li>
         );
       })}

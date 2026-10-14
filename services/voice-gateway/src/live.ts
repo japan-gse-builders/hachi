@@ -4,6 +4,7 @@ import {
   Modality,
   Type,
   type FunctionDeclaration,
+  type AutomaticActivityDetection,
   type GoogleGenAI,
   type LiveServerMessage,
   type Session,
@@ -20,6 +21,15 @@ export type ToolScheduling = 'INTERRUPT' | 'WHEN_IDLE' | 'SILENT';
 
 /** Events from the model, already decoded. */
 export interface LiveHandlers {
+  /**
+   * The server accepted the session and will take audio.
+   *
+   * Optional because only a probe has to know the moment itself. A call learns the same thing a
+   * second later, when the model greets the resident, and a call that never gets that far has a
+   * close reason explaining why. A probe has neither: it sends no audio and expects no speech, so
+   * this is the only evidence it can have that a conversation would have been possible.
+   */
+  ready?(): void;
   audio(pcm24k: Int16Array): void;
   inputTranscript(text: string): void;
   outputTranscript(text: string): void;
@@ -127,6 +137,7 @@ export class GeminiLiveConnector implements LiveConnector {
     private readonly ai: Pick<GoogleGenAI, 'live'>,
     private readonly model: string,
     private readonly voice: string,
+    private readonly activityDetection?: AutomaticActivityDetection,
   ) {}
 
   async connect(setup: LiveSetup, handlers: LiveHandlers): Promise<LiveSession> {
@@ -140,6 +151,7 @@ export class GeminiLiveConnector implements LiveConnector {
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         tools: [{ functionDeclarations: TOOLS }],
+        ...(this.activityDetection ? { realtimeInputConfig: { automaticActivityDetection: this.activityDetection } } : {}),
         // Transparent, so the server reports how much of what we sent it actually kept. A dropped
         // websocket mid-call is then a gap of a second or two rather than a restarted conversation.
         sessionResumption: { transparent: true, ...(setup.resumeHandle ? { handle: setup.resumeHandle } : {}) },
@@ -172,6 +184,7 @@ export class GeminiLiveConnector implements LiveConnector {
 }
 
 export function dispatch(m: LiveServerMessage, h: LiveHandlers): void {
+  if (m.setupComplete) h.ready?.();
   const c = m.serverContent;
   if (c) {
     if (c.inputTranscription?.text) h.inputTranscript(c.inputTranscription.text);

@@ -15,8 +15,9 @@ import {
 } from '@hachi/core';
 import type { CallRecord, ConversationEnd, EndChecks, Resident, Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
-import type { EmergencyInput, EmergencyRaiser } from './emergency.js';
+import type { EmergencyInput, EmergencyPresence, EmergencyRaiser } from './emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, ToolCall, ToolScheduling } from './live.js';
+import type { NoResponseReporter } from './noResponse.js';
 import {
   buildSystemInstruction,
   priorContext,
@@ -54,13 +55,19 @@ export interface SessionDeps {
   store: Store;
   live: LiveConnector;
   emergency: EmergencyRaiser;
+  /**
+   * Where this call announces that somebody is being reached, so the gateway probe holds off.
+   * Absent wherever nothing is probing, which is every test that is not about the probe.
+   */
+  emergencies?: EmergencyPresence;
+  noResponse?: NoResponseReporter;
   recordings: RecordingSink;
   /** Without it the analysis worker's sweep picks the call up. */
   analysis?: AnalysisRequester;
   log: Logger;
   config: {
     maxConversationSec: number;
-    silence: { promptSec: number; prompts: number };
+    silence: { promptSec: number; prompts: number; intervalsSec?: number[] };
     /** See `GatewayConfig.forcedLiveDrop`. Absent in every deployment that is not being tested. */
     forcedLiveDrop?: { residentId: string; afterSec: number };
   };
@@ -192,11 +199,10 @@ export class CallSession {
   private readonly turns: Turn[] = [];
 
   private emergency: 'none' | 'raising' | 'raised' | 'failed' = 'none';
+  private announced = false;
   private endReason?: ConversationEnd;
   private hangupMark?: string;
   private markSeq = 0;
-  /** Bumped whenever an ending starts or is taken back, so a stale fallback timer does nothing. */
-  private endSeq = 0;
   /** The system asked for the goodbye (time limit), so end_call needs no word from the resident. */
   private wrapUpSent = false;
   /**
@@ -224,6 +230,11 @@ export class CallSession {
   /** Separate from `timers` because it is restarted every time either side stops speaking. */
   private silenceTimer?: NodeJS.Timeout;
   private silencePrompts = 0;
+  private silenceMark?: string;
+  private silenceEscalated = false;
+  private endGeneration = 0;
+  private voicedFrames = 0;
+  private turnHadAudio = false;
   private heardResident = false;
 
   constructor(
@@ -258,7 +269,7 @@ export class CallSession {
 
   /** Twilio closed the socket (the resident hung up or the call dropped). */
   async onSocketClosed(): Promise<void> {
-    await this.finish('resident');
+    await this.finish(this.endReason ?? 'resident');
   }
 
   private async onStart(msg: { start?: any; streamSid?: string }): Promise<void> {
@@ -341,8 +352,10 @@ export class CallSession {
    */
   private armSilence(): void {
     this.clearSilence();
-    if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
-    this.silenceTimer = setTimeout(() => this.onSilence(), this.deps.config.silence.promptSec * 1000);
+    if (this.state !== 'active' || !this.live || this.endReason || this.emergencyActive) return;
+    const { intervalsSec, promptSec } = this.deps.config.silence;
+    const delay = intervalsSec?.[Math.min(this.silencePrompts, intervalsSec.length - 1)] ?? promptSec;
+    this.silenceTimer = setTimeout(() => this.onSilence(), delay * 1000);
   }
 
   private clearSilence(): void {
@@ -355,12 +368,13 @@ export class CallSession {
     if (this.state !== 'active' || this.endReason || this.emergencyActive) return;
     if (++this.silencePrompts <= this.deps.config.silence.prompts) {
       this.live?.sendText(silenceCue(this.name, this.heardResident, this.unscheduled));
-      // Re-armed here as well as on turnComplete, so a model that answers with nothing still ends.
-      this.armSilence();
+      // The next interval begins after this prompt is actually played. Missing model output
+      // or a missing playback acknowledgement must not become an R1 finding about the resident.
       return;
     }
     const reason: ConversationEnd = this.heardResident ? 'stopped_responding' : 'silent_after_greeting';
     this.deps.log.warn({ ...this.ids, reason, prompts: this.silencePrompts - 1 }, 'no answer from the resident');
+    this.silenceEscalated = true;
     this.live?.sendText(silenceFarewellCue(this.name));
     this.requestEnd(reason);
   }
@@ -487,7 +501,8 @@ export class CallSession {
         const name = `t${++this.markSeq}`;
         this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
         if (this.endReason) this.hangupMark = name;
-        else this.armSilence();
+        else if (this.turnHadAudio) this.silenceMark = name;
+        this.turnHadAudio = false;
       },
       toolCalls: (calls) => current() && calls.forEach((c) => this.onToolCall(c)),
       resumable: (handle) => {
@@ -517,6 +532,9 @@ export class CallSession {
         if (!current()) return;
         this.deps.log.warn({ ...this.ids, reason }, 'Gemini Live session closed unexpectedly');
         this.live = undefined;
+        this.clearSilence();
+        this.silenceMark = undefined;
+        this.turnHadAudio = false;
         this.liveFailure = reason;
         if (this.endReason) return void this.finish(this.endReason);
         // Vertex AI refusing the project closes the socket the same way a network blip does, and the
@@ -533,7 +551,14 @@ export class CallSession {
     if (this.state !== 'active' || !media?.payload || (media.track && media.track !== 'inbound')) return;
     const mulaw = Buffer.from(media.payload, 'base64');
     this.recorder.appendInbound(mulaw);
-    const pcm = this.up.process(decodeMuLaw(mulaw));
+    const decoded = decodeMuLaw(mulaw);
+    const rms = Math.sqrt(decoded.reduce((sum, n) => sum + n * n, 0) / Math.max(1, decoded.length));
+    // Do not treat Hachi's own voice echo during playback as a resident answering a prompt.
+    this.voicedFrames = this.silenceTimer && rms >= 328 ? this.voicedFrames + decoded.length : 0;
+    // 120 ms of audible input cancels the clock before a potentially late transcription arrives.
+    // This is a guard, not a medical inference or a replacement for Gemini's turn detection.
+    if (this.voicedFrames >= 960) this.residentActivity();
+    const pcm = this.up.process(decoded);
     if (!this.live) {
       this.pending.push(pcm);
       this.pendingSamples += pcm.length;
@@ -550,8 +575,11 @@ export class CallSession {
   }
 
   private onModelAudio(pcm24k: Int16Array): void {
+    this.clearSilence();
+    this.silenceMark = undefined;
     const mulaw = encodeMuLaw(this.down.process(pcm24k));
     if (!mulaw.length) return;
+    this.turnHadAudio = true;
     this.sendTwilio({ event: 'media', streamSid: this.streamSid, media: { payload: mulaw.toString('base64') } });
     this.recorder.appendOutbound(mulaw);
     // More speech after the goodbye: wait for the next turn to finish before hanging up.
@@ -559,7 +587,23 @@ export class CallSession {
   }
 
   private async onMark(name: unknown): Promise<void> {
+    if (typeof name === 'string' && name === this.silenceMark) {
+      this.silenceMark = undefined;
+      this.armSilence();
+    }
     if (this.endReason && typeof name === 'string' && name === this.hangupMark) await this.finish(this.endReason);
+  }
+
+  private residentActivity(): void {
+    this.clearSilence();
+    this.silenceMark = undefined;
+    this.silencePrompts = 0;
+    if (this.endReason === 'silent_after_greeting' || this.endReason === 'stopped_responding') {
+      this.endReason = undefined;
+      this.hangupMark = undefined;
+      this.endGeneration++;
+      this.silenceEscalated = false;
+    }
   }
 
   private appendTurn(speaker: Turn['speaker'], text: string): Turn {
@@ -581,8 +625,7 @@ export class CallSession {
 
   private onResidentText(text: string): void {
     this.heardResident = true;
-    this.clearSilence();
-    this.silencePrompts = 0;
+    this.residentActivity();
     if (this.turns[this.turns.length - 1]?.speaker !== 'resident') this.monitor.endTurn();
     const turn = this.appendTurn('resident', text);
     if (this.reopenable && (this.farewellTurns > 0 || this.endReason === 'agent')) {
@@ -619,6 +662,16 @@ export class CallSession {
     const live = this.live;
     const ok = (message: string, scheduling: 'SILENT' | 'WHEN_IDLE') =>
       live?.respondToTool(call, { status: 'ok', retryable: false, message }, scheduling);
+    // #29 first. While Hachi is still checking on a resident who has not answered, the model may
+    // not hang up; once that silence has been escalated, the call ends as the silence it is.
+    if (this.silencePrompts > 0 && !this.silenceEscalated && !this.emergencyActive) {
+      live?.respondToTool(call, { status: 'error', retryable: false, message: 'The unanswered-check sequence is still running. Wait for the resident to answer; do not hang up yet.' }, 'SILENT');
+      return;
+    }
+    if (this.silenceEscalated && this.endReason && !this.emergencyActive) {
+      ok('The call will end now.', 'SILENT');
+      return this.requestEnd(this.endReason);
+    }
     // Already ending for a reason of the gateway's own (time, silence, an emergency), or help is
     // being arranged: the tool changes nothing, and must not overwrite why the call ended.
     if (this.emergencyActive || this.endReason) return void ok('The call is already ending.', 'SILENT');
@@ -693,7 +746,7 @@ export class CallSession {
     if (this.endReason === 'agent') {
       this.endReason = undefined;
       this.hangupMark = undefined;
-      this.endSeq++;
+      this.endGeneration++;
     }
     this.live?.sendText(reopenedCue(this.name));
   }
@@ -716,6 +769,11 @@ export class CallSession {
   private async raiseEmergency(input: Omit<EmergencyInput, 'resident' | 'callId'>): Promise<void> {
     if (this.emergencyActive || !this.resident || !this.ids) return;
     this.emergency = 'raising';
+    // Announced from here rather than once it succeeds, and kept until the call is over even if
+    // recording it fails: the resident has already said the thing, and that is what makes this a
+    // bad moment for the process to go and open sessions of its own.
+    this.announced = true;
+    this.deps.emergencies?.enter();
     this.clearSilence();
     this.deps.log.warn({ ...this.ids, category: input.category }, 'EMERGENCY detected during call');
     for (let attempt = 0; attempt < this.t.emergencyAttempts; attempt++) {
@@ -744,9 +802,9 @@ export class CallSession {
     const name = `end${++this.markSeq}`;
     this.hangupMark = name;
     this.sendTwilio({ event: 'mark', streamSid: this.streamSid, mark: { name } });
-    const seq = ++this.endSeq;
+    const generation = ++this.endGeneration;
     this.timer(fallbackMs, () => {
-      if (seq === this.endSeq) void this.finish(this.endReason ?? reason);
+      if (generation === this.endGeneration && this.endReason) void this.finish(this.endReason);
     });
   }
 
@@ -762,6 +820,10 @@ export class CallSession {
     if (this.state === 'finishing' || this.state === 'done') return;
     const started = this.state === 'active';
     this.state = 'finishing';
+    if (this.announced) {
+      this.announced = false;
+      this.deps.emergencies?.leave();
+    }
     for (const t of this.timers) clearTimeout(t);
     this.clearSilence();
     this.liveGeneration++;
@@ -779,11 +841,30 @@ export class CallSession {
     try {
       await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => {
         const checks = addEndChecks(c.conversation?.endChecks, this.endChecks);
-        return { ...c, transcript, conversation: { endedBy: reason, at, ...(checks ? { endChecks: checks } : {}) }, analysisPending: true };
+        return {
+          ...c,
+          transcript,
+          conversation: {
+            endedBy: reason,
+            at,
+            ...(checks ? { endChecks: checks } : {}),
+            ...(this.silenceEscalated && (reason === 'silent_after_greeting' || reason === 'stopped_responding') ? { noResponseEscalated: true } : {}),
+          },
+          analysisPending: true,
+        };
       });
       saved = true;
     } catch (err) {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save transcript');
+    }
+    if (saved && this.silenceEscalated && this.resident && this.deps.noResponse && (reason === 'silent_after_greeting' || reason === 'stopped_responding')) {
+      try {
+        const noResponseCaseId = await this.deps.noResponse.flag({ resident: this.resident, kind: reason, at });
+        await this.deps.store.updateCall(ids.residentId, ids.callId, (c) => ({ ...c, conversation: { ...c.conversation!, noResponseCaseId } }));
+      } catch (err) {
+        // The saved escalation marker lets post-call analysis make the flag if this write failed.
+        this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to flag the unanswered checks');
+      }
     }
     if (saved && this.deps.analysis) {
       try {

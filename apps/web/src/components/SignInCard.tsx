@@ -81,9 +81,9 @@ export function SignInCard({ title, intro, notice, footer }: { title: string; in
 
   if (sent) {
     return (
-      <section className="card stack narrow">
+      <section className="card stack narrow sign-in">
         <h1>{SENT[sent].title}</h1>
-        <p>{SENT[sent].body(email.trim())}</p>
+        <p role="status">{SENT[sent].body(email.trim())}</p>
         <p className="meta">If it does not arrive in a few minutes, check your spam folder.</p>
         <button type="button" className="ghost" onClick={() => setSent(null)}>Back to sign in</button>
       </section>
@@ -91,19 +91,19 @@ export function SignInCard({ title, intro, notice, footer }: { title: string; in
   }
 
   return (
-    <form className="card stack narrow" onSubmit={submit}>
+    <form className="card stack narrow sign-in" onSubmit={submit}>
       <h1>{title}</h1>
       <p className="meta">{intro}</p>
       {notice && <p className="meta">{notice}</p>}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       <button type="button" className="ghost" disabled={busy} onClick={() => void run('google')}>Continue with Google</button>
       <p className="meta or-divider">or</p>
-      <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+      <label>Email<input type="email" autoComplete="username" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
       <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
       <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      <div className="row">
-        <button type="button" className="ghost" disabled={busy} onClick={() => void run('reset')}>Reset my password</button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => void run('link')}>Email me a sign-in link</button>
+      <div className="row secondary-actions">
+        <button type="button" className="subtle" disabled={busy} onClick={() => void run('reset')}>Reset my password</button>
+        <button type="button" className="subtle" disabled={busy} onClick={() => void run('link')}>Email me a sign-in link</button>
       </div>
       {/* Firebase deletes an account's password as soon as a sign-in link is used on it. */}
       <p className="meta">Forgotten your password? Reset it. A sign-in link is for people who have no password: using one clears any password the account had.</p>

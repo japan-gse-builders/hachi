@@ -130,6 +130,7 @@ describe('notification delivery reports', () => {
       id: outboxId(key),
       idempotencyKey: key,
       caseId: 'case-1',
+      orgId: 'org-1',
       residentId: 'res-1',
       urgency: 'emergency',
       recipient: 'family',

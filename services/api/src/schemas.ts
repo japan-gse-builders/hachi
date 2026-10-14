@@ -125,5 +125,42 @@ export type CaseUpdate = z.infer<typeof caseUpdateSchema>;
 
 export const pushTokenSchema = z.object({ token: z.string().min(10).max(4096) });
 
+/** Who may open a resident's family dashboard, by the email their account signs in with. */
+export const familyAccessSchema = z.object({ email: email.pipe(z.string().max(254)) }).strict();
+
 /** The decision on a message held because the resident read the number out over the phone. */
 export const contactDecisionSchema = z.object({ decision: z.enum(['approve', 'reject']) });
+export const queueQuerySchema = z.object({ includeClosed: z.enum(['true', 'false']).optional() });
+
+// ---- Accounts and organizations ----
+
+const timeZone = z.string().refine(isValidTimeZone, 'Unknown time zone');
+const orgName = shortText(100);
+const displayName = shortText(100);
+
+export const organizationCreateSchema = z.object({ name: orgName, timeZone: timeZone.default('Asia/Tokyo') }).strict();
+
+export const organizationPatchSchema = z
+  .object({ name: orgName, timeZone, billingEmail: email.pipe(z.string().max(254)) })
+  .partial()
+  .strict()
+  .refine((p) => Object.keys(p).length > 0, { message: 'Nothing to update' });
+export type OrganizationPatch = z.infer<typeof organizationPatchSchema>;
+
+export const profilePatchSchema = z.object({ name: displayName }).strict();
+
+export const memberPatchSchema = z
+  .object({ role: z.enum(['owner', 'admin', 'member']), status: z.enum(['active', 'disabled']) })
+  .partial()
+  .strict()
+  .refine((p) => p.role !== undefined || p.status !== undefined, { message: 'Nothing to update' });
+export type MemberPatch = z.infer<typeof memberPatchSchema>;
+
+export const invitationCreateSchema = z.object({ email: email.pipe(z.string().max(254)), role: z.enum(['admin', 'member']).default('member') }).strict();
+
+export const ownerAssignSchema = z.object({ uid: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/) }).strict();
+
+export const auditQuerySchema = z.object({
+  before: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});

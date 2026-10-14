@@ -1,128 +1,135 @@
+import '../styles/signals.css';
+import '../styles/family.css';
 import {
-  cellState,
-  dayLabel,
-  dayOfMonth,
-  domainState,
-  glanceHeadline,
   isOneOff,
+  latestAreas,
   latestCallLabel,
-  LEGEND,
-  LIFE_DOMAINS,
   STATES,
   trendChange,
   trendCount,
-  worthAsking,
+  trendTurn,
   type CellState,
+  type FamilyLevel,
+  type FamilyStatus,
 } from '../glance';
+import { SEVERITY } from '../signals';
 import type { FamilyGlance, TagLabel, TagTrend } from '../types';
+import { SeverityChip } from './Signals';
 
-function Cell({ state, title }: { state: CellState; title?: string }) {
+export function FamilyCell({ state, label, tall = false }: { state: CellState; label?: string; tall?: boolean }) {
   const s = STATES[state];
   return (
-    <span className={`glance-cell state-${s.tone}`} title={title ?? s.word}>
+    <span className={`family-cell sev-${s.sev} tone-${s.tone}${tall ? ' is-tall' : ''}`} title={label ?? s.word}>
       <span aria-hidden="true">{s.symbol}</span>
-      <span className="sr-only">{s.word}</span>
+      <span className="sr-only">{label ?? s.word}</span>
     </span>
   );
 }
 
-/** Headline and the latest call's six life domains. */
-export function LatestCall({ latest, now, shareMood = false }: { latest: FamilyGlance['latest']; now: Date; shareMood?: boolean }) {
+export function FamilyStatusCard({
+  name,
+  status,
+  reach,
+  next,
+  careTeamPhone,
+}: {
+  name: string;
+  status: FamilyStatus | null;
+  reach: FamilyLevel | null;
+  next: string;
+  careTeamPhone: string;
+}) {
+  const severity = status?.severity ?? 'none';
   return (
-    <div className="stack glance-latest">
-      {latest && <p className="meta">{latestCallLabel(latest.startedAt, now)}</p>}
-      <p className="glance-headline">{glanceHeadline(latest)}</p>
-      {worthAsking(latest) && <p>Some things came up that may be worth asking about next time you talk.</p>}
-      {latest && (
-        <ul className="glance-today" aria-label="The latest call, by area of life">
-          {LIFE_DOMAINS.filter((d) => d.key !== 'mood' || shareMood).map((d) => {
-            const state = domainState(latest.domains, d.key);
+    <section className={`card family-status sev-${severity}`} aria-labelledby="family-name">
+      <h1 className="family-name" id="family-name">Daily calls with {name}</h1>
+      <div className="family-status-grid">
+        {status && (
+          <div className="family-state">
+            <span className="family-state-mark" aria-hidden="true">{SEVERITY[severity].symbol}</span>
+            <div className="stack stack-s">
+              <p className="family-state-title">{status.title}</p>
+              {status.body && <p className="family-state-body">{status.body}</p>}
+            </div>
+          </div>
+        )}
+        <div className="family-status-side">
+          <ul className="family-facts" aria-label="Calls">
+            {reach && (
+              <li>
+                <SeverityChip spoken={false} severity={reach.severity} label={reach.word} detail={reach.detail} />
+              </li>
+            )}
+            <li className="family-next">{next}</li>
+          </ul>
+          {status?.askCareTeam && (
+            <a className="button family-ask" href={`tel:${careTeamPhone}`}>Call the care team</a>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The latest call's six areas of life, each a colour, a symbol and a word. */
+export function LatestCall({ latest, now, shareMood, notesPending }: { latest: FamilyGlance['latest']; now: Date; shareMood: boolean; notesPending: boolean }) {
+  return (
+    <section className="card family-latest" aria-labelledby="family-latest-heading">
+      <h2 id="family-latest-heading">{latest ? latestCallLabel(latest.startedAt, now) : 'Latest call'}</h2>
+      {latest ? (
+        <ul className="family-areas" aria-label="The latest call, by area of life">
+          {latestAreas(latest, shareMood, notesPending).map((a) => {
+            const s = STATES[a.state];
             return (
-              <li key={d.key}>
-                <span className={`glance-cell state-${STATES[state].tone}`} aria-hidden="true">{STATES[state].symbol}</span>
-                <span className="glance-domain">{d.label}</span>
-                <span className="glance-word">{STATES[state].word}</span>
+              <li key={a.key} className={`family-area sev-${s.sev} tone-${s.tone}`}>
+                <span className={`family-cell sev-${s.sev} tone-${s.tone}`} aria-hidden="true">{s.symbol}</span>
+                <span className="family-area-name">{a.label}</span>
+                <span className="family-area-word">{s.word}</span>
               </li>
             );
           })}
         </ul>
+      ) : (
+        <p className="meta">No call has connected in the last two weeks.</p>
       )}
-    </div>
+    </section>
   );
 }
 
-export function Legend() {
+export function FamilyLegend({ states }: { states: readonly CellState[] }) {
   return (
-    <ul className="glance-legend" aria-label="Key">
-      {LEGEND.map((s) => (
+    <ul className="family-legend" aria-label="Key">
+      {states.map((s) => (
         <li key={s}>
-          <span className={`glance-cell state-${STATES[s].tone}`} aria-hidden="true">{STATES[s].symbol}</span>
-          {STATES[s].word}
+          <FamilyCell state={s} />
+          <span aria-hidden="true">{STATES[s].word}</span>
         </li>
       ))}
     </ul>
   );
 }
 
-/** Rows are areas of life, columns are days; a dashed cell is a day without a call that connected. */
-export function TwoWeekGrid({ days, shareMood = false }: { days: FamilyGlance['days']; shareMood?: boolean }) {
-  const first = days[0];
-  const last = days.at(-1);
-  return (
-    <section className="card stack">
-      <h2>The last two weeks at a glance</h2>
-      <div className="table-scroll glance-scroll" role="region" aria-label="Two-week call history" tabIndex={0}>
-        <table className="glance-grid">
-          <caption className="meta">
-            {first && last ? `One column per day, ${dayLabel(first.date)} to ${dayLabel(last.date)}.` : ''} "Not talked about" does not mean all is well.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col"><span className="sr-only">Area</span></th>
-              {days.map((d) => (
-                <th scope="col" key={d.date}>
-                  <span aria-hidden="true">{dayOfMonth(d.date)}</span>
-                  <span className="sr-only">{dayLabel(d.date)}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {LIFE_DOMAINS.filter((dom) => dom.key !== 'mood' || shareMood).map((dom) => (
-              <tr key={dom.key}>
-                <th scope="row">{dom.label}</th>
-                {days.map((d) => {
-                  const state = cellState(d, dom.key);
-                  return (
-                    <td key={d.date}>
-                      <Cell state={state} title={`${dom.label}, ${dayLabel(d.date)}: ${STATES[state].word}`} />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function Trend({ t }: { t: TagTrend }) {
   const change = trendChange(t);
+  const turn = trendTurn(t);
   const tone = t.polarity === 'positive' ? 'good' : 'concern';
   return (
-    <li className={isOneOff(t) ? 'muted' : undefined}>
-      <span className="glance-trend-name">
-        <span className={`glance-cell state-${tone}`} aria-hidden="true">{STATES[tone].symbol}</span>
+    <li className={isOneOff(t) ? 'is-muted' : undefined}>
+      <span className="family-trend-name">
+        <FamilyCell state={tone} label={t.polarity === 'positive' ? 'Good sign' : 'Concern'} />
         {t.label}
-        <span className="sr-only">{t.polarity === 'positive' ? ' (good sign)' : ' (concern)'}</span>
       </span>
-      <span className="glance-trend-detail">
-        <span className="glance-bars" aria-hidden="true">
-          {Array.from({ length: t.lastCalls }, (_, i) => <span key={i} className={i < t.last ? `on ${tone}` : undefined} />)}
+      <span className="family-trend-detail">
+        <span className={`family-bars ${tone}`} aria-hidden="true">
+          {Array.from({ length: t.lastCalls }, (_, i) => <span key={i} className={i < t.last ? 'on' : undefined} />)}
         </span>
         <span className="meta">
+          {turn && (
+            <span className={`family-turn sev-${turn === 'worse' ? 'today' : 'good'}`}>
+              <span aria-hidden="true">{t.direction === 'more' ? '↑' : '↓'}</span>
+              <span className="sr-only">{turn === 'worse' ? 'Worse: ' : 'Better: '}</span>
+            </span>
+          )}
           {trendCount(t)}
           {change && ` · ${change}`}
         </span>
@@ -133,12 +140,12 @@ function Trend({ t }: { t: TagTrend }) {
 
 export function TagTrends({ trends }: { trends: TagTrend[] }) {
   return (
-    <section className="card stack">
-      <h2>What keeps coming up</h2>
+    <section className="card stack family-trends-card" aria-labelledby="family-trends-heading">
+      <h2 id="family-trends-heading">What keeps coming up</h2>
       {trends.length === 0 ? (
         <p className="meta">Nothing yet. Topics appear here after a few calls.</p>
       ) : (
-        <ul className="glance-trends">
+        <ul className="family-trends">
           {trends.map((t) => <Trend key={t.id} t={t} />)}
         </ul>
       )}

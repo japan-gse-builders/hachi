@@ -23,7 +23,7 @@ describe('loadConfig', () => {
     expect(c.allowedCallers).toEqual(['tasks@hachi-prod.iam.gserviceaccount.com', 'scheduler@hachi-prod.iam.gserviceaccount.com']);
     expect(c).toMatchObject({ port: 8080, ringTimeoutSec: 30, maxCallSec: 1200, maxAttempts: 3, retryDelaySec: 180, dispatchLookbackMin: 10 });
     expect(c.sayVoice).toBe('Google.en-US-Neural2-F');
-    expect(c.gateway).toEqual({ transientFailures: 3, cooldownMs: 900_000 });
+    expect(c.gateway).toEqual({ transientFailures: 3, cooldownMs: 900_000, probeStaleMs: 3_600_000 });
   });
 
   it('reads optional settings', () => {

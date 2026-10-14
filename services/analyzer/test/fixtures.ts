@@ -10,6 +10,7 @@ export const NOW = new Date('2026-10-02T03:00:00.000Z');
 export function resident(overrides: Partial<Resident> = {}): Resident {
   return {
     id: 'res-1',
+    orgId: 'org-1',
     name: 'Margaret Smith',
     preferredName: 'Maggie',
     phone: '+819000000001',

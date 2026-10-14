@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { CASE_CALLS } from '../src/views.js';
 import { MemoryStore } from '@hachi/store';
-import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, setup, storedCase, wellbeing } from './helpers.js';
+import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, seedAccounts, setup, storedCase, wellbeing } from './helpers.js';
 
 describe('health and authentication', () => {
   it('serves /healthz and /health without a token', async () => {
@@ -48,9 +48,19 @@ describe('health and authentication', () => {
   });
 
   it('keeps staff and family routes apart', async () => {
-    const { app, as } = setup();
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    // A family account is not staff, whatever it can see as family.
+    const fam = await app.inject({ method: 'GET', url: '/api/queue', ...as('familyEmail') });
+    expect(fam.statusCode).toBe(403);
+    expect(fam.json().reason).toBe('no_organization');
     expect((await app.inject({ method: 'GET', url: '/api/queue', ...as('familyPhone') })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: '/api/family/residents', ...as('staff') })).statusCode).toBe(403);
+    // Staff on the family side see only residents whose family they are themselves: being staff
+    // grants nothing there.
+    const staffAsFamily = await app.inject({ method: 'GET', url: '/api/family/residents', ...as('staff') });
+    expect(staffAsFamily.statusCode).toBe(200);
+    expect(staffAsFamily.json().residents).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('staff') })).statusCode).toBe(404);
   });
 
   it('sets no-store and nosniff headers', async () => {
@@ -62,6 +72,7 @@ describe('health and authentication', () => {
 
   it('hides internal error details', async () => {
     const store = new MemoryStore();
+    seedAccounts(store);
     store.listResidents = async () => {
       throw new Error('secret database detail');
     };
@@ -231,7 +242,7 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(body.items[0].urgencyMeaning).toBe('Possible immediate danger to life or health. Act now.');
     // A card only ever shows its own level, so the queue carries the other three as well.
     expect(body.legend.map((l: { urgency: string }) => l.urgency)).toEqual(['emergency', 'urgent', 'action', 'watch']);
-    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now' });
+    expect(body.legend[3]).toEqual({ urgency: 'watch', label: 'Monitor', action: 'watch for now', meaning: 'No action yet. Watch whether the change continues.' });
     const ja = (await app.inject({ method: 'GET', url: '/api/queue', ...as('staff') })).json();
     expect(ja.legend[0].label).toBe('緊急');
     expect(ja.items[0].urgencyMeaning).toContain('いま動く');
@@ -549,6 +560,21 @@ describe('residents nobody reached (QUE-01)', () => {
     await ctx.store.addCalls([attempt('res-1', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } })]);
     expect((await ctx.get()).items).toEqual([]);
   });
+
+  it('tells a budget that ran out apart from a fault, because the answer is a different one', async () => {
+    // Both are ours and neither is about the resident, but one is fixed by raising a ceiling and
+    // the other by fixing something, and the staff member reading this is the one who has to ask.
+    const ctx = await unreached('/api/queue?locale=en');
+    await ctx.store.addCalls([
+      attempt('res-1', 1, { failure: { code: 'budget_exhausted', message: 'x', retryable: false } }),
+      attempt('res-2', 1, { failure: { code: 'gateway_unavailable', message: 'x', retryable: false } }),
+    ]);
+    const { items } = await ctx.get();
+    expect(items.map((i: { reason: string }) => i.reason).sort()).toEqual(['budget', 'service_fault']);
+    const money = items.find((i: { reason: string }) => i.reason === 'budget');
+    expect(money).toMatchObject({ reasonLabel: 'AI budget cap', ourFault: true });
+    expect(money.meaning).toContain("This month's AI budget is used up");
+  });
 });
 
 describe('family dashboard (FAM-01..04)', () => {
@@ -668,6 +694,140 @@ describe('family dashboard (FAM-01..04)', () => {
     expect((await store.getResident('res-other'))?.family?.pushTokens).toEqual([]);
     const bad = await app.inject({ method: 'POST', url: '/api/family/push-tokens', ...as('familyPhone'), payload: { token: 'x' } });
     expect(bad.statusCode).toBe(400);
+  });
+});
+
+describe('who is responsible for a resident, and which family can see them (FAM-01)', () => {
+  async function seeded() {
+    const ctx = setup();
+    await ctx.store.createResident(makeResident('res-1'));
+    const inject = (who: 'staff' | 'otherStaff' | 'relative' | 'unverifiedRelative' | 'familyPhone', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
+      ctx.app.inject({ method, url, ...ctx.as(who), ...(payload ? { payload } : {}) });
+    const grant = (email: string, who: 'staff' | 'otherStaff' = 'staff') => inject(who, 'POST', '/api/residents/res-1/family-access', { email });
+    return { ...ctx, inject, grant };
+  }
+
+  it('makes whoever registers a resident responsible for them', async () => {
+    const { app, as } = setup();
+    const res = await app.inject({ method: 'POST', url: '/api/residents', ...as('otherStaff'), payload: residentInput() });
+    expect(res.json()).toMatchObject({ owner: { uid: 'staff-2', email: 'sato@example.org', name: 'Sato', since: NOW.toISOString() }, familyAccess: [] });
+  });
+
+  it('lets only the responsible staff member change a resident, while everyone can still read them', async () => {
+    const { inject, store } = await seeded();
+    expect((await inject('otherStaff', 'GET', '/api/residents/res-1')).statusCode).toBe(200);
+    const refused = await inject('otherStaff', 'PATCH', '/api/residents/res-1', { active: false });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().reason).toBe('not_owner');
+    expect((await store.getResident('res-1'))?.active).toBe(true);
+  });
+
+  it('takes on unassigned residents, refuses someone else’s, and hands over', async () => {
+    const { inject, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, owner: undefined }));
+
+    const unassigned = await inject('staff', 'PATCH', '/api/residents/res-1', { active: false });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json().reason).toBe('unassigned');
+
+    const taken = await inject('otherStaff', 'POST', '/api/residents/res-1/owner');
+    expect(taken.statusCode).toBe(200);
+    expect(taken.json().owner).toMatchObject({ uid: 'staff-2', name: 'Sato' });
+    expect((await inject('otherStaff', 'POST', '/api/residents/res-1/owner')).statusCode).toBe(200);
+
+    const conflict = await inject('staff', 'POST', '/api/residents/res-1/owner');
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ reason: 'owned_by_other' });
+    expect(conflict.json().error).toContain('Sato');
+    expect((await inject('staff', 'DELETE', '/api/residents/res-1/owner')).statusCode).toBe(403);
+
+    const released = await inject('otherStaff', 'DELETE', '/api/residents/res-1/owner');
+    expect(released.statusCode).toBe(200);
+    expect(released.json().owner).toBeUndefined();
+    expect((await inject('staff', 'POST', '/api/residents/res-1/owner')).json().owner.uid).toBe('staff-1');
+  });
+
+  it('gives a family account access by its verified email, and takes it away again', async () => {
+    const { inject, grant } = await seeded();
+    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([]);
+
+    const added = await grant('  Bob@Example.ORG ');
+    expect(added.statusCode).toBe(201);
+    expect(added.json()).toEqual({ outcome: 'added', familyAccess: [{ email: 'bob@example.org', addedAt: NOW.toISOString(), addedBy: 'staff-1' }] });
+    expect((await grant('bob@example.org')).json().outcome).toBe('already_has_access');
+
+    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([{ id: 'res-1', name: 'Margaret Smith' }]);
+    expect((await inject('relative', 'GET', '/api/family/residents/res-1/dashboard')).statusCode).toBe(200);
+    expect((await inject('unverifiedRelative', 'GET', '/api/family/residents')).statusCode).toBe(403);
+
+    const removed = await inject('staff', 'DELETE', `/api/residents/res-1/family-access/${encodeURIComponent('BOB@example.org')}`);
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json().familyAccess).toEqual([]);
+    expect((await inject('relative', 'GET', '/api/family/residents')).json().residents).toEqual([]);
+    const gone = await inject('relative', 'GET', '/api/family/residents/res-1/dashboard');
+    const missing = await inject('relative', 'GET', '/api/family/residents/nope/dashboard');
+    expect(gone.statusCode).toBe(404);
+    expect(gone.body).toBe(missing.body);
+    expect((await inject('staff', 'DELETE', '/api/residents/res-1/family-access/bob%40example.org')).statusCode).toBe(404);
+  });
+
+  it('keeps family access in the hands of the responsible staff member', async () => {
+    const { inject, grant, store } = await seeded();
+    const refused = await grant('bob@example.org', 'otherStaff');
+    expect(refused.statusCode).toBe(403);
+    expect((await store.getResident('res-1'))?.familyLookup).not.toContain('bob@example.org');
+    await grant('bob@example.org');
+    expect((await inject('otherStaff', 'DELETE', '/api/residents/res-1/family-access/bob%40example.org')).statusCode).toBe(403);
+    expect((await inject('relative', 'POST', '/api/residents/res-1/family-access', { email: 'eve@example.org' })).statusCode).toBe(403);
+    expect((await inject('staff', 'POST', '/api/residents/nope/family-access', { email: 'eve@example.org' })).statusCode).toBe(404);
+  });
+
+  it('refuses bad addresses, the family contact, and more than five accounts', async () => {
+    const { inject, grant } = await seeded();
+    expect((await grant('not-an-email')).statusCode).toBe(400);
+    expect((await inject('staff', 'POST', '/api/residents/res-1/family-access', { email: 'a@example.org', role: 'staff' })).statusCode).toBe(400);
+
+    const contact = await grant('Alice@example.org');
+    expect(contact.statusCode).toBe(409);
+    expect(contact.json().reason).toBe('family_contact');
+    expect((await inject('staff', 'DELETE', '/api/residents/res-1/family-access/alice%40example.org')).json().reason).toBe('family_contact');
+
+    for (const n of [1, 2, 3, 4, 5]) expect((await grant(`r${n}@example.org`)).statusCode).toBe(201);
+    const full = await grant('r6@example.org');
+    expect(full.statusCode).toBe(409);
+    expect(full.json().reason).toBe('access_full');
+  });
+
+  it('keeps access granted when the resident is edited, and never shows one relative another’s address', async () => {
+    const { inject, grant } = await seeded();
+    await grant('bob@example.org');
+    const patched = await inject('staff', 'PATCH', '/api/residents/res-1', { family: { name: 'Carol', email: 'carol@example.org' } });
+    expect(patched.json().familyLookup).toEqual(['carol@example.org', 'bob@example.org']);
+
+    const dashboard = await inject('relative', 'GET', '/api/family/residents/res-1/dashboard');
+    expect(dashboard.body).not.toContain('carol@example.org');
+    expect(dashboard.body).not.toContain('bob@example.org');
+  });
+
+  it('sends alerts only to the family contact, not to relatives who may only view', async () => {
+    const { inject, grant, store } = await seeded();
+    await grant('bob@example.org');
+    expect((await inject('relative', 'GET', '/api/family/residents/res-1/dashboard')).json().receivesAlerts).toBe(false);
+    expect((await inject('familyPhone', 'GET', '/api/family/residents/res-1/dashboard')).json().receivesAlerts).toBe(true);
+
+    const res = await inject('relative', 'POST', '/api/family/push-tokens', { token: 'fcm-token-relative' });
+    expect(res.statusCode).toBe(204);
+    expect((await store.getResident('res-1'))?.family?.pushTokens).toEqual([]);
+  });
+
+  it('allows DELETE from the browser', async () => {
+    const app = buildApp({ store: new MemoryStore(), verifier: new FakeVerifier(), signer: fakeSigner, corsOrigins: ['http://localhost:5173'] });
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/residents/res-1/owner',
+      headers: { origin: 'http://localhost:5173', 'access-control-request-method': 'DELETE' },
+    });
+    expect(preflight.headers['access-control-allow-methods']).toContain('DELETE');
   });
 });
 
@@ -804,4 +964,15 @@ describe('family glance: wellbeing tags at a glance (FAM-02, FAM-03)', () => {
     expect(d.glance.trends).toEqual([]);
     expect(d.glance.days.every((x: { domains: unknown }) => x.domains === null)).toBe(true);
   });
+});
+
+
+it('names a no-response R1 case as an observation of silence', async () => {
+  const { app, as, store } = setup();
+  await store.createResident(makeResident('res-1'));
+  await store.putCase(storedCase({ rule: 'R1', autoUrgency: 'emergency', detections: [detection({ rule: 'R1', urgency: 'emergency', noResponse: 'silent_after_greeting', evidence: [] })] }));
+  const detail = (await app.inject({ method: 'GET', url: '/api/cases/case-1?locale=en', ...as('staff') })).json();
+  expect(detail.case.ruleName).toBe('No response after repeated checks');
+  expect(detail.case.reason).toContain('never spoke');
+  expect(detail.case.reason).not.toContain('Reported acute symptoms');
 });

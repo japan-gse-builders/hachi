@@ -4,10 +4,13 @@
  * analysed in date order by the production worker (`analyzeCall`), exactly as live calls are.
  * Dates are shifted so the last call is today. Residents are paused (no calls are placed) and have
  * no contact details, so nobody is called or notified. Everything is marked `synthetic: true`.
- * Gemini results cached by `eval:r3` are reused.
+ * Names and household notes are made up (`demo-names.json`). Gemini results cached by `eval:r3`
+ * are reused.
  *
- *   npm run seed:demo -w @hachi/analyzer -- [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
+ *   npm run seed:demo -w @hachi/analyzer -- --org <orgId> [--seed 2026] [--people syn-c1,syn-c2,syn-s1] [--dry-run] [--reset]
  *     [--family-login-of <residentId>]
+ *
+ * --org is the organization whose staff will see the demo residents.
  *
  * --reset first deletes those demo residents (only if marked synthetic) with their calls, cases
  * and recordings, so the demo can be rebuilt with today's dates and current code.
@@ -40,10 +43,17 @@ const { values: args } = parseArgs({
     'dry-run': { type: 'boolean', default: false },
     reset: { type: 'boolean', default: false },
     'family-login-of': { type: 'string' },
+    org: { type: 'string' },
   },
 });
+const orgId: string = args.org?.trim() ?? '';
+if (!orgId) throw new Error('Pass --org <organization id>: the demo residents belong to that organization’s staff');
 
 const CACHE = join(import.meta.dirname, '.cache');
+const demoNames = JSON.parse(await readFile(join(import.meta.dirname, 'demo-names.json'), 'utf8')) as {
+  staff: string;
+  residents: Record<string, { name: string; householdNotes: string }>;
+};
 const project = process.env.GOOGLE_CLOUD_PROJECT?.trim() || 'hachicall-nao';
 const bucket = process.env.RECORDINGS_BUCKET?.trim();
 const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
@@ -131,6 +141,8 @@ const wanted = args.people.split(',').map((s) => s.trim());
 const scenario = generateScenario(seed);
 const people = scenario.people.filter((p) => wanted.includes(p.profile.id));
 if (people.length !== wanted.length) throw new Error(`Unknown people in --people; known: ${scenario.people.map((p) => p.profile.id).join(', ')}`);
+const unnamed = wanted.filter((id) => !demoNames.residents[id]);
+if (unnamed.length) throw new Error(`No demo name for ${unnamed.join(', ')} in demo-names.json`);
 
 // Last call today at the scenario's time of day; whole days so local dates stay consistent.
 const lastCall = Math.max(...people.flatMap((p) => p.calls.map((c) => Date.parse(c.startedAt))));
@@ -168,17 +180,21 @@ async function seedPerson({ profile: p, calls }: (typeof people)[number]): Promi
     console.log(`${residentId} already exists; skipped (delete it first to re-seed)`);
     return;
   }
+  const named = demoNames.residents[p.id]!;
   const resident: Resident = {
     id: residentId,
-    name: `${p.name} (synthetic demo)`,
+    name: named.name,
     preferredName: p.name,
     phone: '',
     channel: 'pstn',
     callTime: '10:00',
     timeZone: 'Asia/Tokyo',
     vulnerability: { livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: [] },
-    householdNotes: `Synthetic demo resident (${p.note}). Not a real person; no calls are placed.`,
-    staff: { name: 'Demo staff', phone: '' },
+    householdNotes: named.householdNotes,
+    staff: { name: demoNames.staff, phone: '' },
+    orgId,
+    // As family access, so the API keeps them whenever it recomputes `familyLookup`.
+    familyAccess: familyLogins.filter((c) => c.includes('@')).map((email) => ({ email, addedAt: serviceStartedAt, addedBy: 'seed-demo' })),
     familyLookup: familyLogins,
     serviceStartedAt,
     active: false,
@@ -186,7 +202,7 @@ async function seedPerson({ profile: p, calls }: (typeof people)[number]): Promi
     createdAt: serviceStartedAt,
     updatedAt: new Date().toISOString(),
   };
-  console.log(`${residentId}: ${p.name}, ${p.change}, ${calls.length} calls from ${calls[0]!.startedAt.slice(0, 10)} (+${shift / DAY} days)`);
+  console.log(`${residentId}: ${named.name}, ${p.change} (${p.note}), ${calls.length} calls from ${calls[0]!.startedAt.slice(0, 10)} (+${shift / DAY} days)`);
   if (args['dry-run']) return;
   await store.createResident(resident);
 

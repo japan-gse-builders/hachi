@@ -84,12 +84,17 @@ STREAM_ENV=""
 if gcloud run services describe hachi-voice-gateway --region "${GATEWAY_REGION:-us-central1}" >/dev/null 2>&1; then
   STREAM_ENV=",VOICE_STREAM_URL=wss://hachi-voice-gateway-${PROJECT_NUMBER}.${GATEWAY_REGION:-us-central1}.run.app/twilio/stream"
 fi
+# The gateway reads the same two, and a cooldown set on one service only means one of them is
+# testing the fault against a window the other is not honouring. Set both or neither.
+BREAKER_ENV=""
+[[ -n "${GATEWAY_COOLDOWN_SEC:-}" ]] && BREAKER_ENV=",GATEWAY_COOLDOWN_SEC=${GATEWAY_COOLDOWN_SEC}"
+[[ -n "${GATEWAY_TRANSIENT_FAILURES:-}" ]] && BREAKER_ENV="${BREAKER_ENV},GATEWAY_TRANSIENT_FAILURES=${GATEWAY_TRANSIENT_FAILURES}"
 # Public ingress is required for Twilio webhooks; /tasks/* checks Google OIDC tokens and
 # /twilio/* checks Twilio signatures inside the app.
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --allow-unauthenticated --min-instances 1 --max-instances 10 --cpu 1 --memory 512Mi \
   --concurrency 80 --timeout 60 --cpu-boost \
-  --set-env-vars "PUBLIC_BASE_URL=${URL},TWILIO_VOICE_FROM=${VOICE_FROM},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},TASKS_LOCATION=${REGION},CALL_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA}${STREAM_ENV}" \
+  --set-env-vars "PUBLIC_BASE_URL=${URL},TWILIO_VOICE_FROM=${VOICE_FROM},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},TASKS_LOCATION=${REGION},CALL_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA}${STREAM_ENV}${BREAKER_ENV}" \
   --set-secrets "TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,TWILIO_API_KEY_SID=twilio-api-key-sid:latest,TWILIO_API_KEY_SECRET=twilio-api-key-secret:latest"
 
 echo "==> Cloud Scheduler (every minute)"

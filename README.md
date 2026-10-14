@@ -116,16 +116,19 @@ Urgency levels:
   expire after 15 minutes and only for the configured recordings bucket. The Voice Gateway can only
   create objects in that bucket.
 - **No direct database access from browsers.** Firestore rules deny all client reads and writes; every
-  request goes through the API, which checks Firebase ID tokens on each route. Staff are identified
-  by a custom claim set with an admin script; family members sign in with an email link and only see
-  residents whose registered family contact matches their verified email or phone.
+  request goes through the API, which checks Firebase ID tokens on each route. Staff belong to an
+  organization (a care company) with a role of owner, admin or member, and only ever see their own
+  organization's residents, cases and messages ([ADR 0004](docs/adr/0004-organizations-and-accounts.md));
+  family members sign in with an email link and only see residents whose registered family contact
+  matches their verified email or phone.
 - **Minimal data in messages and logs.** SMS carries no link, phone number or quote (Japanese carriers
   drop such messages from overseas senders) and fits one segment. Family messages never quote the
   transcript. Logs carry IDs rather than transcripts or addresses; idempotency keys store a hash of
   the address.
-- **Synthetic data is labelled.** Evaluation and demo residents are generated with Cloud
-  Text-to-Speech, named "(synthetic demo)", stored with `synthetic: true`, have no contact details and
-  are never called.
+- **Synthetic data is marked.** Evaluation and demo residents are generated with Cloud
+  Text-to-Speech, stored with `synthetic: true`, have no contact details and are never called. Demo
+  residents have made-up names; evaluation reports say on their first line that everything is
+  synthetic.
 - **Secrets live in Secret Manager**, mounted into Cloud Run at deploy time. Nothing secret is in the
   repository; `.env.example` lists non-secret settings only.
 - **Safety rules in the voice prompt:** no diagnoses or medical advice, never "wait and see" in an
@@ -222,8 +225,8 @@ The web app reads its Firebase web config and API URL from `apps/web/.env.local`
 entries in `.env.example`; do not commit that file).
 
 The synthetic R3 evaluation calls Gemini and Cloud Text-to-Speech in your own project:
-`npm run eval:r3 -w @hachi/analyzer`. `npm run seed:demo -w @hachi/analyzer` loads synthetic demo
-residents into Firestore.
+`npm run eval:r3 -w @hachi/analyzer`. `npm run seed:demo -w @hachi/analyzer -- --org <org-id>` loads
+synthetic demo residents into Firestore for that organization.
 
 ## Deploy
 
@@ -246,12 +249,22 @@ export TWILIO_SMS_FROM=+1XXXXXXXXXX     # your Twilio SMS sender
 
 npm run build -w @hachi/web
 firebase deploy --project "$PROJECT_ID" --only hosting,firestore
-
-node infra/set-staff-claim.mjs "$PROJECT_ID" staff@your-org.example
 ```
+
+The first person to sign in on the staff side creates the organization and becomes its owner, then
+invites colleagues from the Team page. To add someone directly instead:
+`node infra/add-member.mjs "$PROJECT_ID" <org-id> staff@your-org.example admin`.
+A new organization rings, messages and shows nobody until it is verified:
+`node infra/verify-organization.mjs "$PROJECT_ID" <org-id> --by you@hachi.example --apply`.
+Deployments from before organizations existed are moved over with `infra/migrate-organizations.mjs`,
+which verifies the organization it creates (see ADR 0004).
 
 Services run in `asia-northeast1` except the Voice Gateway, which runs in `us-central1` next to the
 Gemini Live API (so call audio is processed in the US). The scripts are safe to re-run.
+
+Every push to `main` deploys the web app and the Firestore rules and indexes through
+`.github/workflows/deploy-web.yml` (Cloud Run services still deploy with the scripts above). The
+workflow header lists the GitHub variables it needs.
 
 ## Limitations and roadmap
 
@@ -283,5 +296,3 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 The web UI uses self-hosted **DM Serif Display** for headings, with the existing Avenir Next / Segoe UI
 body stack. The font is licensed separately under the
 [SIL Open Font License 1.1](apps/web/public/fonts/DMSerifDisplay-OFL.txt).
-See [Web typography](docs/TYPOGRAPHY.md) for the heading scale, font-loading behavior, contrast
-measurements and matched before/after screenshots.

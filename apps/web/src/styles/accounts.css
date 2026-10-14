@@ -1,0 +1,35 @@
+@layer screens {
+  /* Which organization, the account, and sign-out share the end of the masthead. */
+  .account-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
+  .account-bar .sign-out { margin-inline-start: 0; }
+  .account-bar a { display: inline-flex; align-items: center; min-height: 48px; padding: 10px var(--space-3); border-radius: var(--radius-control); color: var(--ink); font-weight: 600; text-decoration: none; }
+  .account-bar a[aria-current] { background: var(--brand-tint); color: var(--brand); }
+  .org-switch { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+  .org-switch select { width: auto; max-width: 16rem; min-height: 44px; }
+  .org-name { font-weight: 600; color: var(--ink-muted); overflow-wrap: anywhere; }
+
+  /* Team, organization and activity are one section with its own tabs. */
+  .subnav { display: flex; flex-wrap: wrap; gap: var(--space-1); border-bottom: 1px solid var(--line); }
+  .subnav a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px var(--space-3); color: var(--ink); font-weight: 600; text-decoration: none; }
+  .subnav a[aria-current] { color: var(--brand); box-shadow: inset 0 -3px 0 var(--brand); }
+
+  .member-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .member-controls select { width: auto; min-height: 44px; }
+  .member-name { font-weight: 600; overflow-wrap: anywhere; }
+  .role-owner { background: var(--brand-tint); color: var(--brand); }
+  .role-admin { background: #d9e6f8; color: #1849a0; }
+  .role-member { background: #ece7dc; color: #5c564c; }
+  .status-off { background: #f8e3c4; color: #8a4b08; }
+
+  .activity-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .activity-list > li { display: grid; gap: 2px; padding: var(--space-3) 0; border-top: 1px solid var(--line); }
+  .activity-list > li:last-child { border-bottom: 1px solid var(--line); }
+
+  .usage { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); margin: 0; }
+  .usage div { padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sunken); }
+  .usage dt { color: var(--ink-muted); font-size: var(--text-sm); font-weight: 600; }
+  .usage dd { margin: 0; font-size: var(--text-lg, 1.25rem); font-weight: 700; }
+
+  .unverified-notice { display: grid; gap: var(--space-2); margin-block-end: var(--space-4); border-color: #c98a2b; background: #fdf3e2; }
+  .unverified-notice p { margin: 0; }
+}

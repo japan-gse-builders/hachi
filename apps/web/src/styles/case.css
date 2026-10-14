@@ -1,0 +1,226 @@
+/*
+ * Case page. Narrow: one column in reading order (what was said, the decision, who was told, the
+ * calls, then the rest). From md (720px of page) the decision stays beside the evidence; from xl
+ * (1200px) the records get a third column to compare across calls.
+ */
+@layer screens {
+  /* ---------- Header ---------- */
+
+  .case-head { display: grid; gap: var(--space-2); border-inline-start: 8px solid var(--sev-fill); }
+  .case-head.sev-none { border-inline-start-color: var(--line); }
+  .case-head > * { min-width: 0; margin: 0; }
+  .case-head-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+  .case-head-state { margin: 0; gap: var(--space-2) var(--space-3); }
+  .case-head .resident-heading { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+  .case-head h1 { font-size: clamp(28px, 1cqi + 22px, 36px); }
+  .case-headline { font-size: var(--text-lg); line-height: 1.35; }
+  .case-nowrap { white-space: nowrap; }
+  .case-chips { list-style: none; margin: 0; padding: 0; gap: var(--space-2); }
+  .case-chips .sev-chip { font-size: 14px; font-weight: 600; }
+  /* On a phone four chips stack into four rows above the evidence; as one line of text they are a
+     sentence about the person, which is all they need to be there. */
+  @container card (max-width: 399px) {
+    .case-chips { gap: 0; }
+    .case-chips li:not(:last-child)::after { content: "·" / ""; margin-inline: 6px; color: var(--ink-muted); }
+    .case-chips .sev-chip { display: inline; padding: 0; border: 0; background: none; color: var(--ink-muted); }
+    .case-chips .sev-mark { display: none; }
+  }
+  .case-head-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-4); }
+  .case-head-action > * { margin: 0; }
+  .case-head-action .call-now p { margin: 0; }
+  /* A confirmation or a call in progress needs room to be read. */
+  .case-head-action:has(.confirm, [role="status"], .error) { flex-basis: 100%; justify-content: flex-start; }
+  .case-head-action .call-now { max-width: 420px; }
+  .case-phone { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+  .case-phone .control-label { margin: 0; }
+  .case-phone a { font-weight: 700; }
+
+  /* ---------- Columns ---------- */
+
+  .case-layout { display: flex; flex-direction: column; gap: var(--flow-2); min-width: 0; }
+  .case-col { display: contents; }
+  .case-said { order: 1; }
+  .case-decision { order: 2; }
+  .case-notifications { order: 3; }
+  .case-calls { order: 4; }
+  .case-speech { order: 5; }
+  .case-screening { order: 6; }
+  .case-about { order: 7; }
+  .case-history { order: 8; }
+
+  @container page (min-width: 720px) {
+    .case-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr);
+      grid-template-areas: "evidence decide" "records decide";
+      align-items: start;
+    }
+    .case-col { display: grid; gap: var(--flow-2); min-width: 0; align-content: start; }
+    .case-col > * { order: 0; }
+    .case-col-evidence { grid-area: evidence; }
+    .case-col-decide { grid-area: decide; }
+    .case-col-records { grid-area: records; }
+    /* Room for the cards' shadows and focus rings inside the panel's own scroll box. */
+    .case-col-decide.sticky-panel { margin: -4px -8px; padding: 4px 8px 8px; }
+  }
+  @container page (min-width: 1200px) {
+    .case-layout {
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr) minmax(0, 1fr);
+      grid-template-areas: "evidence decide records";
+    }
+  }
+
+  .case-card-head { justify-content: space-between; }
+
+  /* ---------- What was said ---------- */
+
+  .case-said .quote { margin: 0; }
+  .case-silence { margin: 0; }
+  .case-transcript .transcript { padding-inline-start: var(--space-3); border-inline-start: 2px solid var(--line); }
+
+  /* ---------- Decision ---------- */
+
+  .case-decision { border-top: 4px solid var(--brand); }
+  .case-decision h2 { scroll-margin-top: var(--space-4); }
+  .case-decision label > span:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+  .case-status { gap: var(--space-1); }
+  .case-status legend { margin-bottom: var(--space-1); }
+  .case-seg { display: flex; flex-wrap: wrap; row-gap: var(--space-2); }
+  .case-seg-option { position: relative; display: flex; flex: 1 1 auto; font-weight: 600; cursor: pointer; }
+  .case-seg-option + .case-seg-option { margin-inline-start: -2px; }
+  .case-seg-option:not(:first-child) span { border-start-start-radius: 0; border-end-start-radius: 0; }
+  .case-seg-option:not(:last-child) span { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .case-seg-option:has(input:checked) { z-index: 1; }
+  .case-seg-option input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+  .case-seg-option span { display: inline-flex; flex: 1; align-items: center; justify-content: center; min-height: 48px; padding: 8px 10px; font-size: var(--text-sm); white-space: nowrap; border: 2px solid var(--line-control); border-radius: var(--radius-control); background: var(--surface); text-align: center; line-height: 1.2; }
+  /* The chosen status is marked by a tick as well as the fill. */
+  .case-seg-option input:checked + span { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .case-seg-option input:checked + span::before { content: "✓"; margin-inline-end: 6px; }
+  .case-seg-option input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+  @media (hover: hover) {
+    .case-seg-option:hover input:not(:checked) + span { border-color: var(--brand); color: var(--brand); }
+  }
+  .case-priority > summary { color: var(--brand); }
+
+  /* One row, so the bar covers as little of the page as it can. */
+  .case-action-bar { flex-wrap: nowrap; justify-content: space-between; }
+  .case-action-bar > .sev-chip { min-width: 0; }
+  .case-action-bar > .button { flex: none; padding-inline: 14px; }
+
+  /* ---------- Who was told, history, about ---------- */
+
+  .case-told, .case-events, .case-call-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .case-told { gap: var(--space-2); }
+  .case-told li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
+  .case-told .sev-chip { font-size: 14px; }
+  .case-events { gap: var(--space-2); }
+  .case-events li { display: grid; }
+  .case-facts-list { margin: 0; display: grid; gap: var(--space-3); }
+  .case-facts-list dt { font-weight: 700; font-size: var(--text-sm); color: var(--ink-muted); }
+  .case-facts-list dd { margin: 2px 0 0; }
+  @container card (min-width: 560px) {
+    .case-facts-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .case-facts-list > div:last-child { grid-column: 1 / -1; }
+  }
+
+  /* ---------- Calls ---------- */
+
+  .case-dots-key { margin: 0; font-size: var(--text-xs); }
+  .case-call-list { border-top: 1px solid var(--line); }
+  .case-call-list > li { border-bottom: 1px solid var(--line); }
+  .case-call > summary {
+    display: grid;
+    grid-template-columns: 6.5em auto auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    min-height: 48px;
+    padding: var(--space-2) var(--space-1);
+    color: var(--ink);
+    font-weight: 400;
+    list-style: none;
+  }
+  .case-call > summary::-webkit-details-marker { display: none; }
+  .case-call > summary::after { content: ""; width: 8px; height: 8px; margin-inline: 4px; border-right: 2px solid var(--brand); border-bottom: 2px solid var(--brand); transform: translateY(-25%) rotate(45deg); transition: transform 150ms ease; }
+  .case-call[open] > summary::after { transform: translateY(25%) rotate(225deg); }
+  .case-call > summary:hover { text-decoration: none; background: var(--surface-sunken); }
+  .case-call .sev-chip { font-size: 14px; }
+  .case-call-when { white-space: nowrap; }
+  .case-call-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .case-call-flag { font-weight: 700; }
+  .case-call-length { text-align: end; font-variant-numeric: tabular-nums; }
+  /* Too narrow for one line: the summary goes under the date, status and areas. */
+  @container card (max-width: 599px) {
+    .case-call > summary { grid-template-columns: auto auto minmax(0, 1fr) auto auto; }
+    .case-call-when { grid-column: 1 / span 2; }
+    .case-call > summary > .sev-chip { grid-row: 1; grid-column: 3; justify-self: start; }
+    .case-call > summary > .case-dots { grid-row: 2; grid-column: 1; }
+    .case-call-line { grid-row: 2; grid-column: 2 / span 3; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+    .case-call-length { grid-row: 1; grid-column: 4; }
+    .case-call > summary::after { grid-row: 1; grid-column: 5; }
+  }
+  .case-call-body { display: grid; gap: var(--space-2); padding: 0 var(--space-1) var(--space-3); }
+  .case-call-body > * { margin: 0; }
+  .case-call-notes { margin: 0; display: grid; gap: var(--space-1); }
+  .case-call-notes div { display: grid; grid-template-columns: 5em minmax(0, 1fr); gap: var(--space-2); }
+  .case-call-notes dt { font-weight: 700; font-size: var(--text-sm); color: var(--ink-muted); }
+  .case-call-notes dd { margin: 0; }
+
+  .case-dots { display: inline-flex; gap: 3px; min-inline-size: calc(6 * 18px + 5 * 3px); }
+  .case-dot { display: inline-flex; align-items: center; justify-content: center; inline-size: 18px; block-size: 18px; border: 1.5px var(--sev-line-style) var(--sev-line); border-radius: 4px; background: var(--sev-fill); color: var(--sev-on); font-size: 11px; font-weight: 800; line-height: 1; }
+  .case-dot.sev-none { border-color: var(--line-control); opacity: 0.6; }
+
+  /* ---------- Screening ---------- */
+
+  .case-meter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+  .case-meter-bar { flex: 1 1 8rem; max-inline-size: 16rem; block-size: 12px; border: 1px solid var(--line-control); border-radius: 999px; background: var(--surface-sunken); overflow: hidden; }
+  .case-meter-bar > span { display: block; block-size: 100%; background: var(--brand); }
+  .case-screening .disclosure-peek { flex-basis: 100%; }
+
+  /* ---------- Speech ---------- */
+
+  .speech-picks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+  .speech-pick { min-height: 44px; padding: 2px; border: 2px solid transparent; border-radius: 999px; background: none; color: inherit; font-weight: inherit; }
+  .speech-pick:hover { border-color: var(--line-control); background: var(--surface-sunken); color: inherit; }
+  .speech-pick[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-tint); }
+  .speech-pick .sev-chip { cursor: pointer; }
+
+  .speech-figure { display: grid; gap: var(--space-2); margin: 0; }
+  .speech-figure figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
+  .speech-unit { margin: 0; color: var(--ink-muted); font-size: var(--text-sm); }
+  .speech-plot { position: relative; min-width: 0; }
+  .speech-svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+  .speech-grid { stroke: var(--line); stroke-width: 1; }
+  .speech-tick { fill: var(--ink-muted); font-family: var(--font-body); font-size: 14px; }
+  .speech-usual { fill: var(--sev-good); fill-opacity: 0.16; }
+  .speech-usual-mean { stroke: var(--sev-good); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: 0.7; }
+  .speech-usual-label { fill: var(--sev-good); font-family: var(--font-body); font-size: 14px; font-weight: 700; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+  .speech-trace { fill: none; stroke: var(--ink-muted); stroke-width: 1.5; }
+  .speech-dot { fill: var(--sev-good); stroke: var(--surface); stroke-width: 2; }
+  /* Outside points take the measure's own severity, set on the figure. */
+  .speech-dot-out { fill: var(--sev-fill); stroke: var(--sev-line); stroke-width: 1.5; }
+  .speech-dot-skip { fill: var(--surface); stroke: var(--ink-muted); stroke-width: 2; }
+  .speech-hits { position: absolute; inset: 0; pointer-events: none; }
+  .speech-hit { position: absolute; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-inner); background: transparent; pointer-events: auto; cursor: pointer; }
+  .speech-hit:hover { border: 0; background: rgb(28 25 21 / 0.05); }
+  .speech-hit:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; background: rgb(31 77 58 / 0.07); }
+  .speech-tip { position: absolute; z-index: 5; display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-inner); background: var(--ink); color: #fff; box-shadow: var(--shadow-raised); font-size: 15px; line-height: 1.35; pointer-events: none; }
+  .speech-tip.is-outside { border-inline-start: 6px solid var(--sev-fill); }
+  .speech-key { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); color: var(--ink-muted); font-size: 15px; }
+  .speech-key li { display: flex; align-items: center; gap: 6px; }
+  .speech-key li > span { flex: none; inline-size: 14px; block-size: 14px; }
+  .speech-key-band { border-radius: 3px; background: rgb(47 122 79 / 0.25); }
+  .speech-key-dot { border-radius: 50%; background: var(--sev-good); }
+  .speech-key-out { border: 1.5px solid var(--sev-line); background: var(--sev-fill); transform: rotate(45deg) scale(0.8); }
+  .speech-key-skip { border: 2px solid var(--ink-muted); border-radius: 50%; }
+
+  .speech-progress { display: grid; gap: var(--space-2); justify-items: start; }
+  .speech-progress-cells { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 4px; inline-size: min(100%, 22rem); }
+  .speech-progress-cells li { block-size: 12px; border: 1px solid var(--line-control); border-radius: 3px; background: var(--surface-sunken); }
+  .speech-progress-cells li.is-done { border-color: var(--brand); background: var(--brand); }
+
+  .speech-table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; }
+  .speech-table th, .speech-table td { padding: var(--space-1) var(--space-3) var(--space-1) 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: normal; }
+  .speech-table thead th { font-size: 15px; }
+  .speech-table thead .meta { display: block; font-size: var(--text-xs); font-weight: 400; }
+  .speech-table td { white-space: nowrap; }
+}
