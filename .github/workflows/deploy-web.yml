@@ -8,6 +8,7 @@
 #   optional: VITE_FIREBASE_MESSAGING_SENDER_ID, VITE_FIREBASE_APP_ID, VITE_FIREBASE_VAPID_KEY
 # The VITE_* values are public web config compiled into the bundle, so they are variables, not
 # secrets. Authentication is keyless (Workload Identity Federation); no key file is stored.
+
 name: Deploy web
 
 on:
@@ -28,9 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
+
     permissions:
       contents: read
       id-token: write
+
     env:
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
@@ -40,6 +43,7 @@ jobs:
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
       VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
       VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
+
     steps:
       - uses: actions/checkout@v7
 
@@ -49,14 +53,16 @@ jobs:
           cache: npm
 
       - name: Check configuration
-        # A build without these still succeeds but ships a site where nobody can sign in.
         env:
           WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
         run: |
           missing=0
           for name in FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_API_BASE WIF_PROVIDER DEPLOY_SA; do
-            if [ -z "${!name}" ]; then echo "::error::Variable for $name is not set"; missing=1; fi
+            if [ -z "${!name}" ]; then
+              echo "::error::Variable for $name is not set"
+              missing=1
+            fi
           done
           exit "$missing"
 
@@ -79,41 +85,28 @@ jobs:
           --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
 
       - name: Check the live site serves this build
-        # The app is served from the hachicall site; the project's default site redirects there.
         run: |
-          expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
-          url="https://hachicall.web.app/"
-          old="https://${FIREBASE_PROJECT_ID}.web.app/staff"
-          for _ in 1 2 3 4 5 6; do
-            location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old")
-            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected" && [ "$location" = "301 $url" ]; then
-              echo "Live: $url serves $expected (${GITHUB_SHA::7}); $old redirects there"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "::error::$url should serve $expected and $old should answer 301 to it (got: $location)"
-          exit 1
-        run: >-
-          npx --yes firebase-tools@15 deploy
-          --only hosting:hachi-call,firestore
-          --project "$FIREBASE_PROJECT_ID"
-          --non-interactive
-          --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
+          set -e
+          expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html | head -n 1)
+          if [ -z "$expected" ]; then
+            echo "::error::Could not find the built JavaScript asset in index.html"
+            exit 1
+          fi
 
-      - name: Check the live site serves this build
-        # The app is served from the `hachicall` site; the project's default site only redirects there.
-        run: |
-          expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
           url="https://hachicall.web.app/"
           old="https://${FIREBASE_PROJECT_ID}.web.app/staff"
+
           for _ in 1 2 3 4 5 6; do
-            location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old")
-            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected" && [ "$location" = "301 $url" ]; then
+            location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old" || true)
+
+            if curl -fsS -H 'Cache-Control: no-cache' "$url" | grep -q "$expected" &&
+               [ "$location" = "301 $url" ]; then
               echo "Live: $url serves $expected (${GITHUB_SHA::7}); $old redirects there"
               exit 0
             fi
+
             sleep 10
           done
+
           echo "::error::$url should serve $expected and $old should answer 301 to it (got: $location)"
           exit 1
