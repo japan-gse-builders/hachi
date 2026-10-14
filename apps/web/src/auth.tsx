@@ -22,6 +22,7 @@ import {
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { sectionOf } from './signin';
+import { sendInvitationLink } from './invitations';
 
 const env = import.meta.env;
 const config = {
@@ -77,6 +78,7 @@ interface Session {
   signInWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   sendSignInLink: (email: string) => Promise<void>;
+  sendInvitationEmail: (email: string) => Promise<void>;
   confirmEmail: () => Promise<void>;
   isSignInLink: (href: string) => boolean;
   storedLinkEmail: () => string | null;
@@ -182,6 +184,7 @@ export function useAuth(): Session {
       await sendSignInLinkToEmail(requireAuth(side), email, { url: `${window.location.origin}/${side}/finish`, handleCodeInApp: true });
       window.localStorage.setItem(LINK_EMAIL_KEY, email);
     },
+    sendInvitationEmail: (email) => sendInvitationLink(requireAuth('staff'), email, window.location.origin),
     // Firebase drops an account's password the moment a sign-in link is used, so confirming an
     // address has to go through verification instead of the link we already have to hand.
     confirmEmail: async () => {

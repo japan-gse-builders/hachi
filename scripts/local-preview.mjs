@@ -148,7 +148,9 @@ export const useAuth = () => ({
  user: location.pathname === '/privacy' ? null : location.pathname.startsWith('/family') ? {uid: 'demo-family', email: 'family@example.invalid', emailVerified: true} : staffUser,
  role: location.pathname.startsWith('/family') ? 'family' : 'staff', ready: true, token,
  signOut, confirmEmail: noop, signIn: noop,
- signInWithGoogle: noop, sendPasswordReset: noop, sendSignInLink: noop, finishSignInLink: noop,
+ signInWithGoogle: noop, sendPasswordReset: noop, sendSignInLink: noop,
+ sendInvitationEmail: async () => {throw new Error('Email delivery is disabled in the local preview');},
+ finishSignInLink: noop,
  isSignInLink: () => false, storedLinkEmail: () => null,
  hasPassword: true, changePassword: noop, reloadUser: noop,
 });`;
