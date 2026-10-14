@@ -132,10 +132,11 @@
 
   /* ---------- Cards ---------- */
 
-  /* Every card is a container, so what is inside it adapts to the card's width wherever it is placed.
-     Containers paint as stacking contexts; an open popover lifts its card above the next one. */
-  .card { container: card / inline-size; position: relative; min-width: 0; background: var(--surface); border: 1px solid rgba(28, 25, 21, 0.06); border-radius: var(--radius-card); padding: var(--card-pad); box-shadow: var(--shadow-card); overflow-wrap: anywhere; }
-  .card:is(:hover, :focus-within, :has([aria-expanded="true"], .is-open)) { z-index: 1; }
+  /* Each card adapts to its width and isolates its controls from neighboring cards.
+     An open popover lifts its card above both resting and hovered cards. */
+  .card { container: card / inline-size; position: relative; isolation: isolate; min-width: 0; background: var(--surface); border: 1px solid rgba(28, 25, 21, 0.06); border-radius: var(--radius-card); padding: var(--card-pad); box-shadow: var(--shadow-card); overflow-wrap: anywhere; }
+  .card:is(:hover, :focus-within) { z-index: 1; }
+  .card:has([aria-expanded="true"], .is-open) { z-index: 2; }
   .tiles > .card { display: flex; flex-direction: column; gap: var(--space-2); }
   .tiles > .card > * { margin: 0; }
   .tiles > .card > .badge { align-self: flex-start; }
