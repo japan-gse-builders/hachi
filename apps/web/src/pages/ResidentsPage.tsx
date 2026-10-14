@@ -191,9 +191,9 @@ export function ResidentsPage() {
         <div className="tile-owner residents-owner">
           {ownership === 'unassigned' ? (
             <>
-              <span className="badge watch">Nobody responsible</span>
+              <span className="badge watch">Unassigned</span>
               <p><button className="ghost" type="button" disabled={busyId !== null} onClick={() => void updateResident(r.id, 'take-on')}>
-                {busyId === r.id ? 'Saving…' : 'Take on'}
+                {busyId === r.id ? 'Saving…' : 'Assign to me'}
               </button></p>
             </>
           ) : (
@@ -218,7 +218,7 @@ export function ResidentsPage() {
           <div className="stack notice notice-warning">
             <p role="status"><strong>Approval needed.</strong> Daily calls will wait until the patient agrees.</p>
             {mine && consentFor !== r.id && <p><button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button></p>}
-            {!mine && <p className="meta">{r.owner ? `${ownerName(r.owner)} can record it.` : 'Take them on to record it.'}</p>}
+            {!mine && <p className="meta">{r.owner ? `${ownerName(r.owner)} can record it.` : 'Assign yourself to this patient to record their approval.'}</p>}
             {consentFor === r.id && (
               <form className="stack" onSubmit={(event) => {
                 event.preventDefault();

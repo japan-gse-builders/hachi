@@ -68,8 +68,8 @@ export function ResidentEditPage() {
           <h1>Edit {resident.name}</h1>
           <p>
             {ownership === 'theirs'
-              ? `Only ${ownerName(resident.owner!)}, who is responsible for ${resident.preferredName || resident.name}, or an admin can change these details.`
-              : `Nobody is responsible for ${resident.preferredName || resident.name} yet. Take them on to change these details.`}
+              ? `Only ${ownerName(resident.owner!)}, who is responsible for ${resident.name}, or an admin can change these details.`
+              : `No staff member is assigned to ${resident.name} yet. Assign yourself to change these details.`}
           </p>
           <p><Link to={detailLink}>Go to {resident.name}</Link></p>
         </section>
@@ -86,8 +86,8 @@ export function ResidentEditPage() {
         {ownership !== 'mine' && (
           <p className="notice" role="note">
             {ownership === 'theirs'
-              ? `You are changing these as an admin. ${ownerName(resident.owner!)} is responsible for ${resident.preferredName || resident.name}; the change is recorded in the activity log.`
-              : `You are changing these as an admin. Nobody is responsible for ${resident.preferredName || resident.name} yet; the change is recorded in the activity log.`}
+              ? `You are changing these as an admin. ${ownerName(resident.owner!)} is responsible for ${resident.name}; the change is recorded in the activity log.`
+              : `You are changing these as an admin. No staff member is assigned to ${resident.name} yet; the change is recorded in the activity log.`}
           </p>
         )}
         <ResidentFields resident={resident} />

@@ -26,7 +26,7 @@ function contactLine(c: { name?: string | null; phone?: string | null; sms?: str
 }
 
 function CurrentStaff({ resident }: { resident: Resident }) {
-  const who = resident.preferredName || resident.name;
+  const who = resident.name;
   return (
     <>
       <p>{resident.staff ? contactLine(resident.staff) : 'Nobody yet.'}</p>
