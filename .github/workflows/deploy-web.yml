@@ -72,8 +72,11 @@ jobs:
 
       - name: Deploy to Firebase
         run: >-
+         ```yaml
+      - name: Deploy to Firebase
+        run: >-
           npx --yes firebase-tools@15 deploy
-          --only hosting,firestore
+          --only hosting:hachi-call,firestore
           --project "$FIREBASE_PROJECT_ID"
           --non-interactive
           --message "${GITHUB_SHA::7} ${GITHUB_RUN_ID}"
@@ -82,7 +85,7 @@ jobs:
         # The app is served from the `hachicall` site; the project's default site only redirects there.
         run: |
           expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' apps/web/dist/index.html)
-          url="https://hachicall.web.app/staff"
+          url="https://hachicall.web.app/"
           old="https://${FIREBASE_PROJECT_ID}.web.app/staff"
           for _ in 1 2 3 4 5 6; do
             location=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$old")
