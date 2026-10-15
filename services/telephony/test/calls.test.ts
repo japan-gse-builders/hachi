@@ -17,6 +17,13 @@ import { BASE_URL, makeDeps, NOW, resident, retryable, unverified } from './fixt
 const INPUT = { residentId: 'res-1', localDate: '2026-10-02', attempt: 0 };
 
 describe('dispatchDueCalls', () => {
+  it('does not queue synthetic demo patients even in a verified company', async () => {
+    const { deps, store, queue } = makeDeps();
+    await store.createResident(resident('demo-patient', { synthetic: true }));
+    expect(await dispatchDueCalls(deps)).toMatchObject({ checked: 1, enqueued: 0, errors: [] });
+    expect(queue.tasks).toHaveLength(0);
+  });
+
   it('enqueues residents whose call time is due, with deterministic task names', async () => {
     const { deps, store, queue } = makeDeps();
     await store.createResident(resident('res-1'));

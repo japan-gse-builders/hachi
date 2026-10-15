@@ -2,7 +2,6 @@
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { fixtures } from './preview-fixtures.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const port = Number(process.argv[2] || 5190);
@@ -10,124 +9,42 @@ const requireFromRepo = createRequire(join(root, 'package.json'));
 const { createServer } = await import(pathToFileURL(requireFromRepo.resolve('vite')));
 const { default: react } = await import(pathToFileURL(requireFromRepo.resolve('@vitejs/plugin-react')));
 const { MemoryStore } = await import(pathToFileURL(join(root, 'packages/store/dist/index.js')));
-const { PRIVACY_NOTICE, domainStates } = await import(pathToFileURL(join(root, 'packages/core/dist/index.js')));
 const { buildApp } = await import(pathToFileURL(join(root, 'services/api/dist/app.js')));
-const { buildResident } = await import(pathToFileURL(join(root, 'services/api/dist/residents.js')));
-const { residentInputSchema } = await import(pathToFileURL(join(root, 'services/api/dist/schemas.js')));
-
-fixtures.queue.items.push({caseId: 'case-5', residentId: 'res-5', residentName: 'Edith Carter', rule: 'R1', urgency: 'emergency', summary: 'Asked for immediate help during the call.'});
+const { buildDemoData } = await import(pathToFileURL(join(root, 'services/api/dist/demo.js')));
+const catalog = buildDemoData(new Date());
+const people = catalog.memberships.map(m => ({...m, company: catalog.organizations.find(o => o.id === m.orgId).name}));
+const defaultPerson = people[0];
 
 const verifier = {
   async verify(token) {
-    if (token === 'demo-staff') return {uid: 'demo-staff', email: 'demo@example.invalid', emailVerified: true, name: 'Aiko Tanaka', authTime: Math.floor(Date.now() / 1000)};
     if (token === 'demo-family') return {uid: 'demo-family', email: 'family@example.invalid', emailVerified: true};
-    throw new Error('Unknown local preview account');
+    const person = people.find(p => p.uid === token);
+    if (!person) throw new Error('Unknown local preview account');
+    return {uid: person.uid, email: person.email, emailVerified: true, name: person.name, authTime: Math.floor(Date.now() / 1000)};
   },
 };
-
-const demoStaff = {uid: 'demo-staff', email: 'demo@example.invalid', name: 'Aiko Tanaka', phone: '+81300000000'};
-const demoColleague = {uid: 'demo-colleague', email: 'colleague@example.invalid', name: 'Yuki Sato', phone: '+81300000001'};
-const PORTRAIT_BY_NAME = {
-  'Margaret Ellis': 'grandmother-2', 'Arthur Nakamura': 'grandfather-1', 'Dorothy Ishii': 'grandmother-1',
-  'Harold Brooks': 'grandfather-4', 'Edith Carter': 'grandmother-3',
-};
-const portraitOf = (name) => PORTRAIT_BY_NAME[name];
-
-const ORG = 'org-sakura';
-
-/** The demo account owns one organization and helps out at a second, so the switcher shows. */
-function seedAccounts(store, now) {
-  const joined = new Date(now.getTime() - 60 * 86400_000).toISOString();
-  // The internal organization is verified; the trial one is not, so its calls and alerts are off.
-  const org = (id, name, plan) => ({
-    id, name, timeZone: 'Asia/Tokyo', status: 'active',
-    ...(plan === 'internal' ? {verifiedAt: joined, verifiedBy: 'migration'} : {}),
-    billing: {plan, email: 'billing@example.invalid', limits: plan === 'internal' ? {residents: 1000, members: 200} : {residents: 20, members: 10}},
-    createdAt: joined, createdBy: 'demo-staff', updatedAt: joined,
-  });
-  const member = (orgId, uid, email, name, role, phone) => ({orgId, uid, email, name, ...(phone ? {phone} : {}), role, status: 'active', joinedAt: joined, updatedAt: joined});
-  // The nurse has not added a phone number yet, so cannot be put in charge of anyone.
-  store.seedAccounts({
-    organizations: [org(ORG, 'Sakura Home Care', 'internal'), org('org-midori', 'Midori Day Service', 'trial')],
-    memberships: [
-      member(ORG, 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'owner', demoStaff.phone),
-      member(ORG, 'demo-colleague', 'colleague@example.invalid', 'Yuki Sato', 'member', demoColleague.phone),
-      member(ORG, 'demo-nurse', 'nurse@example.invalid', 'Kenji Mori', 'admin'),
-      member('org-midori', 'demo-staff', 'demo@example.invalid', 'Aiko Tanaka', 'admin', demoStaff.phone),
-    ],
-  });
-}
 
 async function makeApi() {
   const store = new MemoryStore();
   const now = new Date();
-  const at = new Date(now.getTime() - 30 * 60_000).toISOString();
-  seedAccounts(store, now);
-  for (let i = 0; i < fixtures.queue.items.length; i++) {
-    const item = fixtures.queue.items[i];
-    const input = residentInputSchema.parse({
-      name: item.residentName,
-      preferredName: item.residentName.split(' ')[0],
-      portrait: portraitOf(item.residentName),
-      phone: '+81900000000' + (i + 1),
-      callTime: '10:00', timeZone: 'Asia/Tokyo',
-      vulnerability: {livesAlone: i === 0, hasCloseSupporter: i !== 0, needsCare: i === 0, chronicConditions: i === 0 ? ['Arthritis'] : []},
-      householdNotes: i === 0 ? 'Lives alone. Daughter Sarah phones from overseas on weekends.' : 'A neighbor looks in most days.',
-      family: {name: 'Sarah ' + item.residentName.split(' ').at(-1), relationship: 'Daughter', email: 'family@example.invalid'},
-      serviceStartedAt: new Date(now.getTime() - 35 * 86400_000).toISOString(),
-      callConsent: {accepted: true, noticeVersion: PRIVACY_NOTICE.version},
-    });
-    // One resident belongs to a colleague, so the read-only view can be tried too.
-    const owner = i === 2 ? demoColleague : demoStaff;
-    const resident = {...buildResident(input, item.residentId, ORG, now, owner, owner), synthetic: true};
+  // Aiko also helps the two partner companies, so she can demonstrate the organization switcher.
+  const data = buildDemoData(now, {uid: defaultPerson.uid, email: defaultPerson.email, name: defaultPerson.name});
+  // Local-only contact placeholders and verification allow assignment/family screens to be tried.
+  // No outbound workers or cloud adapters exist in this harness. The hosted seed keeps phones empty
+  // and organizations unverified instead.
+  for (const org of data.organizations) { org.verifiedAt = now.toISOString(); org.verifiedBy = 'local-preview'; }
+  for (const member of data.memberships) member.phone = '+81300000000';
+  store.seedAccounts(data);
+  for (const resident of data.residents) {
+    resident.staff.phone = '+81300000000';
+    if (resident.id === 'demo-sakura-patient-1') {
+      resident.family = {name: 'Sarah Ellis', relationship: 'Daughter', email: 'family@example.invalid'};
+      resident.familyLookup = ['family@example.invalid'];
+    }
     await store.createResident(resident);
-    const calls = Array.from({length: 14}, (_, day) => {
-      const startedAt = new Date(Date.parse(at) - day * 86400_000).toISOString();
-      const foodId = day < 2 ? 'food.ate_little' : 'food.ate_well';
-      const tags = [{id: foodId, turn: 1, basis: 'said', confidence: 0.9},
-        {id: 'social.family_contact', turn: 3, basis: 'said', confidence: 0.9}];
-      return {
-        id: 'call-' + (day + 1), residentId: resident.id, source: 'imported', synthetic: true,
-        status: 'completed', channel: 'pstn', startedAt,
-        endedAt: new Date(Date.parse(startedAt) + 240_000).toISOString(), durationSec: 240,
-        transcript: day < 2 ? fixtures.detail.calls[0].transcript : [
-          {speaker: 'agent', text: 'How have your meals been today?', startMs: 0, endMs: 3000},
-          {speaker: 'resident', text: 'I ate well today and enjoyed my lunch.', startMs: 4000, endMs: 8000},
-          {speaker: 'agent', text: 'Has your family been in touch?', startMs: 9000, endMs: 12000},
-          {speaker: 'resident', text: 'Yes, my daughter called yesterday.', startMs: 13000, endMs: 17000},
-        ],
-        summary: fixtures.detail.calls[0].summary, familySummary: fixtures.detail.calls[0].summary,
-        wellbeing: {tags, domains: domainStates(tags.map(t => t.id)), headline: 'Enjoyed hearing from her daughter; still has little appetite.'},
-        analysisPending: false, createdAt: startedAt,
-      };
-    });
-    await store.addCalls(calls);
-    await store.putCase({
-      id: item.caseId, orgId: ORG, residentId: resident.id, rule: item.rule, autoUrgency: item.urgency,
-      status: 'open', firstDetectedAt: at, updatedAt: at,
-      detections: [{residentId: resident.id, rule: item.rule, urgency: item.urgency,
-        confidence: 0.9, summary: item.summary, detectedAt: at,
-        evidence: [{callId: 'call-1', quote: calls[0].transcript[1].text, startMs: 25000, endMs: 32000}]}],
-      notifications: i === 0 ? [
-        {recipient: 'staff', channel: 'email', address: 'staff@example.invalid', sentAt: at},
-        {recipient: 'family', channel: 'email', address: 'family@example.invalid', sentAt: at},
-      ] : [],
-    });
   }
-  const pending = residentInputSchema.parse({
-    name: 'Claire Watanabe', preferredName: 'Claire', portrait: 'grandmother-4', phone: '+819000000006',
-    callTime: '10:00', timeZone: 'Asia/Tokyo',
-    vulnerability: {livesAlone: false, hasCloseSupporter: true, needsCare: false, chronicConditions: []},
-  });
-  // Nobody responsible yet, as residents registered before ownership existed can be.
-  const {owner: _unassigned, ...pendingResident} = buildResident(pending, 'pending-1', ORG, now, demoStaff, demoStaff);
-  await store.createResident({...pendingResident, synthetic: true});
-  // Margaret has a second open case under another rule, so the queue shows her once with both.
-  const meals = (await store.listCasesByResident('res-1'))[0];
-  await store.putCase({...meals, id: 'case-1-speech', rule: 'R3', autoUrgency: 'watch', notifications: [],
-    detections: [{...meals.detections[0], rule: 'R3', urgency: 'watch', summary: 'Pausing more than usual between words.'}]});
-  const original = (await store.listCasesByResident('res-2'))[0];
-  await store.putCase({...original, id: 'closed-case', status: 'closed', detections: [{...original.detections[0], summary: 'Earlier speech concern, now resolved.'}], outcome: {anomalyConfirmed: true, note: 'Spoke with her son; she is sleeping better now.'}});
+  await store.addCalls(data.calls);
+  for (const c of data.cases) await store.putCase(c);
   return buildApp({store, verifier, signer: {sign: async () => {throw new Error('No recordings in the local preview');}}});
 }
 
@@ -135,13 +52,21 @@ let api = await makeApi();
 await api.ready();
 
 const authPreview = `
+import {createElement as h, Fragment} from 'react';
+const people = ${JSON.stringify(people)};
+const selected = people.find(p => p.uid === localStorage.getItem('hachi-preview-person')) || people[0];
 export const authReady = true;
 export const firebaseApp = null;
-export const AuthProvider = ({children}) => children;
+export const AuthProvider = ({children}) => h(Fragment, null,
+  h('aside', {role: 'region', 'aria-label': 'Demo controls', style: {display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', background: '#e6efe9', borderBottom: '1px solid #c7d7cd', fontSize: '14px'}},
+    h('span', null, h('strong', null, 'Demo preview'), ' · Fictional people and companies. No calls or emails.'),
+    h('label', {style: {display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', maxWidth: '100%'}}, 'View as',
+      h('select', {value: selected.uid, style: {width: 'auto', maxWidth: '100%'}, onChange: (e) => {localStorage.setItem('hachi-preview-person', e.target.value); location.href = '/staff';}},
+        ...people.map(p => h('option', {key: p.uid, value: p.uid}, p.name + ' · ' + p.company + ' · ' + p.role))))), children);
 const noop = async () => {};
-const token = async () => location.pathname.startsWith('/family') ? 'demo-family' : 'demo-staff';
-const staffUser = {uid: 'demo-staff', email: 'demo@example.invalid', emailVerified: true, providerData: [{providerId: 'password'}]};
-const staffToken = async () => 'demo-staff';
+const token = async () => location.pathname.startsWith('/family') ? 'demo-family' : selected.uid;
+const staffUser = {uid: selected.uid, email: selected.email, emailVerified: true, providerData: [{providerId: 'password'}]};
+const staffToken = async () => selected.uid;
 const signOut = async () => {location.href = '/privacy';};
 export const useStaffSession = () => ({user: staffUser, ready: true, token: staffToken, signOut});
 export const useAuth = () => ({

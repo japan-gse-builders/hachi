@@ -109,6 +109,7 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
 
   const handle = async (r: Resident) => {
     try {
+      if (r.synthetic) return;
       if (!hasCallConsent(r.callConsent)) return;
       if (!isDue(r.callTime, r.timeZone, windowStart, now)) return;
       if (!(await mayCall(r.orgId))) return;

@@ -1,12 +1,13 @@
 import type { Resident } from '../types';
 import { PORTRAITS, portraitSrc } from './ResidentAvatar';
 import { StaffInChargeField } from './StaffInChargeField';
+import { callTimeZoneLabel } from '../schedule';
 
 /**
  * The resident's details, the staff member in charge and their family contact, as one set of
  * fields for both adding and editing. Read back with `readResidentForm`.
  */
-export function ResidentFields({ resident }: { resident?: Resident }) {
+export function ResidentFields({ resident, timeZone }: { resident?: Resident; timeZone?: string }) {
   const v = resident?.vulnerability;
   const family = resident?.family;
   return (
@@ -18,8 +19,8 @@ export function ResidentFields({ resident }: { resident?: Resident }) {
           <label>Name Hachi should use<input name="preferredName" required maxLength={50} defaultValue={resident?.preferredName} /></label>
           <label>Mobile number<input name="phone" type="tel" required placeholder="+819012345678" spellCheck={false} defaultValue={resident?.phone} /></label>
           <label>Daily call time
-            <input name="callTime" required defaultValue={resident?.callTime ?? '10:00'} pattern="([01]\d|2[0-3]):[0-5]\d" title="Use 24-hour time, such as 09:30" aria-describedby="call-time-hint" />
-            <span id="call-time-hint" className="hint">24-hour time, Japan time</span>
+            <input name="callTime" type="time" step={60} required defaultValue={resident?.callTime ?? '10:00'} aria-describedby="call-time-hint" />
+            <span id="call-time-hint" className="hint">{callTimeZoneLabel(resident?.timeZone ?? timeZone ?? 'Asia/Tokyo')} · Set separately for each patient.</span>
           </label>
         </div>
         <div className="portrait-field" role="radiogroup" aria-labelledby="portrait-label">

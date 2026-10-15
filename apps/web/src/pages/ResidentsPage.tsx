@@ -168,7 +168,7 @@ export function ResidentsPage() {
           </h3>
           <p className="meta">
             {r.preferredName && <>{r.preferredName} · </>}
-            <a href={`tel:${r.phone}`}>{phoneDisplay(r.phone)}</a> · daily call {r.callTime}
+            {r.phone ? <a href={`tel:${r.phone}`}>{phoneDisplay(r.phone)}</a> : <span>{r.synthetic ? 'Demo patient' : 'No phone number'}</span>} · daily call {r.callTime}
           </p>
           {chips.length > 0 && (
             <ul className="residents-chips" aria-label="At a glance">
@@ -205,7 +205,8 @@ export function ResidentsPage() {
           {mayEditDetails(r, user?.uid, current?.role) && <p className="meta"><Link to={`/staff/residents/${r.id}/edit`}>Edit details and contacts</Link></p>}
         </div>
         <div className="tile-actions residents-actions">
-          {r.active && hasCallConsent(r.callConsent) && (
+          {mayEditDetails(r, user?.uid, current?.role) && <Link className="button ghost" to={`/staff/residents/${r.id}#daily-call-schedule`}>Change call time</Link>}
+          {!r.synthetic && r.active && hasCallConsent(r.callConsent) && (
             <CallNowButton residentId={r.id} name={r.preferredName || r.name} phone={r.phone} busyCallId={liveCall(r)} />
           )}
           {mine && (
