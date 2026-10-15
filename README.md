@@ -77,6 +77,11 @@ project rather than a detail of it:
    in Firestore feeds the notifier (SMS, email, web push, voice alert).
 7. **Review.** Staff use the triage queue and case pages; family members see a read-only dashboard.
    Both are a React PWA on Firebase Hosting backed by the API on Cloud Run.
+8. **Measure operations (optional).** A separate worker publishes terminal call statistics through
+   Pub/Sub into BigQuery. Reports show completion rates, analysis gaps and in-call emergency flags
+   without exporting transcripts, recordings or contact details. It defaults to synthetic data and
+   does not interrupt calls or alerts if analytics is unavailable. See [the analytics setup and
+   demo](docs/ANALYTICS.md); this pipeline is an additional deployment, not shown in the image above.
 
 The web header, browser tab, installed app and push notifications use the original Hachi artwork
 from [`japan-gse-builders/shutas-playground`](https://github.com/japan-gse-builders/shutas-playground).
@@ -167,8 +172,10 @@ application's own limit as a second line. See [docs/COST_CONTROL.md](docs/COST_C
 |---|---|
 | Gemini Live API (Vertex AI) | Real-time voice conversation |
 | Gemini (Vertex AI, `gemini-3.8-flash`) | Post-call review, summaries, listening for self-repairs, topic coherence |
-| Cloud Run | telephony, voice-gateway, analyzer, notifier, API |
+| Cloud Run | telephony, voice-gateway, analyzer, notifier, API; optional analytics worker |
 | Cloud Tasks / Cloud Scheduler | Dialling, emergency bridging, analysis and notification queues; periodic sweeps |
+| Pub/Sub (optional analytics) | Buffers call-outcome events for native BigQuery delivery; retries and dead-letter retention |
+| BigQuery (optional analytics) | Partitioned operational history and deduplicated daily call reports |
 | Firestore | Residents, calls, cases, outbox |
 | Cloud Storage | Call recordings |
 | Firebase Authentication / Hosting / Cloud Messaging | Staff and family sign-in, web app, push alerts |
@@ -202,6 +209,7 @@ packages/cloud     Cloud Tasks, OIDC verification, shared cloud helpers
 services/telephony Dialling, Twilio webhooks, emergency bridging
 services/voice-gateway  Twilio Media Streams <-> Gemini Live, in-call R1, recording
 services/analyzer  Post-call analysis (and eval/ for the synthetic R3 evaluation)
+services/analytics Optional call statistics -> Pub/Sub -> BigQuery (no care-path dependency)
 services/notifier  SMS / email / push / voice alerts from the outbox
 services/api       REST API for staff and family
 apps/web           Staff triage UI and family dashboard (React + Vite PWA)
@@ -219,6 +227,7 @@ npm test                 # Vitest: npx vitest run --configLoader runner
 npm run test:coverage
 npm run test:emulator    # Firestore contract tests (needs the Firebase CLI and Java)
 npm run dev -w @hachi/web
+npm run demo:analytics   # Synthetic analytics simulation, no cloud credentials or calls
 ```
 
 The web app reads its Firebase web config and API URL from `apps/web/.env.local` (see the `VITE_*`
@@ -290,6 +299,11 @@ Gemini Live API (so call audio is processed in the US). The scripts are safe to 
 Every push to `main` deploys the web app and the Firestore rules and indexes through
 `.github/workflows/deploy-web.yml` (Cloud Run services still deploy with the scripts above). The
 workflow header lists the GitHub variables it needs.
+
+The optional Pub/Sub/BigQuery pipeline has its own deployment script:
+`PROJECT_ID=your-project-id ANALYTICS_ORG_IDS=your-org-id ./infra/deploy-analytics.sh`.
+It defaults to synthetic data only. See [docs/ANALYTICS.md](docs/ANALYTICS.md) for permissions,
+real-data opt-in, a cloud smoke test, reporting queries and retention.
 
 ## Limitations and roadmap
 

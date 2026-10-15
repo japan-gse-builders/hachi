@@ -8,6 +8,7 @@
     { "path": "services/telephony" },
     { "path": "services/voice-gateway" },
     { "path": "services/notifier" },
-    { "path": "services/analyzer" }
+    { "path": "services/analyzer" },
+    { "path": "services/analytics" }
   ]
 }

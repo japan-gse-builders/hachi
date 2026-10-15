@@ -20,7 +20,8 @@
     "build": "tsc -b",
     "check": "npm run typecheck && npm run test",
     "preview:local": "npm run build && node scripts/local-preview.mjs",
-    "preview:silence": "npm run build && node scripts/silence-preview.mjs"
+    "preview:silence": "npm run build && node scripts/silence-preview.mjs",
+    "demo:analytics": "npm run build -w @hachi/analytics && node scripts/analytics-demo.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

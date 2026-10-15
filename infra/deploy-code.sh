@@ -4,7 +4,7 @@
 # parallel, which is safe because nothing here touches IAM (the full scripts conflict when run
 # together). After changing env vars, IAM or other infra, use the full infra/deploy-<service>.sh.
 # Usage: PROJECT_ID=my-project ./infra/deploy-code.sh analyzer api web
-#   targets: analyzer api notifier telephony voice-gateway web
+#   targets: analytics analyzer api notifier telephony voice-gateway web
 set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID to your Google Cloud project ID}"
@@ -18,12 +18,12 @@ cd "$(dirname "$0")/.."
 region_of() {
   case $1 in
     voice-gateway) echo "${GATEWAY_REGION:-us-central1}" ;;
-    analyzer | api | notifier | telephony) echo "${REGION:-asia-northeast1}" ;;
+    analytics | analyzer | api | notifier | telephony) echo "${REGION:-asia-northeast1}" ;;
     *) return 1 ;;
   esac
 }
 
-(($#)) || { echo "Usage: $0 <analyzer|api|notifier|telephony|voice-gateway|web>..." >&2; exit 1; }
+(($#)) || { echo "Usage: $0 <analytics|analyzer|api|notifier|telephony|voice-gateway|web>..." >&2; exit 1; }
 for t in "$@"; do
   [[ $t == web ]] || region_of "$t" >/dev/null || { echo "Unknown target: $t" >&2; exit 1; }
 done

@@ -121,8 +121,8 @@ historical data.
 
 ## 5. Retention — [Operational]
 
-Hachi does **not** delete data automatically yet: there is no Firestore TTL policy and no Cloud
-Storage lifecycle rule in this repository. The organisation must decide and apply retention periods,
+Hachi does **not** delete care records automatically yet: there is no Firestore TTL policy and no Cloud
+Storage lifecycle rule in this repository. The organization must decide and apply retention periods,
 for example:
 
 - recordings: a short period (such as 90 days), set as a lifecycle rule on the recordings bucket;
@@ -131,6 +131,28 @@ for example:
 - everything about a resident: deleted when they leave the service, unless a record must be kept.
 
 Two things already expire in code: signed recording URLs (15 minutes) and family sign-in links.
+The optional analytics pipeline has separate expiration settings, described below; these do not
+delete the original care records.
+
+### Optional operational analytics
+
+- **[Code]** The separate analytics worker exports only terminal live-call metadata from an explicit
+  organization allowlist. Synthetic-only export is the default; real calls require a deployment
+  opt-in. There are no changes to resident onboarding or the short spoken approval script.
+- **[Code]** Pub/Sub messages and BigQuery rows exclude names, contact details, resident IDs,
+  transcripts, summaries, recordings and raw error text. They include pseudonymous organization/
+  call keys, times, status, duration, analysis state and in-call emergency/silence booleans. These
+  remain restricted operational data, not anonymous or public data.
+- **[Code]** The optional deployment sets 90-day BigQuery partition expiration by call date and
+  seven-day retention for unacknowledged Pub/Sub messages. Private Firestore export receipts have
+  no TTL. Source deletion does not automatically propagate to BigQuery or pending messages.
+- **[Operational]** Before enabling real-data export, the project owner confirms the allowed
+  organizations and their approved processing/retention policy. Grant dataset access only to
+  authorized project operators; hashed organization keys are not an access-control boundary.
+  Include analytics copies, pending messages and receipts in deletion requests. The deployment
+  switch does not obtain or record a resident's approval.
+
+See [ANALYTICS.md](ANALYTICS.md) for the field definitions, access, deployment and deletion procedure.
 
 ## 6. Where data is processed
 
