@@ -355,6 +355,8 @@ export interface Resident {
   callTime: string;
   timeZone: string;
   active: boolean;
+  /** Fictional demo records cannot receive real calls. */
+  synthetic?: boolean;
   portrait?: Portrait;
   vulnerability?: { livesAlone: boolean; hasCloseSupporter: boolean; needsCare: boolean; chronicConditions: string[] };
   householdNotes?: string;

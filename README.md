@@ -224,6 +224,10 @@ npm run dev -w @hachi/web
 The web app reads its Firebase web config and API URL from `apps/web/.env.local` (see the `VITE_*`
 entries in `.env.example`; do not commit that file).
 
+For a self-contained demo with three fictional care companies, twelve employees, fifteen patients,
+and editable daily call schedules, run `npm run preview:local -- 5196`. See the
+[company demo guide](docs/DEMO_COMPANIES.md) for review steps and the optional hosted-demo seed script.
+
 The synthetic R3 evaluation calls Gemini and Cloud Text-to-Speech in your own project:
 `npm run eval:r3 -w @hachi/analyzer`. `npm run seed:demo -w @hachi/analyzer -- --org <org-id>` loads
 synthetic demo residents into Firestore for that organization.

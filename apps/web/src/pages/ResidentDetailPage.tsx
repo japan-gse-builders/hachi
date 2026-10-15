@@ -4,6 +4,7 @@ import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { ResidentAvatar } from '../components/ResidentAvatar';
+import { DailyCallSchedule } from '../components/DailyCallSchedule';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
 import { atLeast, memberLabel, type Member } from '../orgs';
@@ -21,6 +22,7 @@ const FIELD_REASONS = new Set(['family_contact', 'access_full']);
 export function ResidentDetailPage() {
   const { id = '' } = useParams();
   const { token, user } = useAuth();
+  const { current } = useAccount();
   const location = useLocation();
   const saved = Boolean((location.state as { saved?: boolean } | null)?.saved);
   const [resident, setResident] = useState<Resident | null>(null);
@@ -37,6 +39,12 @@ export function ResidentDetailPage() {
         ? 'This patient is not registered, or the link is out of date.'
         : err instanceof Error ? err.message : 'Could not load this patient'));
   }, [id, token, attempt]);
+
+  useEffect(() => {
+    if (resident?.id === id && location.hash === '#daily-call-schedule') {
+      document.getElementById('daily-call-schedule')?.scrollIntoView({ block: 'start' });
+    }
+  }, [resident?.id, id, location.hash]);
 
   const back = (
     <p className="back-link">
@@ -61,6 +69,7 @@ export function ResidentDetailPage() {
       {saved && <p className="notice-success" role="status">Saved. The new details apply from the next call and the next alert.</p>}
       <div className="resident-detail">
         <DetailsCard resident={resident} uid={user?.uid} />
+        <DailyCallSchedule key={resident.id} resident={resident} canEdit={mayEditDetails(resident, user?.uid, current?.role)} token={token} onSaved={setResident} />
         <Responsibility resident={resident} uid={user?.uid} onSaved={setResident} />
         <FamilyAccessCard resident={resident} uid={user?.uid} onSaved={(familyAccess) => setResident({ ...resident, familyAccess })} />
       </div>

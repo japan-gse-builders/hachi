@@ -46,7 +46,7 @@ export function ResidentPage() {
       <form className="card stack resident-form" autoComplete="off" onSubmit={(e) => void submit(e)}>
         <h1>Add a patient</h1>
         <p className="meta">Fields marked optional can be left empty. Phone numbers include the country code, such as +81 90 1234 5678.</p>
-        <ResidentFields />
+        <ResidentFields timeZone={current?.timeZone} />
         <CallConsentField />
         {error && <p ref={errorRef} className="error" role="alert" tabIndex={-1}>{error}</p>}
         <div className="row form-actions">

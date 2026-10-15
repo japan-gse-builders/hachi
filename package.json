@@ -20,6 +20,7 @@
     "build": "tsc -b",
     "check": "npm run typecheck && npm run test",
     "preview:local": "npm run build && node scripts/local-preview.mjs",
+    "demo:companies": "npm run build -w @hachi/api && node infra/seed-demo-companies.mjs",
     "preview:silence": "npm run build && node scripts/silence-preview.mjs"
   },
   "devDependencies": {
