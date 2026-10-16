@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hachi demo frames</title>
+<!--
+  動画の各コマ（1280×720、字幕入り）の元。docs/storyboard/render.sh で frames/*.png に書き出す。
+  URL の # にコマの名前を付けると、そのコマだけを表示する（例 frames.html#06-call）。# がなければ全部並べる。
+  「&nosub」を付けると字幕と補足の字幕を消す（video/build.mjs が動画の下地に使う）。
+-->
+<style>
+  @font-face { font-family: DM; src: url(../../apps/web/public/fonts/DMSerifDisplay-Regular.ttf); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #1c1915; }
+  body { font-family: 'Avenir Next', 'Segoe UI', sans-serif; color: #1c1915; }
+  .frame { position: relative; width: 1280px; height: 720px; overflow: hidden; background: #f4efe4; margin: 0 auto 24px; }
+  body.one .frame { margin: 0; }
+  body.one .frame:not(.on) { display: none; }
+
+  .sub { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); max-width: 1060px; width: max-content;
+         background: rgba(28, 25, 21, .86); color: #fff; font-size: 27px; line-height: 1.35; padding: 10px 22px; border-radius: 8px; text-align: center; text-wrap: balance; }
+  .cap { position: absolute; left: 50%; transform: translateX(-50%); bottom: 112px; width: max-content; max-width: 1000px;
+         background: rgba(255, 255, 255, .92); color: #1c1915; font-size: 19px; padding: 6px 14px; border-radius: 6px; border: 1px solid #d9d1c2; }
+  .cap.top { bottom: auto; top: 28px; }
+
+  .card { position: absolute; left: 110px; top: 150px; right: 110px; }
+  .eyebrow { font-size: 19px; letter-spacing: .12em; text-transform: uppercase; color: #1f4d3a; font-weight: 600; margin: 0 0 18px; }
+  .head { font-family: DM, serif; font-size: 64px; line-height: 1.08; margin: 0 0 22px; }
+  .body { font-size: 25px; line-height: 1.55; color: #5c564d; margin: 0; }
+
+  .shot { position: absolute; display: block; }
+  .ring { position: absolute; border: 4px solid #1f4d3a; border-radius: 12px; }
+  .panel { position: absolute; border: 1px solid #d9d1c2; border-radius: 12px; overflow: hidden; background: #fff; }
+  .panel img { display: block; }
+  .label { position: absolute; font-size: 17px; color: #5c564d; letter-spacing: .04em; }
+  .phone { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); width: 420px; height: 450px; border: 10px solid #1c1915;
+           border-radius: 42px; overflow: hidden; background: #f4efe4; }
+
+  /* 仕組み */
+  .arch { position: absolute; left: 0; right: 0; top: 96px; }
+  .row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 34px; }
+  .box { border: 2px solid #1c1915; border-radius: 10px; padding: 12px 16px; background: #fff; font-size: 23px; line-height: 1.25; text-align: center; min-width: 190px; }
+  .box small { display: block; font-size: 16px; color: #5c564d; margin-top: 2px; }
+  .box.g { border-color: #1f4d3a; background: #e3ede6; }
+  .arrow { font-size: 26px; color: #5c564d; }
+  .lane { font-size: 16px; letter-spacing: .1em; text-transform: uppercase; color: #5c564d; margin: 0 0 12px; text-align: center; }
+  .budget { position: absolute; right: 70px; top: 120px; width: 300px; border: 2px dashed #9a4a06; border-radius: 10px; padding: 14px 16px;
+            font-size: 18px; line-height: 1.45; background: #fff8ee; }
+  .budget b { display: block; font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: #9a4a06; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<!-- 1. 通話の声から入る -->
+<div class="frame" id="01-hook" style="background:#141210">
+  <div class="sub">Good morning Edith, this is Hachi calling for our daily chat.</div>
+</div>
+<div class="frame" id="02-title"><img class="shot" src="01-title.png" style="left:0;top:0;width:1280px"></div>
+
+<!-- 2. 世界の問題と出発点 -->
+<div class="frame" id="03-world">
+  <img class="shot" src="02-world.png" style="left:0;top:-120px;width:1280px">
+  <div class="sub">Around the world, more older people live alone.</div>
+</div>
+<div class="frame" id="04-phone">
+  <div class="card">
+    <p class="eyebrow">No app · No smartphone · No account</p>
+    <p class="head">All Hachi needs<br>is a phone.</p>
+    <p class="body">A landline is enough. They answer and talk.</p>
+  </div>
+  <div class="sub">Many will never use an app, but they still answer the phone.</div>
+</div>
+<div class="frame" id="05-japan">
+  <div class="card">
+    <p class="eyebrow">Starting in Japan</p>
+    <p class="head">English speakers<br>living in Japan</p>
+    <p class="body">One of the oldest societies in the world.<br>Local services speak Japanese.</p>
+  </div>
+  <div class="sub">We are starting with English speakers in Japan,<br>one of the oldest societies in the world.</div>
+</div>
+
+<!-- 3. Edith と毎日の電話 -->
+<div class="frame" id="06-call">
+  <img class="shot" src="03-call.png" style="left:0;top:0;width:1280px">
+  <div class="cap top">All people shown are fictional.</div>
+  <div class="sub">Meet Edith. She lives alone, and her son is far away.</div>
+</div>
+
+<!-- 4. 職員の待ち行列 -->
+<div class="frame" id="07-queue">
+  <div style="position:absolute;left:226px;top:0;width:828px;height:766px">
+    <img class="shot" src="04-queue-full.png" style="left:0;top:0;width:828px">
+    <div class="ring" style="left:2.2%;top:60.6%;width:61.6%;height:8.3%"></div>
+  </div>
+  <div class="sub">Staff start from one queue that says who to look at first, and why.</div>
+</div>
+
+<!-- 5. Edith の小さな変化 -->
+<div class="frame" id="08-change">
+  <div class="label" style="left:110px;top:44px">IN HER OWN WORDS · 1:15 IN</div>
+  <div class="panel" style="left:110px;top:72px;width:475px;height:352px"><img src="05-evidence.png" style="width:473px"></div>
+  <div class="label" style="left:660px;top:44px">SPEECH OVER TIME · USUAL FOR EDITH</div>
+  <div class="panel" style="left:660px;top:72px;width:494px;height:500px"><img src="05-speech.png" style="width:492px;margin-top:-440px"></div>
+  <div class="sub">She is slower to answer than usual,<br>and restarts her sentences more often.</div>
+</div>
+
+<!-- 6. 緊急と沈黙 -->
+<div class="frame" id="09-emergency">
+  <img class="shot" src="06-emergency.png" style="left:0;top:0;width:1280px">
+  <div class="panel" style="left:790px;top:150px;width:440px;height:296px"><img src="06-who-was-told.png" style="width:438px"></div>
+  <div class="sub">If someone is in danger now, like chest pain or a fall,<br>Hachi acts during the call.</div>
+</div>
+
+<!-- 7. 家族の画面 -->
+<div class="frame" id="10-family">
+  <div class="phone"><img src="07-family.png" style="display:block;width:400px;margin-top:-436px"></div>
+  <div class="sub">They never get recordings, transcripts or speech analysis,<br>so Edith can talk freely.</div>
+</div>
+
+<!-- 8. 仕組み -->
+<div class="frame" id="11-arch">
+  <div class="arch">
+    <p class="lane">During the call</p>
+    <div class="row">
+      <div class="box">Resident's phone<small>any telephone</small></div><span class="arrow">⟷</span>
+      <div class="box">Twilio<small>phone network</small></div><span class="arrow">⟷</span>
+      <div class="box g">Cloud Run<small>voice gateway</small></div><span class="arrow">⟷</span>
+      <div class="box g">Gemini Live API<small>real-time voice</small></div>
+    </div>
+    <p class="lane">After the call</p>
+    <div class="row">
+      <div class="box g">Cloud Storage<small>stereo recording</small></div><span class="arrow">→</span>
+      <div class="box g">Gemini<small>reviews every call</small></div><span class="arrow">→</span>
+      <div class="box g">Firestore<small>cases, outbox</small></div><span class="arrow">→</span>
+      <div class="box">Staff queue · Family view<small>alerts by SMS, email, voice</small></div>
+    </div>
+  </div>
+  <div class="budget" style="top:440px;left:50%;right:auto;transform:translateX(-50%);width:560px;text-align:center"><b>Monthly AI budget</b>Can pause routine calls. Never an emergency alert.</div>
+  <div class="sub">Twilio streams the call through Cloud Run to the Gemini Live API,<br>and Gemini reviews every call afterwards.</div>
+</div>
+
+<!-- 9. 評価とこれから -->
+<div class="frame" id="12-eval">
+  <img class="shot" src="09-eval.png" style="left:0;top:0;width:1280px">
+  <div class="sub">On synthetic recordings, Hachi found all ten scripted changes,<br>with no false alarms.</div>
+</div>
+<div class="frame" id="13-close">
+  <img class="shot" src="09-close.png" style="left:0;top:0;width:1280px">
+  <div class="sub">Next, English speakers anywhere. All they need is a phone.</div>
+</div>
+
+<script>
+  const [id, ...flags] = decodeURIComponent(location.hash.slice(1)).split('&');
+  const el = id && document.getElementById(id);
+  if (el) { document.body.classList.add('one'); el.classList.add('on'); }
+  if (flags.includes('nosub')) document.querySelectorAll('.sub, .cap').forEach((s) => s.remove());
+  // A balanced two-line subtitle keeps the box at full width; fit the box to the longest line.
+  for (const el of document.querySelectorAll('.frame.on .sub, body:not(.one) .sub')) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const widest = Math.max(...[...range.getClientRects()].map((r) => r.width));
+    el.style.width = `${Math.ceil(widest + 46)}px`;
+  }
+</script>
+</body>
+</html>

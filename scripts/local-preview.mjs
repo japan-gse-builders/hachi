@@ -11,6 +11,8 @@ const { default: react } = await import(pathToFileURL(requireFromRepo.resolve('@
 const { MemoryStore } = await import(pathToFileURL(join(root, 'packages/store/dist/index.js')));
 const { buildApp } = await import(pathToFileURL(join(root, 'services/api/dist/app.js')));
 const { buildDemoData } = await import(pathToFileURL(join(root, 'services/api/dist/demo.js')));
+// Optional extra fictional people, e.g. for recording the demo video (docs/storyboard/video/preview-fixture.mjs).
+const fixture = process.env.PREVIEW_FIXTURE ? await import(pathToFileURL(resolve(process.env.PREVIEW_FIXTURE))) : null;
 const catalog = buildDemoData(new Date());
 const people = catalog.memberships.map(m => ({...m, company: catalog.organizations.find(o => o.id === m.orgId).name}));
 const defaultPerson = people[0];
@@ -29,6 +31,7 @@ async function makeApi() {
   const now = new Date();
   // Aiko also helps the two partner companies, so she can demonstrate the organization switcher.
   const data = buildDemoData(now, {uid: defaultPerson.uid, email: defaultPerson.email, name: defaultPerson.name});
+  fixture?.extend(data, now);
   // Local-only contact placeholders and verification allow assignment/family screens to be tried.
   // No outbound workers or cloud adapters exist in this harness. The hosted seed keeps phones empty
   // and organizations unverified instead.

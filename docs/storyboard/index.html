@@ -29,23 +29,24 @@
 <body>
 <main>
   <h1>Hachi デモ動画ストーリーボード</h1>
-  <p class="lead">docs/DEMO_SCRIPT.md の 9 場面を、画面のイメージ付きで並べたもの。約 2 分 56 秒、ナレーション 329 語（1 分 130 語）。<br>
-  画面はローカルプレビュー（架空データ）で撮影。本番の見た目とは件数・日付・人物の並びが異なる。</p>
+  <p class="lead">docs/DEMO_SCRIPT.md の 9 場面を、画面のイメージ付きで並べたもの。約 2 分 51 秒、ナレーション 315 語（1 分 130 語）。<br>
+  画面はローカルプレビュー（架空データ）で撮影。本番の見た目とは件数・日付・人物の並びが異なる。全体を 1 枚にしたものは <a href="poster.png">poster.png</a>。<br>
+  コマ（字幕入り）は frames.html が元で、render.sh で frames/ に書き出す。</p>
 
   <div class="timeline">
     <div class="key" style="flex:5">1</div>
-    <div style="flex:30">2 問題と出発点</div>
-    <div style="flex:30">3 毎日の電話</div>
-    <div style="flex:17">4 待ち行列</div>
-    <div class="key" style="flex:25">5 Edith の変化</div>
-    <div class="key" style="flex:21">6 緊急</div>
+    <div style="flex:24">2 世界の問題と出発点</div>
+    <div style="flex:31">3 Edith と毎日の電話</div>
+    <div style="flex:16">4 待ち行列</div>
+    <div class="key" style="flex:24">5 Edith の変化</div>
+    <div class="key" style="flex:21">6 緊急と沈黙</div>
     <div style="flex:17">7 家族</div>
-    <div style="flex:14">8 仕組み</div>
-    <div style="flex:17">9 評価と次</div>
+    <div style="flex:15">8 仕組み</div>
+    <div style="flex:18">9 評価と次</div>
   </div>
 
   <section class="scene">
-    <div class="shots"><img src="01-hook.png"><img src="01-title.png"></div>
+    <div class="shots"><img src="frames/01-hook.png"><img src="frames/02-title.png"></div>
     <div>
       <div class="meta">0:00–0:05 · ナレーションなし</div>
       <h2>1. 通話の声から入る</h2>
@@ -55,88 +56,89 @@
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="02-japan.png"></div>
+    <div class="shots"><img src="frames/03-world.png"><img src="frames/04-phone.png"><img src="frames/05-japan.png"></div>
     <div>
-      <div class="meta">0:05–0:35 · 62 語</div>
-      <h2>2. 問題と出発点</h2>
-      <p class="say">All over the world, more older people live alone. Their families often live far away, and care staff cannot phone everyone every day. We are starting where that gap is widest: older English speakers in Japan, where local services speak Japanese. Many will never use an app; the device by their chair is a landline. So Hachi needs nothing but a telephone.</p>
-      <ul class="do"><li>前半は住宅街や固定電話のある部屋の映像。</li><li>「older English speakers in Japan」で「Starting in Japan」のカード。</li></ul>
+      <div class="meta">0:05–0:29 · 49 語</div>
+      <h2>2. 世界の問題と出発点</h2>
+      <p class="say">Around the world, more older people live alone. Family is often far away, and care staff cannot call everyone every day. Many will never use an app, but they still answer the phone. We are starting with English speakers in Japan, one of the oldest societies in the world.</p>
+      <ul class="do"><li>前半は一人で暮らす高齢者の部屋と電話の映像。国が分かる看板や文字は映さない。</li><li>「they still answer the phone」で「All Hachi needs is a phone.」のカード。</li><li>最後の一文で「Starting in Japan」のカード。</li></ul>
+      <p class="note">一枚目は映像素材の代わりの生成画像。本番の動画では実写の映像に差し替える。</p>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="03-call.png"></div>
+    <div class="shots"><img src="frames/06-call.png"></div>
     <div>
-      <div class="meta">0:35–1:05 · 43 語 ＋ 通話音声 9 秒</div>
-      <h2>3. 毎日の電話</h2>
-      <p class="say">Every day, Hachi calls. It says it is an AI and that the call is recorded. Then it simply chats.</p>
+      <div class="meta">0:29–1:00 · 46 語 ＋ 通話音声 9 秒</div>
+      <h2>3. Edith と毎日の電話</h2>
+      <p class="say">Meet Edith. She lives alone, and her son is far away. Hachi calls her every day. It says it is an AI and that the call is recorded.</p>
       <p class="audio">通話音声 9 秒：Edith が睡眠について答える。「Whole conversation」を開いておき、文字起こしも映す。</p>
-      <p class="say">Health and meals come up naturally, with two short screening questions. Hachi listens to what people say, and to how they say it.</p>
-      <ul class="do"><li>字幕：All people shown are fictional.</li><li>字幕：Calls start only after the person agrees, and staff record that agreement.</li></ul>
+      <p class="say">Health and meals come up naturally. Hachi listens to what she says, and to how she says it.</p>
+      <ul class="do"><li>字幕：All people shown are fictional.</li><li>字幕：Calls start only after the person agrees, and staff record that agreement.</li><li>字幕：Each call also includes two questions from standard health checklists.</li></ul>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="04-queue-full.png"></div>
+    <div class="shots"><img src="frames/07-queue.png"></div>
     <div>
-      <div class="meta">1:05–1:22 · 17 語 × 2 文</div>
+      <div class="meta">1:00–1:16 · 32 語</div>
       <h2>4. 職員の待ち行列</h2>
-      <p class="say">Staff start from one queue that says who to look at first, and why. The queue also shows who Hachi could not reach, so a quiet day is never mistaken for a good one.</p>
+      <p class="say">Staff start from one queue that says who to look at first, and why. It also shows who Hachi could not reach, so a missed call never looks like a good day.</p>
       <ul class="do"><li>レーンを上から下へ：Immediate action → Review today → Review soon → Monitor。</li><li>「Review soon」の Edith Carter のカードで止めて、押してケース画面へ。</li><li>「Filter cases」は撮影前に閉じておく（広い画面では開いた状態で表示される）。</li></ul>
       <p class="note">プレビューには「Nobody has been reached」の枠が出ていない。本番で枠が出ていない日は、2 文目は画面なしで読む。</p>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots pair"><img src="05-evidence.png"><img src="05-speech.png"></div>
+    <div class="shots"><img src="frames/08-change.png"></div>
     <div>
-      <div class="meta">1:22–1:47 · 46 語 ＋ 証拠の音声 3 秒</div>
+      <div class="meta">1:16–1:40 · 43 語 ＋ 証拠の音声 3 秒</div>
       <h2>5. Edith の小さな変化（R3）</h2>
-      <p class="say">Edith is marked "Review soon". Nothing she said was alarming. But listen.</p>
+      <p class="say">Nothing Edith said was alarming. But listen.</p>
       <p class="audio">証拠の音声 3 秒：「…from the from the bakery…」（1:15 in）</p>
-      <p class="say">She is restarting her sentences more often than she usually does. Hachi compares her only with herself, over the past four weeks. Not a diagnosis: a sign of change, with the recording as evidence.</p>
+      <p class="say">She is slower to answer than usual, and restarts her sentences more often. Hachi compares her only with herself, over the past four weeks. Not a diagnosis: a sign of change, with the recording as evidence.</p>
       <ul class="do"><li>「Speech over time」の札 → 指標ごとの札 →「Usual for Edith」の帯から外れた最新の点（ひし形）。</li><li>最新の点にカーソルを置いて「(usual … to …)」の吹き出しを出す。</li></ul>
-      <p class="note">このプレビューでは「Time to answer」のグラフが先に開いている。本番でも、最初に開くグラフと 2 文目の言い方を合わせる。</p>
+      <p class="note">Edith の台本の変化は答えるまでの時間（評価では Time to answer と Stops and restarts が変化）。本番でどちらかが変化を示していなければ、2 文目のその半分を削る。</p>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="06-emergency.png"><img src="06-who-was-told.png" style="width:60%"></div>
+    <div class="shots"><img src="frames/09-emergency.png"></div>
     <div>
-      <div class="meta">1:47–2:08 · 44 語</div>
-      <h2>6. 緊急（R1）と沈黙</h2>
-      <p class="say">If someone is in danger now, like chest pain or a fall, Hachi acts during the call. It asks them to call an ambulance if they can, and phones staff and family to join the call. Picking up and saying nothing is noticed too.</p>
-      <ul class="do"><li>赤い「Immediate action」の札と「Possible immediate danger to life or health. Act now.」</li><li>本人の発言 →「Who was told」で職員と家族に届いた記録。</li><li>字幕：Hedged wording counts. Past events, other people and denials do not.</li></ul>
+      <div class="meta">1:40–2:01 · 44 語</div>
+      <h2>6. 緊急（R1）と沈黙（R4）</h2>
+      <p class="say">If someone is in danger now, like chest pain or a fall, Hachi acts during the call. It asks them to call an ambulance if they can, and phones staff and family to join the call. Answering and saying nothing raises an alert too.</p>
+      <ul class="do"><li>赤い「Immediate action」の札と「Possible immediate danger to life or health. Act now.」</li><li>本人の発言 →「Who was told」で職員と家族に届いた記録。</li><li>字幕："It's probably nothing, but my chest hurts" still counts. Past events and other people's problems do not.</li></ul>
       <p class="note">要決定：本番ではこの場面に映すケースがまだない。推奨は合成の緊急デモ利用者を 1 人追加すること（この画像はその完成イメージ）。</p>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="07-family.png" style="width:55%;margin:0 auto"></div>
+    <div class="shots"><img src="frames/10-family.png"></div>
     <div>
-      <div class="meta">2:08–2:25 · 34 語</div>
+      <div class="meta">2:01–2:18 · 34 語</div>
       <h2>7. 家族の画面</h2>
-      <p class="say">Family get a simpler view: today's call, two weeks at a glance, and what keeps coming up. They never get recordings, transcripts or speech analysis, so Edith can talk freely. The API enforces that.</p>
-      <ul class="do"><li>携帯の画面幅で撮る。状態の枠 → 今日の通話のタイル → 14 日グリッド →「What keeps coming up」。</li><li>職員画面にあった話し方のグラフや録音が、ここには無いことが伝わる順に見せる。</li></ul>
+      <p class="say">Families get a simpler view: today's call, two weeks at a glance, and what keeps coming up. They never get recordings, transcripts or speech analysis, so Edith can talk freely. The API enforces that.</p>
+      <ul class="do"><li>携帯の画面幅で撮る。今日の通話のタイル → 14 日グリッド →「What keeps coming up」。上部の「Daily calls are paused」は映さない。</li><li>職員画面にあった話し方のグラフや録音が、ここには無いことが伝わる順に見せる。</li></ul>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="../../architecture.png"></div>
+    <div class="shots"><img src="frames/11-arch.png"></div>
     <div>
-      <div class="meta">2:25–2:39 · 30 語</div>
+      <div class="meta">2:18–2:33 · 31 語</div>
       <h2>8. 仕組み</h2>
-      <p class="say">Twilio streams the call through Cloud Run to the Gemini Live API, and Gemini reviews every call afterwards. A monthly AI budget can pause routine calls, never an emergency alert.</p>
-      <ul class="do"><li>サービス名を順に軽くハイライト。</li><li>最後の一文で docs/COST_CONTROL.md の「二つの上限の順序」の表へ。</li></ul>
+      <p class="say">Twilio streams the call through Cloud Run to the Gemini Live API, and Gemini reviews every call afterwards. A monthly AI budget can pause routine calls, but never an emergency alert.</p>
+      <ul class="do"><li>英語の構成図を新しく作る（今の architecture.png はラベルが日本語）。コマは案。</li><li>サービス名を順に軽くハイライト。</li><li>最後の一文で docs/COST_CONTROL.md の「二つの上限の順序」の表へ。</li></ul>
     </div>
   </section>
 
   <section class="scene">
-    <div class="shots"><img src="09-eval.png"><img src="09-close.png"></div>
+    <div class="shots"><img src="frames/12-eval.png"><img src="frames/13-close.png"></div>
     <div>
-      <div class="meta">2:39–2:56 · 36 語</div>
+      <div class="meta">2:33–2:51 · 36 語</div>
       <h2>9. 評価とこれから</h2>
-      <p class="say">On synthetic recordings, Hachi caught all ten scripted changes with no false alarms; real phone audio will be harder. Today, Hachi calls English speakers in Japan. Next, English speakers anywhere. All they need is a phone.</p>
+      <p class="say">On synthetic recordings, Hachi found all ten scripted changes, with no false alarms. Real phone audio will be harder. Today, Hachi calls English speakers in Japan. Next, English speakers anywhere. All they need is a phone.</p>
       <ul class="do"><li>評価カード → 締めのカードと URL。</li><li>世界展開は「次にやること」として、ここで一度だけ言う。</li></ul>
     </div>
   </section>

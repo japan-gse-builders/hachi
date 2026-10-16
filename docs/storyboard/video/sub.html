@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- 字幕 1 枚ぶん（背景は透明）。# に {"sub": "...", "cap": "..."} を URL エンコードして渡す。build.mjs が使う。 -->
+<style>
+  html, body { margin: 0; background: transparent; }
+  body { width: 1280px; height: 720px; position: relative; font-family: 'Avenir Next', 'Segoe UI', sans-serif; }
+  .sub { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); max-width: 1060px; width: max-content;
+         background: rgba(28, 25, 21, .86); color: #fff; font-size: 27px; line-height: 1.35; padding: 10px 22px; border-radius: 8px; text-align: center; text-wrap: balance; }
+  .cap { position: absolute; left: 50%; transform: translateX(-50%); top: 28px; width: max-content; max-width: 1000px;
+         background: rgba(255, 255, 255, .94); color: #1c1915; font-size: 19px; padding: 6px 14px; border-radius: 6px; border: 1px solid #d9d1c2; }
+</style>
+</head>
+<body>
+<script>
+  const { sub, cap } = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}');
+  for (const [cls, text] of [['sub', sub], ['cap', cap]]) {
+    if (!text) continue;
+    const el = document.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    document.body.append(el);
+  }
+  // A balanced two-line subtitle keeps the box at full width; fit the box to the longest line.
+  for (const el of document.querySelectorAll('.sub, .cap')) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const widest = Math.max(...[...range.getClientRects()].map((r) => r.width));
+    const pad = parseFloat(getComputedStyle(el).paddingLeft) * 2;
+    el.style.width = `${Math.ceil(widest + pad + 2)}px`;
+  }
+</script>
+</body>
+</html>
