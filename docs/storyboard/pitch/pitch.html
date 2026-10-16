@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hachi — pitch video</title>
+<!--
+  The animated pitch video. Every animation is a CSS animation whose start time comes from the story
+  timeline (out/timeline.js, written by build.mjs), so a frame at any time t can be drawn exactly:
+  build.mjs calls render(t) for each frame. Opened directly in a browser it plays with the soundtrack.
+
+  data-a="pop p2+0.3; fadeOut p3"   animation name, when it starts, optional duration (s); "name*" loops.
+  References: "p2" a beat's start, "p2.end" its end, "p2~0.5" halfway through, "@call" a scene's start.
+-->
+<style>
+  @font-face { font-family: DM; src: url(../../../apps/web/public/fonts/DMSerifDisplay-Regular.ttf); }
+  :root {
+    --ink: #1c1915; --muted: #5c564c; --page: #f4f0e6; --line: #e6dfd2; --brand: #1f4d3a; --brand-tint: #e3eee6;
+    --danger: #b3261e; --danger-tint: #fbe4e1; --today: #e07a1f; --soon: #f0c24b; --monitor: #6f685e; --good: #2f7a4f;
+    --shadow: 0 1px 2px rgba(28, 25, 21, .06), 0 10px 30px rgba(28, 25, 21, .09);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #111; }
+  #stage { position: relative; width: 1280px; height: 720px; overflow: hidden; background: var(--page); color: var(--ink);
+    font-family: 'Avenir Next', 'Segoe UI', sans-serif; }
+  .scene, .layer { position: absolute; inset: 0; }
+  .abs { position: absolute; }
+  .serif { font-family: DM, Georgia, serif; font-weight: 400; }
+  .card { position: absolute; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+  .muted { color: var(--muted); }
+  .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .i { width: 1em; height: 1em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .avatar { position: absolute; border-radius: 50%; overflow: hidden; background: #fff; border: 3px solid #fff; box-shadow: var(--shadow); }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .initials { display: flex; align-items: center; justify-content: center; background: #f3e1cf; color: #7a3b05; font-weight: 700; font-size: 24px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 15px; font-weight: 600;
+    background: #fff; border: 1px solid var(--line); white-space: nowrap; }
+  .chip.good { background: var(--brand-tint); color: var(--brand); border-color: #c4dccb; }
+  .chip.emergency { background: var(--danger-tint); color: #7d1a12; border-color: #f0b8b2; }
+  .chip.today { background: #fdebd9; color: #7a3b05; border-color: #f3c79c; }
+  .chip.soon { background: #fbf1d3; color: #5c4710; border-color: #ecd48a; }
+  .chip.monitor { background: #efece6; color: #45403a; border-color: #d7d1c6; }
+  .chip.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  /* conversation */
+  .bubble { position: absolute; padding: 12px 16px; border-radius: 18px; font-size: 18px; line-height: 1.42; background: #fff;
+    border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .bubble.hachi { background: var(--brand); color: #fff; border-color: var(--brand); border-bottom-left-radius: 6px; }
+  .bubble.person { border-bottom-right-radius: 6px; }
+  .stack { position: absolute; left: 20px; right: 20px; top: 52px; display: flex; flex-direction: column; gap: 10px; }
+  .stack .bubble { position: relative; flex: none; }
+  .stack .bubble.hachi { align-self: flex-start; }
+  .stack .bubble.person { align-self: flex-end; }
+  .bubble.small { font-size: 16px; padding: 9px 13px; }
+  .bubble .who { display: block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .7; margin-bottom: 3px; }
+  .mk { background: linear-gradient(transparent 52%, #f6d77a 52%) no-repeat; background-size: 0% 100%; border-radius: 2px; }
+  .mk .mkw { background-image: inherit; background-repeat: no-repeat; background-size: 0% 100%; padding-right: 1px; margin-right: -1px; }
+  .mk.red { background-image: linear-gradient(transparent 52%, #f4aaa2 52%); }
+  .bubble.hachi .mk { background-image: linear-gradient(transparent 52%, rgba(255,255,255,.28) 52%); }
+  .wave { display: flex; align-items: center; justify-content: center; gap: 3px; height: 46px; }
+  .wave i { display: block; width: 4px; height: 4px; border-radius: 2px; background: currentColor; }
+
+  /* call card */
+  .callcard .name { position: absolute; left: 0; right: 0; text-align: center; font-family: DM, serif; font-size: 28px; }
+  .status { position: absolute; left: 0; right: 0; text-align: center; font-size: 16px; color: var(--muted); display: flex; justify-content: center; align-items: center; gap: 8px; }
+  .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); }
+  .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
+  .waverow { position: absolute; left: 24px; right: 24px; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; }
+  .waverow .wave { flex: 1; justify-content: flex-start; }
+  .ripple { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--brand); opacity: 0; }
+  .ripple.red { border-color: var(--danger); }
+  .ripple.soft { border-color: #d9b44a; }
+
+  /* queue */
+  .count { position: absolute; width: 176px; height: 70px; background: #fff; border: 1px solid var(--line); border-radius: 14px; border-top: 5px solid; padding: 6px 14px; box-shadow: var(--shadow); }
+  .count b { font-size: 30px; line-height: 1; }
+  .count span { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+  .lane { position: absolute; left: 60px; display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; }
+  .lane small { font-weight: 500; color: var(--muted); }
+  .qcard { position: absolute; left: 60px; width: 790px; height: 66px; background: #fff; border: 1px solid var(--line); border-left: 6px solid;
+    border-radius: 14px; box-shadow: var(--shadow); }
+  .qcard .avatar { left: 14px; top: 10px; width: 44px; height: 44px; border-width: 2px; }
+  .qcard .who { position: absolute; left: 70px; top: 19px; font-family: DM, serif; font-size: 21px; color: var(--brand); }
+  .qcard .why { position: absolute; left: 250px; top: 12px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .qcard .facts { position: absolute; left: 250px; top: 36px; font-size: 13px; color: var(--muted); }
+  .qcard .side { position: absolute; right: 14px; top: 18px; display: flex; gap: 6px; }
+
+  /* chart */
+  .tip { position: absolute; background: var(--ink); color: #fff; border-radius: 8px; padding: 7px 11px; font-size: 13px; line-height: 1.35; white-space: nowrap; }
+  .tip b { font-size: 14px; }
+
+  /* phone */
+  .phone { position: absolute; background: var(--ink); border-radius: 40px; padding: 11px; box-shadow: 0 20px 50px rgba(28,25,21,.25); }
+  .screen { position: relative; width: 100%; height: 100%; background: var(--page); border-radius: 30px; overflow: hidden; }
+  .tile { position: absolute; width: 76px; height: 64px; background: #fff; border: 1px solid var(--line); border-radius: 10px; text-align: center; font-size: 12px; font-weight: 600; padding-top: 34px; }
+  .tile .mark { position: absolute; left: 25px; top: 7px; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .tile.ok { background: var(--brand-tint); border-color: #c4dccb; }
+  .tile.ok .mark { background: var(--good); color: #fff; }
+  .tile.q .mark { background: #ece6da; color: var(--muted); font-weight: 700; }
+  .cell { position: absolute; width: 13px; height: 13px; border-radius: 3px; }
+
+  /* tech */
+  .node { position: absolute; width: 220px; height: 96px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow);
+    padding: 16px 18px 0 72px; }
+  .node .ic { position: absolute; left: 16px; top: 22px; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    background: var(--brand-tint); color: var(--brand); font-size: 24px; }
+  .node b { display: block; font-size: 19px; }
+  .node span { font-size: 14px; color: var(--muted); }
+  .node.g .ic { background: linear-gradient(135deg, #e8f0fe, #f3e8fd); color: #4b6bdc; }
+  .packet { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--brand); }
+
+  /* captions */
+  #cap { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); max-width: 980px; padding: 9px 20px; border-radius: 10px;
+    background: rgba(28, 25, 21, .84); color: #fff; font-size: 22px; line-height: 1.36; text-align: center; text-wrap: balance; opacity: 0; }
+
+  /* ---------------------------------------------------------------- motion */
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes fadeOut { from { opacity: 1 } to { opacity: 0 } }
+  @keyframes pop { 0% { opacity: 0; transform: scale(.55) } 60% { opacity: 1; transform: scale(1.06) } 100% { opacity: 1; transform: scale(1) } }
+  @keyframes stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-6deg) } 70% { opacity: 1; transform: scale(.96) rotate(0) } 100% { opacity: 1; transform: scale(1) } }
+  @keyframes rise { from { opacity: 0; transform: translateY(26px) } to { opacity: 1; transform: none } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-26px) } to { opacity: 1; transform: none } }
+  @keyframes fromLeft { from { opacity: 0; transform: translateX(-70px) } to { opacity: 1; transform: none } }
+  @keyframes fromRight { from { opacity: 0; transform: translateX(90px) } to { opacity: 1; transform: none } }
+  @keyframes shrinkOut { to { opacity: 0; transform: scale(.8) } }
+  @keyframes sinkOut { to { opacity: 0; transform: translateY(30px) } }
+  @keyframes dim { to { opacity: .16 } }
+  @keyframes ripple { 0% { opacity: .55; transform: scale(1) } 100% { opacity: 0; transform: scale(1.9) } }
+  @keyframes wiggle { 0%, 60%, 100% { transform: rotate(0) } 8% { transform: rotate(-16deg) } 16% { transform: rotate(14deg) } 24% { transform: rotate(-12deg) } 32% { transform: rotate(10deg) } 40% { transform: rotate(-6deg) } }
+  @keyframes draw { from { stroke-dashoffset: 1 } to { stroke-dashoffset: 0 } }
+  @keyframes grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+  @keyframes growTo { from { transform: scaleX(0) } to { transform: scaleX(var(--to, 1)) } }
+  @keyframes marker { from { background-size: 0% 100% } to { background-size: 100% 100% } }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.07) } }
+  @keyframes float { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(40px, -30px) } }
+  @keyframes fly { 0% { offset-distance: 0%; opacity: 0 } 12% { opacity: 1 } 88% { opacity: 1 } 100% { offset-distance: 100%; opacity: 0 } }
+  @keyframes pulseGlow { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+  @keyframes blink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: .2 } }
+  @keyframes sortIn { 0% { opacity: 0; transform: translate(calc(var(--px) + 320px), var(--py)) rotate(var(--r)) } 35% { opacity: 1; transform: translate(var(--px), var(--py)) rotate(var(--r)) } 100% { opacity: 1; transform: none } }
+  /* scene transitions */
+  @keyframes zoomIn { from { opacity: 0; transform: scale(1.12) } to { opacity: 1; transform: none } }
+  @keyframes zoomOut { to { opacity: 0; transform: scale(.86) } }
+  @keyframes zoomThrough { to { opacity: 0; transform: scale(1.25) } }
+  @keyframes pushIn { from { transform: translateX(1280px) } to { transform: none } }
+  @keyframes pushOut { to { transform: translateX(-1280px) } }
+  @keyframes slideUpIn { from { transform: translateY(720px) } to { transform: none } }
+  @keyframes slideUpOut { to { transform: translateY(-260px); opacity: 0 } }
+  @keyframes wipeIn { from { clip-path: circle(0% at 50% 50%) } to { clip-path: circle(80% at 50% 50%) } }
+  @keyframes blurOut { to { opacity: 0; filter: blur(14px) } }
+  @keyframes toEdith { to { transform: scale(2.6); opacity: 0 } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 24 24"><path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.6 5.4 2.6 7.4 10 10-7.4 2.6-9.4 4.6-10 10-.6-5.4-2.6-7.4-10-10 7.4-2.6 9.4-4.6 10-10z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z" fill="currentColor"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+  <!-- slow drifting colour, behind everything -->
+  <div class="layer" style="filter: blur(70px); opacity: .55">
+    <div class="abs" style="left:-120px;top:-160px;width:520px;height:520px;border-radius:50%;background:#dbe9df" data-a="float* 0 14"></div>
+    <div class="abs" style="left:900px;top:380px;width:560px;height:560px;border-radius:50%;background:#f2e2c8" data-a="float* 0 17"></div>
+  </div>
+
+  <!-- 1 · the call, then the title -->
+  <section class="scene" id="s-open" data-a="fadeIn 0 0.01; zoomThrough @open.end-0.55">
+    <div class="card callcard" style="left:450px;top:92px;width:380px;height:450px" data-a="pop 0.15 0.7; shrinkOut o_title 0.6">
+      <div class="abs eyebrow" style="left:0;right:0;top:24px;text-align:center">Hachi · daily check-in</div>
+      <div class="abs" style="left:110px;top:62px;width:160px;height:160px">
+        <div class="layer" data-a="fadeIn 0 .01; fadeOut o_h1-0.35 .3">
+          <span class="ripple" data-a="ripple* 0.4"></span><span class="ripple" data-a="ripple* 1.0"></span><span class="ripple" data-a="ripple* 1.6"></span>
+        </div>
+        <div class="avatar" data-speak="edith" style="inset:0"><img src="../../../apps/web/public/avatars/grandmother-3.png"></div>
+      </div>
+      <div class="name" style="top:238px">Edith Carter</div>
+      <div class="status" style="top:284px" data-a="fadeIn 0.3; fadeOut o_h1-0.35 .3">Calling…</div>
+      <div class="status" style="top:284px" data-a="fadeIn o_h1-0.3 .3"><span class="live-dot"></span>Connected · <span data-timer="o_h1-0.3"></span></div>
+      <div class="abs" style="left:160px;top:330px;width:60px;height:60px;border-radius:50%;background:var(--good);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px"
+        data-a="pop 0.5; shrinkOut o_h1-0.35 .3">
+        <svg class="i" data-a="wiggle* 0.6 1.5"><use href="#i-phone"/></svg>
+      </div>
+      <div class="layer" data-a="rise o_h1-0.25">
+        <div class="waverow" style="top:330px;color:var(--brand)">Hachi<div class="wave" data-wave="hachi"></div></div>
+        <div class="waverow" style="top:380px;color:#9a4a06">Edith<div class="wave" data-wave="edith"></div></div>
+      </div>
+    </div>
+    <div class="bubble hachi" style="left:62px;top:170px;width:350px" data-a="rise o_h1-0.1; shrinkOut o_title .5">
+      <span class="who">Hachi</span><span data-type="o_h1">Good morning, Edith! It's Hachi, calling for our daily chat. How did you sleep?</span>
+    </div>
+    <div class="bubble person" style="left:868px;top:300px;width:345px" data-a="rise o_e1-0.1; shrinkOut o_title .5">
+      <span class="who">Edith</span><span data-type="o_e1">Oh, not too badly, thank you, dear. I slept right through the night.</span>
+    </div>
+    <img class="abs" src="../../../apps/web/public/branding/hachi-logo.png" style="left:500px;top:150px;width:280px" data-a="pop o_title+0.15 0.7">
+    <div class="abs serif" style="left:0;width:1280px;top:300px;text-align:center;font-size:58px" data-a="rise o_title+0.55 .8">A daily check-in call.</div>
+    <div class="abs" style="left:0;width:1280px;top:388px;text-align:center;font-size:28px;color:var(--brand);font-weight:600" data-a="rise o_title+1.0 .8">All you need is a phone.</div>
+    <svg class="abs" style="left:490px;top:430px" width="300" height="20" viewBox="0 0 300 20">
+      <path d="M4 12 C 80 2, 200 20, 296 8" stroke="var(--soon)" stroke-width="5" fill="none" pathLength="1" stroke-dasharray="1" data-a="draw o_title+1.4 .8"/>
+    </svg>
+  </section>
+
+  <!-- 2 · Edith, her son, her care team, and the apps that miss her -->
+  <section class="scene" id="s-problem" data-a="zoomIn @problem .8; pushOut @problem.end-0.65">
+    <div class="abs" style="left:380px;top:40px;width:900px;height:600px" data-a="fromRight @problem+0.1 1">
+      <img src="assets/edith-home.png" style="width:900px;display:block;transform-origin:87% 79%;mask-image:linear-gradient(90deg, transparent 0%, #000 34%), linear-gradient(180deg, transparent 0%, #000 10%, #000 90%, transparent 100%);mask-composite:intersect" data-a="kenburns @problem 26">
+    </div>
+    <div class="card" style="left:930px;top:560px;padding:10px 18px;display:flex;align-items:center;gap:10px" data-a="pop p1+0.3">
+      <svg class="i" style="color:var(--brand);font-size:20px"><use href="#i-home"/></svg>
+      <span class="serif" style="font-size:22px">Edith Carter</span>
+    </div>
+
+    <div class="layer" data-a="fadeIn p2-0.1 .3; fadeOut p3-0.1 .4">
+      <div class="avatar" style="left:96px;top:96px;width:132px;height:132px" data-a="pop p2+0.1"><img src="assets/michael.png"></div>
+      <div class="abs" style="left:250px;top:128px" data-a="rise p2+0.3"><div class="serif" style="font-size:26px">Michael</div><div class="muted" style="font-size:16px">her son, abroad</div></div>
+      <svg class="abs" style="left:0;top:0" width="1280" height="720">
+        <defs><mask id="arcmask"><path d="M430 150 Q 700 -30 905 190" stroke="#fff" stroke-width="10" fill="none" pathLength="1" stroke-dasharray="1" data-a="draw p2+0.35 1.5"/></mask></defs>
+        <path d="M430 150 Q 700 -30 905 190" stroke="var(--brand)" stroke-width="3" fill="none" stroke-dasharray="2 10" stroke-linecap="round" mask="url(#arcmask)"/>
+      </svg>
+      <div class="abs" style="left:0;top:0;width:42px;height:42px;border-radius:50%;background:var(--brand);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);offset-path:path('M430 150 Q 700 -30 905 190');offset-rotate:0deg" data-a="fly p2+0.35 1.6">
+        <svg class="i"><use href="#i-phone"/></svg>
+      </div>
+      <div class="abs" style="left:96px;top:262px;display:flex;gap:8px" id="week"></div>
+    </div>
+
+    <div class="layer" data-a="fadeIn p3-0.1 .3; fadeOut p4-0.1 .4">
+      <div class="avatar" style="left:96px;top:86px;width:132px;height:132px" data-a="pop p3+0.1"><img src="assets/aiko.png"></div>
+      <div class="abs" style="left:250px;top:114px" data-a="rise p3+0.3"><div class="serif" style="font-size:26px">Aiko</div><div class="muted" style="font-size:16px">her care team</div></div>
+      <div class="abs" style="left:430px;top:96px;width:76px;height:76px;color:var(--muted)" data-a="pop p3+0.5">
+        <svg class="i" viewBox="0 0 24 24" style="width:76px;height:76px;stroke-width:1.5"><circle cx="12" cy="12" r="10"/></svg>
+        <div class="abs" style="left:36px;top:14px;width:4px;height:26px;border-radius:2px;background:var(--ink);transform-origin:2px 24px" data-a="spin* p3+0.5 1.2"></div>
+        <div class="abs" style="left:36px;top:24px;width:4px;height:16px;border-radius:2px;background:var(--ink);transform-origin:2px 14px" data-a="spin* p3+0.5 7"></div>
+      </div>
+      <div class="abs" id="crowd" style="left:84px;top:270px;width:620px;height:300px"></div>
+    </div>
+
+    <div class="layer" data-a="fadeIn p4-0.1 .3; fadeOut p5-0.1 .4">
+      <div class="phone" style="left:96px;top:110px;width:170px;height:340px" data-a="pop p4+0.05">
+        <div class="screen" id="appgrid"></div>
+      </div>
+      <div class="abs" style="left:310px;top:136px;width:420px" id="todo"></div>
+    </div>
+
+    <div class="layer" data-a="fadeIn p5-0.1 .3">
+      <div class="abs serif" style="left:96px;top:170px;font-size:48px;line-height:1.15">
+        <div data-a="rise p5+0.1">No app.</div>
+        <div data-a="rise p5+0.35">No account.</div>
+        <div style="color:var(--brand)" data-a="rise p5~0.5">Just pick up.</div>
+      </div>
+      <div class="abs" style="left:1110px;top:464px;width:100px;height:100px">
+        <span class="ripple" data-a="ripple* p5~0.5"></span><span class="ripple" data-a="ripple* p5~0.5+0.6"></span>
+      </div>
+      <div class="abs" style="left:1176px;top:420px;width:48px;height:48px;border-radius:50%;background:var(--good);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:var(--shadow)" data-a="stamp p5~0.55">
+        <svg class="i" style="stroke-width:3"><use href="#i-check"/></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · the daily call: what she says, and how she says it -->
+  <section class="scene" id="s-call" data-a="pushIn @call-0.65 .65; zoomOut @call.end-0.55">
+    <div class="card callcard" style="left:60px;top:70px;width:330px;height:490px">
+      <div class="avatar" data-speak="edith" style="left:105px;top:30px;width:120px;height:120px"><img src="../../../apps/web/public/avatars/grandmother-3.png"></div>
+      <div class="name" style="top:164px">Edith Carter</div>
+      <div class="status" style="top:208px"><span class="live-dot"></span>On call · <span data-timer="@call" data-base="41"></span></div>
+      <div class="abs" style="left:0;right:0;top:250px;display:flex;justify-content:center;gap:8px">
+        <span class="chip good" data-a="pop c1~0.45"><svg class="i"><use href="#i-spark"/></svg>AI assistant</span>
+        <span class="chip" data-a="pop c1~0.7"><span class="rec-dot" data-a="blink* c1~0.7 1.2"></span>Recording</span>
+      </div>
+      <div class="waverow" style="top:340px;color:var(--brand)">Hachi<div class="wave" data-wave="hachi"></div></div>
+      <div class="waverow" style="top:400px;color:#9a4a06">Edith<div class="wave" data-wave="edith"></div></div>
+    </div>
+    <div class="card" style="left:420px;top:70px;width:410px;height:490px">
+      <div class="abs eyebrow" style="left:24px;top:20px">Live conversation</div>
+      <div class="stack">
+        <div class="bubble hachi small" data-a="rise c_h0-0.1"><span class="who">Hachi</span><span data-type="c_h0">How did you sleep?</span></div>
+        <div class="bubble person small" style="width:300px" data-a="rise c_e0-0.1"><span class="who">Edith</span><span data-type="c_e0">Not too badly, thank you, dear. I slept right through the night.</span></div>
+        <div class="bubble hachi" style="width:330px" data-a="rise c_h-0.1"><span class="who">Hachi</span><span data-type="c_h">What did you have for breakfast?</span></div>
+        <div class="bubble person" style="width:320px" data-a="rise c_e-0.1"><span class="who">Edith</span><span data-type="c_e">Toast with jam, and a lovely cup of tea.</span></div>
+      </div>
+      <div class="abs" style="right:20px;bottom:20px" data-a="pop c_e.end-0.1"><span class="chip good"><svg class="i"><use href="#i-check"/></svg>Food · ate well</span></div>
+    </div>
+    <div class="card" style="left:860px;top:70px;width:360px;height:226px;padding:20px 22px" data-a="pop c2~0.42">
+      <div class="serif" style="font-size:24px">What she says</div>
+      <div class="abs" style="left:22px;top:66px;width:320px" id="says"></div>
+    </div>
+    <div class="card" style="left:860px;top:314px;width:360px;height:246px;padding:20px 22px" data-a="pop c2~0.72">
+      <div class="serif" style="font-size:24px">How she says it</div>
+      <div class="abs" style="left:22px;top:64px;width:316px" id="how"></div>
+    </div>
+  </section>
+
+  <!-- 4 · one list for the care team -->
+  <section class="scene" id="s-queue" style="transform-origin:450px 485px" data-a="zoomIn @queue .8; toEdith @queue.end-0.8 0.85">
+    <div class="abs serif" style="left:60px;top:40px;font-size:38px" data-a="rise @queue+0.1">Triage queue</div>
+    <div class="abs muted" style="left:62px;top:90px;font-size:16px" data-a="rise @queue+0.25">Open cases, most urgent first.</div>
+    <div id="counts"></div>
+    <div id="lanes"></div>
+    <div class="card" style="left:870px;top:218px;width:350px;height:160px;padding:18px 22px" data-a="fromRight q1+0.2">
+      <div class="eyebrow">Today's calls</div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;row-gap:10px;font-size:17px">
+        <span>Calls placed</span><b data-count="q1+0.4,7,1.2">0</b>
+        <span>Talked</span><b style="color:var(--good)" data-count="q1+0.6,6,1.1">0</b>
+        <span>No answer</span><b style="color:#8a6d1f" data-count="q1+0.9,1,0.4">0</b>
+      </div>
+    </div>
+    <div class="card" style="left:870px;top:398px;width:350px;height:150px;padding:18px 22px;border-left:6px solid var(--soon)" data-a="pop q3+0.3">
+      <div class="layer" style="border-radius:16px;overflow:visible"><span class="ripple soft" style="border-radius:16px" data-a="ripple* q3+0.7 2"></span></div>
+      <div class="serif" style="font-size:22px">Didn't pick up today</div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+        <div class="avatar" style="position:relative;width:44px;height:44px;border-width:2px"><img src="../../../apps/web/public/avatars/grandfather-4.png"></div>
+        <div><b style="color:var(--brand)">Harold Brooks</b><div class="muted" style="font-size:14px">Called twice · still on the list</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · a slow change, measured against Edith herself -->
+  <section class="scene" id="s-change" data-a="fadeIn @change .5; fadeOut @change.end+0.3 .4">
+    <div class="card" style="left:60px;top:44px;width:1160px;height:118px;border-left:6px solid var(--soon)" data-a="rise @change+0.2">
+      <div class="avatar" style="left:22px;top:20px;width:76px;height:76px"><img src="../../../apps/web/public/avatars/grandmother-3.png"></div>
+      <div class="abs serif" style="left:118px;top:16px;font-size:32px">Edith Carter</div>
+      <div class="abs" style="left:322px;top:24px"><span class="chip soon"><svg class="i"><use href="#i-cal"/></svg>Review soon</span></div>
+      <div class="abs" style="left:118px;top:70px;font-size:19px;font-weight:700">Slower to answer and restarting sentences more often than usual.</div>
+    </div>
+    <div class="card" style="left:60px;top:186px;width:520px;height:336px;padding:22px 26px" data-a="rise ch1+0.15">
+      <div class="eyebrow">In her own words · 1:15 in</div>
+      <div class="abs" style="left:26px;top:58px;width:52px;height:52px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px">
+        <svg class="i"><use href="#i-play"/></svg>
+        <span class="ripple" data-a="ripple* ch1~0.7 1.4; fadeOut ch_e.end .3"></span>
+      </div>
+      <div class="abs" style="left:94px;top:61px;right:26px;color:#9a4a06"><div class="wave" data-wave="edith" data-n="40"></div></div>
+      <div class="abs serif" style="left:26px;top:130px;right:26px;font-size:27px;line-height:1.3">
+        <span data-type="ch_e">“I went to get bread from the… <span class="mk">from the…</span> <span class="mk">from the…</span> <span class="mk">from the</span> bakery, near the station.”</span>
+      </div>
+      <div class="abs" style="left:26px;bottom:22px;display:flex;gap:8px">
+        <span class="chip" data-a="pop ch3~0.45"><svg class="i"><use href="#i-play"/></svg>Recording · staff only</span>
+        <span class="chip soon" data-a="pop ch3~0.7"><svg class="i"><use href="#i-cal"/></svg>Follow up within a few days</span>
+      </div>
+    </div>
+    <div class="card" style="left:610px;top:186px;width:610px;height:336px" data-a="rise ch2-0.3">
+      <div class="abs serif" style="left:26px;top:18px;font-size:24px">Time to answer</div>
+      <div class="abs muted" style="left:26px;top:52px;font-size:14px">Seconds · each dot is one daily call</div>
+      <svg class="abs" id="chart" style="left:20px;top:80px" width="570" height="196"></svg>
+      <div class="tip" id="tip" style="left:318px;top:86px"><b>Today · 2.2 s</b><br>Usual for Edith: 0.8–1.4 s</div>
+      <div class="abs" style="left:26px;top:288px;display:flex;gap:8px">
+        <span class="chip soon" data-a="pop ch2~0.86">Time to answer: clear change</span>
+        <span class="chip soon" data-a="pop ch2~0.93">Stops and restarts: clear change</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · an emergency, handled during the call -->
+  <section class="scene" id="s-emergency" data-a="wipeIn @emergency .9; slideUpOut @emergency.end-0.6">
+    <div class="layer" style="background:var(--page)"></div>
+    <div class="layer" data-a="fadeIn e_w~0.45 .6">
+      <div class="layer" style="background:radial-gradient(ellipse at center, transparent 55%, rgba(179,38,30,.2))" data-a="pulseGlow* e_w~0.6 1.6"></div>
+    </div>
+    <div class="card callcard" style="left:60px;top:70px;width:330px;height:490px">
+      <div class="avatar" data-speak="walter" style="left:105px;top:30px;width:120px;height:120px"><img src="../../../apps/web/public/avatars/grandfather-3.png"></div>
+      <div class="name" style="top:164px">Walter Hughes</div>
+      <div class="status" style="top:208px"><span class="live-dot"></span>On call · <span data-timer="e_ring-1.5"></span></div>
+      <div class="abs" style="left:0;right:0;top:250px;display:flex;justify-content:center" data-a="stamp e_w~0.5">
+        <span class="chip emergency" style="font-size:16px"><svg class="i"><use href="#i-alert"/></svg>Immediate action</span>
+      </div>
+      <div class="waverow" style="top:340px;color:var(--brand)">Hachi<div class="wave" data-wave="hachi"></div></div>
+      <div class="waverow" style="top:400px;color:#7d1a12">Walter<div class="wave" data-wave="walter"></div></div>
+    </div>
+    <div class="card" style="left:420px;top:70px;width:420px;height:490px">
+      <div class="abs eyebrow" style="left:24px;top:20px">Live conversation</div>
+      <div class="stack" style="gap:8px">
+        <div class="bubble hachi small" style="width:300px" data-a="rise e_h0-0.1"><span class="who">Hachi</span><span data-type="e_h0">Good morning, Walter! How are you feeling today?</span></div>
+        <div class="bubble person" style="width:348px" data-a="rise e_w-0.1"><span class="who">Walter</span><span data-type="e_w">Not good. I've got a <span class="mk red">tight pain in my chest</span>… and it's going down my arm.</span></div>
+        <div class="bubble hachi" style="width:360px" data-a="rise e_h-0.1"><span class="who">Hachi</span><span data-type="e_h">Walter, if you can, call an ambulance. I'm bringing your daughter and your care team onto the line, right now.</span></div>
+      </div>
+      <div class="abs" style="left:20px;right:20px;top:396px;height:74px;border:1px dashed var(--line-control, #8a8173);border-radius:12px;background:#faf8f3;display:flex;align-items:center;gap:12px;padding:0 14px" data-a="pop e3+0.35">
+        <svg width="56" height="20"><path d="M0 10 H56" stroke="#8a8173" stroke-width="2" stroke-dasharray="4 4"/></svg>
+        <div style="font-size:14px;line-height:1.3"><b>Picked up, never spoke</b><br><span class="muted">Another resident, this morning</span></div>
+        <span class="chip emergency" style="margin-left:auto;font-size:13px" data-a="pop e3~0.7"><svg class="i"><use href="#i-bell"/></svg>Alerted</span>
+      </div>
+    </div>
+    <div class="card" style="left:870px;top:70px;width:350px;height:150px;padding:18px 20px;border-left:6px solid var(--danger)" data-a="stamp e_w~0.5">
+      <div style="display:flex;align-items:center;gap:8px;color:var(--danger);font-weight:700;font-size:19px"><svg class="i" style="font-size:22px"><use href="#i-alert"/></svg>Immediate action</div>
+      <div style="margin-top:8px;font-size:15px;line-height:1.4">Possible immediate danger to life or health.</div>
+      <div style="margin-top:10px" data-a="pop e1+0.3"><span class="chip dark" style="font-size:13px"><svg class="i"><use href="#i-clock"/></svg>Caught during the call · 0:09</span></div>
+    </div>
+    <svg class="abs" style="left:0;top:0" width="1280" height="720">
+      <path d="M1045 330 L 950 470" stroke="var(--danger)" stroke-width="3" fill="none" pathLength="1" stroke-dasharray="1" data-a="draw e2+0.1 .6"/>
+      <path d="M1045 330 L 1140 470" stroke="var(--danger)" stroke-width="3" fill="none" pathLength="1" stroke-dasharray="1" data-a="draw e2+0.4 .6"/>
+    </svg>
+    <div class="abs" style="left:1009px;top:262px;width:72px;height:72px" data-a="pop e2-0.2">
+      <div class="avatar" style="inset:0"><img src="../../../apps/web/public/avatars/grandfather-3.png"></div>
+    </div>
+    <div class="abs" style="left:914px;top:440px;width:72px;height:72px" data-a="pop e2+0.4">
+      <span class="ripple red" data-a="ripple* e2+0.5 1.1; fadeOut e2~0.75 .2"></span>
+      <div class="avatar initials" style="inset:0">AH</div>
+    </div>
+    <div class="abs" style="left:1104px;top:440px;width:72px;height:72px" data-a="pop e2+0.7">
+      <span class="ripple red" data-a="ripple* e2+0.8 1.1; fadeOut e2~0.85 .2"></span>
+      <div class="avatar" style="inset:0"><img src="assets/aiko.png"></div>
+    </div>
+    <div class="abs" style="left:880px;top:522px;width:140px;text-align:center;font-size:14px" data-a="rise e2+0.5"><b>Anne</b> · daughter</div>
+    <div class="abs" style="left:1070px;top:522px;width:140px;text-align:center;font-size:14px" data-a="rise e2+0.8"><b>Aiko</b> · care team</div>
+    <div class="abs" style="left:892px;top:550px" data-a="pop e2~0.75"><span class="chip good" style="font-size:13px"><svg class="i"><use href="#i-check"/></svg>Joined</span></div>
+    <div class="abs" style="left:1082px;top:550px" data-a="pop e2~0.85"><span class="chip good" style="font-size:13px"><svg class="i"><use href="#i-check"/></svg>Joined</span></div>
+    <div class="abs" style="left:985px;top:380px" data-a="pop e2~0.92"><span class="chip dark" style="font-size:13px"><svg class="i"><use href="#i-phone"/></svg>3-way call</span></div>
+  </section>
+
+  <!-- 7 · what the family sees, and what they never see -->
+  <section class="scene" id="s-family" data-a="slideUpIn @family-0.45 .75; blurOut @family.end-0.6">
+    <div class="avatar" style="left:120px;top:150px;width:170px;height:170px" data-a="pop @family+0.35"><img src="assets/michael.png"></div>
+    <div class="abs" style="left:120px;top:338px;width:170px;text-align:center" data-a="rise @family+0.5"><div class="serif" style="font-size:26px">Michael</div><div class="muted">Edith's son</div></div>
+    <svg class="abs" style="left:0;top:0" width="1280" height="720">
+      <path d="M300 236 C 380 236, 420 300, 498 300" stroke="var(--brand)" stroke-width="3" fill="none" stroke-dasharray="2 9" stroke-linecap="round" data-a="fadeIn f1+0.2"/>
+    </svg>
+    <div class="phone" style="left:500px;top:30px;width:296px;height:600px" data-a="rise @family+0.25 .8">
+      <div class="screen">
+        <img src="../../../apps/web/public/branding/hachi-logo.png" style="position:absolute;left:16px;top:16px;width:74px">
+        <div class="abs serif" style="left:16px;top:52px;font-size:17px">Daily calls with Edith Carter</div>
+        <div class="abs" style="left:12px;right:12px;top:84px;height:74px;background:#fff;border:1px solid var(--line);border-radius:14px;border-left:5px solid var(--good)" data-a="pop f1+0.2">
+          <div class="abs" style="left:12px;top:16px;width:36px;height:36px;border-radius:50%;background:var(--good);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px"><svg class="i" style="stroke-width:3"><use href="#i-check"/></svg></div>
+          <div class="abs" style="left:58px;top:13px;font-weight:700;font-size:16px">Doing well</div>
+          <div class="abs muted" style="left:58px;top:36px;font-size:12px">Talked today, 9:32 · next call tomorrow</div>
+        </div>
+        <div class="abs" style="left:14px;top:172px;font-weight:700;font-size:13px">Today's call</div>
+        <div id="tiles"></div>
+        <div class="abs" style="left:14px;top:346px;font-weight:700;font-size:13px">The last two weeks</div>
+        <div id="grid"></div>
+      </div>
+    </div>
+    <div class="card" style="left:860px;top:170px;width:360px;padding:22px 24px" data-a="fromRight f2-0.1">
+      <div class="eyebrow">Care team only</div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;font-size:19px"><svg class="i" style="color:var(--brand);font-size:24px"><use href="#i-audio"/></svg>Recordings
+        <span style="margin-left:auto;color:var(--danger);font-size:22px" data-a="stamp f2+0.4"><svg class="i"><use href="#i-lock"/></svg></span></div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;font-size:19px"><svg class="i" style="color:var(--brand);font-size:24px"><use href="#i-file"/></svg>Transcripts
+        <span style="margin-left:auto;color:var(--danger);font-size:22px" data-a="stamp f2+0.6"><svg class="i"><use href="#i-lock"/></svg></span></div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;font-size:19px"><svg class="i" style="color:var(--brand);font-size:24px"><use href="#i-signal"/></svg>Speech analysis
+        <span style="margin-left:auto;color:var(--danger);font-size:22px" data-a="stamp f2+0.8"><svg class="i"><use href="#i-lock"/></svg></span></div>
+    </div>
+    <div class="abs" style="left:812px;top:270px;width:40px;height:40px;border-radius:50%;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:var(--shadow)" data-a="stamp f2~0.6">
+      <svg class="i" style="stroke-width:3"><use href="#i-x"/></svg>
+    </div>
+  </section>
+
+  <!-- 8 · how it works -->
+  <section class="scene" id="s-tech" data-a="fadeIn @tech .6; zoomThrough @tech.end-0.6">
+    <div class="abs eyebrow" style="left:60px;top:54px" data-a="rise @tech+0.2">Under the hood</div>
+    <div class="abs serif" style="left:60px;top:76px;font-size:38px" data-a="rise @tech+0.3">Real-time voice on Google Cloud</div>
+    <svg class="abs" style="left:0;top:0" width="1280" height="720" id="wires">
+      <path d="M280 228 H360" stroke="#cfc6b6" stroke-width="3" pathLength="1" stroke-dasharray="1" data-a="draw t1~0.28 .35"/>
+      <path d="M580 228 H660" stroke="#cfc6b6" stroke-width="3" pathLength="1" stroke-dasharray="1" data-a="draw t1~0.48 .35"/>
+      <path d="M880 228 H960" stroke="#cfc6b6" stroke-width="3" pathLength="1" stroke-dasharray="1" data-a="draw t1~0.68 .35"/>
+      <path d="M770 276 V318 H470 V370" stroke="#cfc6b6" stroke-width="3" fill="none" pathLength="1" stroke-dasharray="1" data-a="draw t2+0.05 .7"/>
+      <path d="M580 418 H660" stroke="#cfc6b6" stroke-width="3" pathLength="1" stroke-dasharray="1" data-a="draw t2~0.17 .3"/>
+      <path d="M880 418 H960" stroke="#cfc6b6" stroke-width="3" pathLength="1" stroke-dasharray="1" data-a="draw t2~0.27 .3"/>
+    </svg>
+    <div class="node" style="left:60px;top:180px" data-a="pop t1~0.12"><div class="ic"><svg class="i"><use href="#i-phone"/></svg></div><b>Any phone</b><span>A landline is enough</span></div>
+    <div class="node" style="left:360px;top:180px" data-a="pop t1~0.32"><div class="ic"><svg class="i"><use href="#i-signal"/></svg></div><b>Twilio</b><span>Phone network</span></div>
+    <div class="node" style="left:660px;top:180px" data-a="pop t1~0.52"><div class="ic"><svg class="i"><use href="#i-server"/></svg></div><b>Cloud Run</b><span>Voice gateway</span></div>
+    <div class="node g" style="left:960px;top:180px" data-a="pop t1~0.72"><div class="ic"><svg class="i"><use href="#i-spark"/></svg></div><b>Gemini Live API</b><span>Talks in real time</span></div>
+    <div class="node g" style="left:360px;top:370px" data-a="pop t2~0.1"><div class="ic"><svg class="i"><use href="#i-spark"/></svg></div><b>Gemini</b><span>Reviews every call</span></div>
+    <div class="node" style="left:660px;top:370px" data-a="pop t2~0.2"><div class="ic"><svg class="i"><use href="#i-db"/></svg></div><b>Firestore</b><span>Cases and history</span></div>
+    <div class="node" style="left:960px;top:370px" data-a="pop t2~0.3"><div class="ic"><svg class="i"><use href="#i-users"/></svg></div><b>Staff · Family</b><span>Queue and dashboard</span></div>
+    <div id="packets"></div>
+    <div class="card" style="left:360px;top:512px;width:820px;height:84px" data-a="rise t2~0.5">
+      <div class="abs" style="left:22px;top:16px;font-weight:700;font-size:16px">Monthly AI budget</div>
+      <div class="abs" style="left:22px;top:50px;width:270px;height:14px;border-radius:7px;background:#ece6da;overflow:hidden">
+        <div style="width:100%;height:100%;background:linear-gradient(90deg, var(--good), #c9a227);transform-origin:left;--to:.9" data-a="growTo t2~0.55 1.4"></div>
+      </div>
+      <div class="abs muted" style="left:306px;top:47px;font-size:13px" data-a="fadeIn t2~0.68">routine calls pause at 90%</div>
+      <div class="abs" style="right:18px;top:26px" data-a="stamp t2~0.72"><span class="chip good" style="font-size:15px"><svg class="i"><use href="#i-shield"/></svg>Emergency alerts always go through</span></div>
+    </div>
+  </section>
+
+  <!-- 9 · starting in Japan, then everywhere -->
+  <section class="scene" id="s-close" data-a="zoomIn @close 1">
+    <div class="abs" style="left:50px;top:-14px;width:1180px;height:787px" data-a="fadeIn @close 1; dim z3+0.05 .9">
+      <div class="layer" style="transform-origin:76% 40%" data-a="kenburns @close 18">
+        <img src="assets/world-dots.png" style="width:1180px;display:block">
+        <svg class="abs" style="left:0;top:0" width="1180" height="787" id="arcs"></svg>
+        <div id="pins"></div>
+      </div>
+    </div>
+    <img class="abs" src="../../../apps/web/public/branding/hachi-logo.png" style="left:490px;top:170px;width:300px" data-a="pop z3+0.2 .7">
+    <div class="abs serif" style="left:0;width:1280px;top:320px;text-align:center;font-size:56px" data-a="rise z3~0.6 .8">All you need is a phone.</div>
+    <div class="abs" style="left:0;width:1280px;top:406px;text-align:center;font-size:24px;color:var(--brand);font-weight:600" data-a="rise z3~0.95 .8">hachicall.web.app</div>
+  </section>
+
+  <div class="abs muted" style="right:22px;top:16px;font-size:12px" data-a="fadeIn @problem+1; fadeOut @tech">All people shown are fictional.</div>
+  <div id="cap"></div>
+</div>
+
+<script src="out/timeline.js"></script>
+<script>
+(() => {
+  const problems = (window.__problems = []);
+  const TL = window.TL;
+  if (!TL) { problems.push('out/timeline.js is missing: run build.mjs --audio first'); return; }
+  const B = Object.fromEntries(TL.beats.map((b) => [b.id, b]));
+  const S = Object.fromEntries(TL.scenes.map((s) => [s.id, s]));
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  const AV = '../../../apps/web/public/avatars/';
+
+  function at(ref) {
+    ref = String(ref).trim();
+    if (/^-?[\d.]+$/.test(ref)) return Number(ref);
+    const m = ref.match(/^(@?\w+)(\.end)?(~[\d.]+)?((?:[+-][\d.]+)*)$/);
+    const base = m && (m[1].startsWith('@') ? S[m[1].slice(1)] : B[m[1]]);
+    if (!base) { problems.push(`unknown reference "${ref}"`); return 0; }
+    let v = m[2] ? base.end : base.start;
+    if (m[3]) v = base.start + (base.end - base.start) * Number(m[3].slice(1));
+    return v + (m[4].match(/[+-][\d.]+/g) ?? []).reduce((x, o) => x + Number(o), 0);
+  }
+
+  const OUT = 'cubic-bezier(.2,.8,.2,1)', IN = 'cubic-bezier(.6,0,.8,.2)', INOUT = 'cubic-bezier(.65,0,.35,1)', POP = 'cubic-bezier(.3,1.35,.5,1)';
+  const ANIMS = {
+    fadeIn: [.5, 'ease'], fadeOut: [.45, 'ease'], pop: [.55, POP], stamp: [.5, OUT], rise: [.7, OUT], drop: [.6, OUT],
+    fromLeft: [.8, OUT], fromRight: [.8, OUT], shrinkOut: [.5, IN], sinkOut: [.5, IN], dim: [.8, 'ease'], ripple: [1.8, 'ease-out'],
+    wiggle: [1.4, 'ease-in-out'], draw: [1, INOUT], grow: [.6, OUT], growTo: [1.2, OUT], marker: [.5, OUT], spin: [4, 'linear'],
+    kenburns: [24, 'linear'], float: [14, 'ease-in-out'], fly: [1.8, INOUT], pulseGlow: [1.6, 'ease-in-out'], blink: [1, 'linear'],
+    sortIn: [1.1, OUT], zoomIn: [.8, OUT], zoomOut: [.55, IN], zoomThrough: [.6, IN], pushIn: [.7, INOUT], pushOut: [.65, INOUT],
+    slideUpIn: [.75, OUT], slideUpOut: [.6, IN], wipeIn: [.9, INOUT], blurOut: [.6, IN], toEdith: [.85, IN],
+  };
+  const el = (tag, attrs = {}, html = '') => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) k === 'style' ? (e.style.cssText = v) : e.setAttribute(k, v);
+    e.innerHTML = html;
+    return e;
+  };
+  const svgEl = (tag, attrs) => {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  };
+  const updaters = [];
+
+  // ---------------------------------------------------------------- generated parts
+  // Week strip: Sunday is the day Michael calls.
+  const week = document.getElementById('week');
+  'MTWTFSS'.split('').forEach((d, i) => week.append(el('div', {
+    style: `width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;${i === 6 ? 'background:var(--brand);color:#fff' : 'background:#fff;border:1px solid var(--line);color:var(--muted)'}`,
+    'data-a': `pop p2~${(0.45 + i * 0.04).toFixed(2)}`,
+  }, d)));
+
+  // The crowd a care team looks after.
+  const crowd = document.getElementById('crowd');
+  const faces = ['grandmother-1', 'grandfather-1', 'grandmother-2', 'grandfather-2', 'grandmother-4', 'grandfather-4', 'grandmother-5', 'grandfather-5', 'grandmother-3', 'grandfather-3'];
+  for (let i = 0; i < 44; i++) {
+    const x = (i % 11) * 56, y = Math.floor(i / 11) * 62 + (i % 2) * 8;
+    crowd.append(el('div', { class: 'avatar', style: `left:${x}px;top:${y}px;width:44px;height:44px;border-width:2px`, 'data-a': `pop p3+${(0.45 + i * 0.035).toFixed(2)} .4` },
+      `<img src="${AV}${faces[(i * 7) % faces.length]}.png">`));
+  }
+
+  // A smartphone full of apps, and the steps an app asks for.
+  const appgrid = document.getElementById('appgrid');
+  const hues = ['#e07a1f', '#1f4d3a', '#4b6bdc', '#b3261e', '#c9a227', '#6f685e', '#2f7a4f', '#8e5bd6', '#d9534f', '#3a9ad9', '#f0c24b', '#5c564c'];
+  hues.forEach((c, i) => appgrid.append(el('div', { style: `position:absolute;left:${14 + (i % 3) * 44}px;top:${30 + Math.floor(i / 3) * 50}px;width:34px;height:34px;border-radius:9px;background:${c};opacity:.85` })));
+  const todo = document.getElementById('todo');
+  ['Download the app', 'Create an account', 'Allow notifications', 'Keep it updated'].forEach((s, i) => {
+    const row = el('div', { style: 'position:relative;display:flex;align-items:center;gap:12px;font-size:22px;height:58px', 'data-a': `fromLeft p4~${(0.08 + i * 0.07).toFixed(2)} .5` },
+      `<svg class="i" style="color:var(--muted)"><use href="#i-mobile"/></svg><span>${s}</span>`);
+    row.append(el('div', { style: 'position:absolute;left:-6px;right:60px;top:28px;height:3px;background:var(--danger);transform-origin:left', 'data-a': `grow p4~${(0.35 + i * 0.14).toFixed(2)} .3` }));
+    row.append(el('div', { style: 'position:absolute;right:20px;top:14px;color:var(--danger);font-size:26px', 'data-a': `stamp p4~${(0.37 + i * 0.14).toFixed(2)} .35` }, '<svg class="i" style="stroke-width:3"><use href="#i-x"/></svg>'));
+    todo.append(row);
+  });
+
+  // What she says: topics; how she says it: four measures, all within her usual range today.
+  const says = document.getElementById('says');
+  [['Sleep', 'ok'], ['Food', 'ok'], ['Mood', 'ok'], ['Social', 'q'], ['Body', 'q'], ['Activity', 'q']].forEach(([label, s], i) => {
+    says.append(el('span', { class: `chip ${s === 'ok' ? 'good' : ''}`, style: `position:absolute;left:${(i % 3) * 106}px;top:${Math.floor(i / 3) * 46}px`, 'data-a': `pop c2~${(0.46 + i * 0.03).toFixed(2)} .4` },
+      `${s === 'ok' ? '<svg class="i"><use href="#i-check"/></svg>' : '<span class="muted">?</span>'}${label}`));
+  });
+  const how = document.getElementById('how');
+  [['Time to answer', .42], ['Stops and restarts', .3], ['Word variety', .7], ['Staying on topic', .82]].forEach(([label, v], i) => {
+    const row = el('div', { style: `position:absolute;left:0;right:0;top:${i * 40}px;font-size:15px`, 'data-a': `rise c2~${(0.74 + i * 0.04).toFixed(2)} .4` }, `<div>${label}</div>`);
+    const bar = el('div', { style: 'position:absolute;left:150px;right:0;top:6px;height:10px;border-radius:5px;background:var(--brand-tint)' });
+    bar.append(el('div', { style: `width:${v * 100}%;height:100%;border-radius:5px;background:var(--good);transform-origin:left`, 'data-a': `grow c2~${(0.76 + i * 0.04).toFixed(2)} .6` }));
+    row.append(bar);
+    how.append(row);
+  });
+
+  // The queue: counts, lanes and cards that sort themselves into place.
+  const LEVELS = [
+    ['emergency', 'Immediate action', 'act now', 'var(--danger)', 'i-alert', 'Walter Hughes', 'grandfather-3', 'Said he has chest pain right now.', 'Lives with others · has a close supporter', ['<span class="chip good" style="font-size:12px">✓ Staff</span>', '<span class="chip good" style="font-size:12px">✓ Family</span>']],
+    ['today', 'Review today', 'check today', 'var(--today)', 'i-clock', 'Margaret Ellis', 'grandmother-2', 'Very little to eat for two days.', 'Lives alone · has a close supporter', ['<span class="chip" style="font-size:12px">Not started</span>']],
+    ['soon', 'Review soon', 'within a few days', 'var(--soon)', 'i-cal', 'Edith Carter', 'grandmother-3', 'Slower to answer and restarting sentences more often than usual.', 'Lives alone · has a close supporter', []],
+    ['monitor', 'Monitor', 'watch for now', 'var(--monitor)', 'i-eye', 'Dorothy Ishii', 'grandmother-1', 'A small breakfast; check again at the next call.', 'Lives alone · has a close supporter', ['<span class="chip" style="font-size:12px">Not started</span>']],
+  ];
+  const counts = document.getElementById('counts');
+  const lanes = document.getElementById('lanes');
+  const pile = [[300, 80, -4], [180, -100, 3], [80, -200, -2], [-40, -300, 5]];
+  const order = [2, 0, 3, 1];
+  LEVELS.forEach(([key, label, hint, color, icon, who, face, why, facts, side], i) => {
+    counts.append(el('div', { class: 'count', style: `left:${60 + i * 196}px;top:120px;border-top-color:${color}`, 'data-a': `pop @queue+${(0.25 + i * 0.08).toFixed(2)} .5` },
+      `<b data-count="q1+${(0.6 + order.indexOf(i) * 0.22).toFixed(2)},1,0.2">0</b><span><svg class="i" style="color:${color}"><use href="#${icon}"/></svg>${label}</span>`));
+    const y = 216 + i * 104;
+    const k = order.indexOf(i);
+    lanes.append(el('div', { class: 'lane', style: `top:${y}px`, 'data-a': `fadeIn q1+${(0.75 + k * 0.22).toFixed(2)} .4` },
+      `<svg class="i" style="color:${color};font-size:18px"><use href="#${icon}"/></svg>${label} <small>${hint}</small>`));
+    const [px, py, r] = pile[i];
+    lanes.append(el('div', { class: 'qcard', style: `top:${y + 26}px;border-left-color:${color};--px:${px}px;--py:${py}px;--r:${r}deg`, 'data-a': `sortIn q1+${(0.5 + k * 0.22).toFixed(2)}` },
+      `<div class="avatar"><img src="${AV}${face}.png"></div><div class="who">${who}</div>
+       <div class="why"><span class="mk" data-a="marker q2~${(0.3 + i * 0.12).toFixed(2)}">${why}</span></div><div class="facts">${facts}</div><div class="side">${side.join('')}</div>`));
+  });
+
+  // Edith's time to answer: her usual band, then the last calls drifting out of it.
+  const chart = document.getElementById('chart');
+  const W = 570, H = 196, y = (s) => H - 18 - ((s - 0.5) / 2.0) * (H - 30);
+  const values = [1.1, 1.2, 1.05, 1.25, 1.0, 1.15, 1.3, 1.1, 1.2, 1.0, 1.15, 1.25, 1.1, 1.2, 1.05, 1.3, 1.15, 1.1, 1.2, 1.15, 1.5, 1.72, 1.95, 2.2];
+  const px = (i) => 34 + i * ((W - 70) / (values.length - 1));
+  for (const s of [0.5, 1.0, 1.5, 2.0, 2.5]) {
+    chart.append(svgEl('line', { x1: 34, x2: W - 10, y1: y(s), y2: y(s), stroke: '#ece6da', 'stroke-width': 1 }));
+    const tl = svgEl('text', { x: 0, y: y(s) + 4, 'font-size': 11, fill: '#8a8173' });
+    tl.textContent = `${s.toFixed(1)} s`;
+    chart.append(tl);
+  }
+  const band = svgEl('rect', { x: 34, width: W - 44, y: y(1.4), height: y(0.8) - y(1.4), fill: '#e3eee6', 'data-a': 'fadeIn ch2+0.05 .6' });
+  chart.append(band);
+  const bandLabel = svgEl('text', { x: 44, y: y(0.8) - 7, 'font-size': 13, 'font-weight': 700, fill: '#2f7a4f', 'data-a': 'fadeIn ch2+0.3 .5' });
+  bandLabel.textContent = 'Usual for Edith';
+  chart.append(bandLabel);
+  const line = svgEl('polyline', { fill: 'none', stroke: '#8a8173', 'stroke-width': 1.5 });
+  chart.append(line);
+  const times = values.map((_, i) => (i < 20 ? at('ch2+0.2') + (at('ch2~0.55') - at('ch2+0.2')) * (i / 19) : at(`ch2~${(0.6 + (i - 20) * 0.06).toFixed(2)}`)));
+  const dots = values.map((v, i) => {
+    const last = i === values.length - 1, out = v > 1.4;
+    const d = svgEl('circle', { cx: px(i), cy: y(v), r: last ? 8 : out ? 6 : 5, fill: out ? '#f0c24b' : '#2f7a4f', stroke: out ? '#8a6d1f' : 'none', 'stroke-width': last ? 2 : 1 });
+    chart.append(d);
+    return d;
+  });
+  const tip = document.getElementById('tip');
+  updaters.push((t) => {
+    let shown = 0;
+    dots.forEach((d, i) => {
+      const k = clamp((t - times[i]) / 0.25);
+      if (k > 0) shown = i + 1;
+      d.style.opacity = k;
+      const s = k < 1 ? 0.4 + 0.6 * k + Math.sin(k * Math.PI) * 0.35 : 1;
+      d.setAttribute('transform', `translate(${px(i)} ${y(values[i])}) scale(${s}) translate(${-px(i)} ${-y(values[i])})`);
+    });
+    line.setAttribute('points', values.slice(0, shown).map((v, i) => `${px(i)},${y(v)}`).join(' '));
+    const k = clamp((t - at('ch2~0.82')) / 0.3);
+    tip.style.opacity = k;
+    tip.style.transform = `translateY(${(1 - k) * 10}px)`;
+  });
+
+  // Family phone: today's tiles and two weeks filling in.
+  const tiles = document.getElementById('tiles');
+  [['Body', 'ok'], ['Food', 'ok'], ['Sleep', 'ok'], ['Mood', 'ok'], ['Social', 'ok'], ['Activity', 'q']].forEach(([label, s], i) => {
+    tiles.append(el('div', { class: `tile ${s}`, style: `left:${14 + (i % 3) * 84}px;top:${194 + Math.floor(i / 3) * 72}px`, 'data-a': `pop f1+${(0.6 + i * 0.12).toFixed(2)} .4` },
+      `<div class="mark">${s === 'ok' ? '✓' : '?'}</div>${label}`));
+  });
+  const grid = document.getElementById('grid');
+  const rnd = (i) => (Math.sin(i * 12.9898) * 43758.5453) % 1;
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 14; c++) {
+    const v = Math.abs(rnd(r * 14 + c + 3));
+    const color = v < 0.62 ? 'var(--good)' : v < 0.9 ? '#ece6da' : '#f0c24b';
+    grid.append(el('div', { class: 'cell', style: `left:${14 + c * 17.6}px;top:${370 + r * 18}px;background:${color}`, 'data-a': `pop f1~${(0.45 + (c * 6 + r) / 84 * 0.5).toFixed(3)} .3` }));
+  }
+
+  // Data moving between the services.
+  const packets = document.getElementById('packets');
+  const links = [[280, 360, 228, 't1~0.32'], [580, 660, 228, 't1~0.52'], [880, 960, 228, 't1~0.72'], [580, 660, 418, 't2~0.2'], [880, 960, 418, 't2~0.3']];
+  const flows = [];
+  links.forEach(([x0, x1, yy, ref], li) => {
+    for (let k = 0; k < 3; k++) {
+      const p = el('div', { class: 'packet', style: `top:${yy}px;background:${li < 3 ? 'var(--brand)' : '#4b6bdc'}` });
+      packets.append(p);
+      flows.push({ p, x0, x1, start: at(ref) + 0.2, phase: k / 3, back: li < 3 && k === 1 });
+    }
+  });
+  updaters.push((t) => {
+    for (const f of flows) {
+      if (t < f.start) { f.p.style.opacity = 0; continue; }
+      let u = ((t - f.start) * 0.9 + f.phase) % 1;
+      if (f.back) u = 1 - u;
+      f.p.style.left = `${f.x0 + (f.x1 - f.x0) * u}px`;
+      f.p.style.opacity = Math.min(1, (t - f.start) * 3) * Math.sin(Math.PI * u);
+    }
+  });
+
+  // The map: Japan first, then English speakers around the world. Coordinates are on the 1024-wide map.
+  const K = 1180 / 1024;
+  const JAPAN = [831, 297];
+  const CITIES = [[478, 222], [301, 280], [190, 300], [292, 258], [868, 512], [916, 530], [690, 318], [537, 506], [492, 380], [590, 412], [770, 404], [818, 360]];
+  const arcs = document.getElementById('arcs');
+  const pins = document.getElementById('pins');
+  const pin = (x, y, ref, big) => {
+    const wrap = el('div', { style: `position:absolute;left:${x * K - (big ? 11 : 7)}px;top:${y * K - (big ? 11 : 7)}px;width:${big ? 22 : 14}px;height:${big ? 22 : 14}px`, 'data-a': `pop ${ref} .45` });
+    wrap.append(el('span', { class: 'ripple', style: 'border-width:2px', 'data-a': `ripple* ${ref}+0.2 ${big ? 1.6 : 2.2}` }));
+    wrap.append(el('div', { style: `position:absolute;inset:0;border-radius:50%;background:var(--brand);border:3px solid #fff;box-shadow:var(--shadow)` }));
+    pins.append(wrap);
+  };
+  pin(...JAPAN, 'z1~0.3', true);
+  pins.append(el('div', { class: 'card', style: `left:${JAPAN[0] * K + 22}px;top:${JAPAN[1] * K - 30}px;padding:8px 14px;font-weight:700;font-size:16px;white-space:nowrap`, 'data-a': 'pop z1~0.38' },
+    'Japan <span class="muted" style="font-weight:500">· starting here</span>'));
+  CITIES.forEach(([x, y], i) => {
+    const [x0, y0] = [JAPAN[0] * K, JAPAN[1] * K], [x1, y1] = [x * K, y * K];
+    const lift = Math.hypot(x1 - x0, y1 - y0) * 0.35;
+    const path = svgEl('path', { d: `M${x0} ${y0} Q ${(x0 + x1) / 2} ${(y0 + y1) / 2 - lift} ${x1} ${y1}`, stroke: '#1f4d3a', 'stroke-width': 2.2, fill: 'none',
+      pathLength: 1, 'stroke-dasharray': 1, opacity: 0.75, 'data-a': `draw z2+${(0.1 + i * 0.13).toFixed(2)} .7` });
+    arcs.append(path);
+    pin(x, y, `z2+${(0.6 + i * 0.13).toFixed(2)}`);
+  });
+
+  // ---------------------------------------------------------------- live parts
+  // Waveforms follow the loudness of whoever is speaking.
+  const byKind = {};
+  for (const b of TL.beats) (byKind[b.kind] ??= []).push(b);
+  const level = (kind, t) => {
+    for (const b of byKind[kind] ?? []) {
+      if (t >= b.start && t < b.end) return TL.envelopes?.[b.id]?.[Math.floor((t - b.start) * 30)] ?? 0.6;
+    }
+    return 0;
+  };
+  const smooth = {};
+  for (const w of document.querySelectorAll('[data-wave]')) {
+    const n = Number(w.dataset.n ?? 26);
+    const bars = Array.from({ length: n }, () => w.appendChild(document.createElement('i')));
+    const kind = w.dataset.wave;
+    updaters.push((t) => {
+      const a = Math.max(level(kind, t), level(kind, t - 1 / 30) * 0.7);
+      bars.forEach((bar, i) => {
+        const shape = Math.sin((i + 0.5) / n * Math.PI) ** 0.6;
+        const jitter = Math.abs(Math.sin(i * 2.17 + t * 13.1) * Math.sin(i * 0.73 + t * 7.7));
+        bar.style.height = `${4 + a * shape * (8 + 32 * jitter)}px`;
+      });
+    });
+  }
+  for (const av of document.querySelectorAll('[data-speak]')) {
+    const kind = av.dataset.speak;
+    updaters.push((t) => { av.style.boxShadow = `0 0 0 ${3 + level(kind, t) * 9}px rgba(31,77,58,${0.08 + level(kind, t) * 0.2})`; });
+  }
+  // Transcripts appear word by word as they are spoken.
+  for (const node of document.querySelectorAll('[data-type]')) {
+    const b = B[node.dataset.type];
+    if (!b) { problems.push(`unknown beat ${node.dataset.type}`); continue; }
+    const words = [];
+    const walk = (n) => {
+      for (const c of [...n.childNodes]) {
+        if (c.nodeType === 3) {
+          const frag = document.createDocumentFragment();
+          c.textContent.split(/(\s+)/).forEach((part) => {
+            if (!part) return;
+            if (/^\s+$/.test(part)) return frag.append(part);
+            const s = document.createElement('span');
+            s.textContent = part;
+            words.push(s);
+            frag.append(s);
+          });
+          c.replaceWith(frag);
+        } else walk(c);
+      }
+    };
+    walk(node);
+    const marked = [];
+    for (const m of node.querySelectorAll('.mk')) {
+      const inMark = [...m.querySelectorAll('span')];
+      inMark.forEach((w, j) => {
+        w.classList.add('mkw');
+        const gap = w.nextSibling;
+        if (j < inMark.length - 1 && gap?.nodeType === 3) w.append(gap);
+        marked.push(words.indexOf(w));
+      });
+    }
+    updaters.push((t) => {
+      const k = clamp((t - b.start) / Math.max(0.3, b.end - b.start - 0.15)) * words.length;
+      words.forEach((w, i) => { w.style.opacity = t < b.start ? 0 : clamp(k - i + 0.6); });
+      for (const i of marked) words[i].style.backgroundSize = `${t < b.start ? 0 : clamp(k - i + 0.3) * 100}% 100%`;
+    });
+  }
+  for (const node of document.querySelectorAll('[data-timer]')) {
+    const from = at(node.dataset.timer), base = Number(node.dataset.base ?? 0);
+    updaters.push((t) => {
+      const s = Math.max(0, Math.floor(t - from)) + base;
+      node.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    });
+  }
+  for (const node of document.querySelectorAll('[data-count]')) {
+    const [ref, to, dur] = node.dataset.count.split(',');
+    const from = at(ref);
+    updaters.push((t) => { node.textContent = Math.round(clamp((t - from) / Number(dur)) * Number(to)); });
+  }
+  // Captions for the narration.
+  const cap = document.getElementById('cap');
+  const narr = TL.beats.filter((b) => b.kind === 'narr');
+  let shownCap = null;
+  updaters.push((t) => {
+    if (window.__captions === false) return;
+    const b = narr.find((x) => t >= x.start - 0.08 && t < x.end + 0.3);
+    if (b !== shownCap) {
+      shownCap = b;
+      if (b) {
+        cap.style.width = '';
+        cap.textContent = b.text;
+        const r = document.createRange();
+        r.selectNodeContents(cap);
+        cap.style.width = `${Math.ceil(Math.max(...[...r.getClientRects()].map((x) => x.width)) + 42)}px`;
+      }
+    }
+    cap.style.opacity = b ? clamp(Math.min((t - b.start + 0.08) / 0.15, (b.end + 0.3 - t) / 0.15)) : 0;
+  });
+
+  // ---------------------------------------------------------------- the clock
+  for (const node of document.querySelectorAll('[data-a]')) {
+    node.style.animation = node.dataset.a.split(';').map((s) => s.trim()).filter(Boolean).map((part, i) => {
+      const [raw, ref, d] = part.split(/\s+/);
+      const loop = raw.endsWith('*');
+      const name = raw.replace('*', '');
+      if (!ANIMS[name]) problems.push(`unknown animation ${name}`);
+      const [dur, ease] = ANIMS[name] ?? [0.5, 'ease'];
+      return `${name} ${d ?? dur}s ${ease} ${at(ref ?? 0).toFixed(3)}s ${loop ? 'infinite' : 1} ${loop ? 'none' : i === 0 ? 'both' : 'forwards'}`;
+    }).join(', ');
+  }
+  let anims = [];
+  // Seeking paused animations does not ask headless Chrome for a new frame; a text change does.
+  const ticker = el('div', { style: 'position:absolute;left:0;top:0;font-size:1px;opacity:.01' });
+  document.getElementById('stage').append(ticker);
+  window.render = (t) => {
+    for (const a of anims) a.currentTime = t * 1000;
+    for (const u of updaters) u(t);
+    ticker.textContent = t.toFixed(3);
+  };
+  window.renderFrame = (t) => {
+    window.render(t);
+    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  };
+  // Untransformed boxes, relative to the card, so animation state doesn't matter.
+  const boxIn = (node, card) => {
+    let x = 0, y = 0;
+    for (let n = node; n && n !== card; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
+    return { x, y, r: x + node.offsetWidth, b: y + node.offsetHeight };
+  };
+  const hits = (a, b) => a.x < b.r && b.x < a.r && a.y < b.b && b.y < a.b;
+  function checkLayout() {
+    for (const card of document.querySelectorAll('.card')) {
+      const W = card.clientWidth, H = card.clientHeight;
+      for (const stack of card.querySelectorAll(':scope > .stack')) {
+        const s = boxIn(stack, card);
+        if (s.b > H - 8) problems.push(`conversation runs off its card (${s.b} > ${H})`);
+        for (const other of card.querySelectorAll(':scope > .abs:not(.eyebrow)')) {
+          if (hits(s, boxIn(other, card))) problems.push(`conversation overlaps "${other.textContent.trim().slice(0, 30)}"`);
+        }
+      }
+      for (const chip of card.querySelectorAll('.chip')) {
+        const c = boxIn(chip, card);
+        if (c.x < 0 || c.r > W) problems.push(`chip "${chip.textContent.trim()}" sticks out of its card`);
+      }
+    }
+  }
+  const images = [...document.images].map((img) => (img.complete ? img.decode().catch(() => {}) : new Promise((r) => { img.onload = img.onerror = r; })));
+  Promise.all([document.fonts.ready, ...images]).then(() => {
+    anims = document.getAnimations();
+    anims.forEach((a) => a.pause());
+    window.render(0);
+    checkLayout();
+    window.__ready = true;
+    if (!window.__driven) play();
+  });
+
+  // Opened in a browser: play with the soundtrack; space pauses, arrows seek.
+  function play() {
+    const audio = new Audio('out/mix.wav');
+    const start = Number(new URLSearchParams(location.search).get('t') ?? 0);
+    audio.currentTime = start;
+    const note = el('div', { style: 'position:fixed;left:16px;top:740px;color:#ccc;font:14px system-ui' }, 'Click to play · space pauses · ← → seek 5 s');
+    document.body.append(note);
+    document.addEventListener('click', () => audio.paused ? audio.play() : audio.pause());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ') audio.paused ? audio.play() : audio.pause();
+      if (e.key === 'ArrowRight') audio.currentTime += 5;
+      if (e.key === 'ArrowLeft') audio.currentTime = Math.max(0, audio.currentTime - 5);
+    });
+    const tick = () => { window.render(audio.currentTime); requestAnimationFrame(tick); };
+    tick();
+  }
+})();
+</script>
+</body>
+</html>

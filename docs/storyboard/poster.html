@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja" data-height="2170">
+<head>
+<meta charset="utf-8">
+<title>Hachi デモ動画 — 全体のイメージ</title>
+<!-- docs/DEMO_SCRIPT.md の 9 場面を 1 枚にしたもの。コマは frames.html から render.sh で書き出した frames/*.png。 -->
+<style>
+  @font-face { font-family: DM; src: url(../../apps/web/public/fonts/DMSerifDisplay-Regular.ttf); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f4efe4; color: #1c1915; font-family: 'Avenir Next', 'Hiragino Sans', 'Segoe UI', sans-serif; }
+  main { width: 1800px; padding: 56px 60px 48px; }
+  .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
+  h1 { font-family: DM, serif; font-weight: 400; font-size: 46px; margin: 0 0 8px; }
+  .lead { margin: 0; color: #5c564d; font-size: 18px; line-height: 1.6; }
+  .stats { display: flex; gap: 28px; }
+  .stat b { display: block; font-family: DM, serif; font-weight: 400; font-size: 34px; color: #1f4d3a; }
+  .stat span { font-size: 14px; color: #5c564d; }
+
+  .timeline { display: flex; height: 44px; margin: 30px 0 8px; border: 1px solid #d9d1c2; border-radius: 8px; overflow: hidden; }
+  .timeline div { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; background: #fff; border-right: 1px solid #d9d1c2; white-space: nowrap; overflow: hidden; }
+  .timeline div:last-child { border-right: 0; }
+  .timeline div.key { background: #1f4d3a; color: #fff; }
+  .ticks { position: relative; height: 18px; font-size: 13px; color: #5c564d; margin-bottom: 34px; }
+  .ticks span { position: absolute; top: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 30px; align-items: start; }
+  .scene .when { font-size: 14px; color: #5c564d; letter-spacing: .04em; }
+  .scene h2 { font-family: DM, serif; font-weight: 400; font-size: 25px; margin: 2px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+  .scene h2 .n { font-family: 'Avenir Next', sans-serif; font-size: 15px; font-weight: 600; color: #fff; background: #1c1915; border-radius: 99px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; transform: translateY(-3px); }
+  .scene.key h2 .n { background: #1f4d3a; }
+  .scene img { display: block; width: 100%; border-radius: 8px; border: 1px solid #d9d1c2; }
+  .thumbs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 8px; }
+  .thumbs.single { grid-auto-columns: calc(50% - 4px); }
+  .what { font-size: 15px; line-height: 1.6; margin: 10px 0 0; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid #9a4a06; color: #9a4a06; margin: 8px 6px 0 0; }
+
+  .foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid #d9d1c2; display: flex; justify-content: space-between; font-size: 14px; color: #5c564d; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>Hachi デモ動画 — 3 分のイメージ</h1>
+      <p class="lead">世界のどこにでもある問題から入り、Edith 一人の一日を職員・家族の画面でたどり、「今は日本、次は世界の英語話者へ」で閉じる。<br>
+      字幕は全編に焼き込む。ナレーションは 1 分 130 語のゆっくりした英語。</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>2:51</b><span>全体（上限 3:00）</span></div>
+      <div class="stat"><b>315</b><span>ナレーションの語数</span></div>
+      <div class="stat"><b>9</b><span>場面</span></div>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <div style="flex:5">1</div>
+    <div style="flex:24">2 世界の問題</div>
+    <div style="flex:31">3 Edith と毎日の電話</div>
+    <div style="flex:16">4 待ち行列</div>
+    <div class="key" style="flex:24">5 小さな変化</div>
+    <div class="key" style="flex:21">6 緊急と沈黙</div>
+    <div style="flex:17">7 家族</div>
+    <div style="flex:15">8 仕組み</div>
+    <div style="flex:18">9 評価と次</div>
+  </div>
+  <div class="ticks"><span style="left:0.00%">0:00</span><span style="left:17.54%">0:30</span><span style="left:35.09%">1:00</span><span style="left:52.63%">1:30</span><span style="left:70.18%">2:00</span><span style="left:87.72%">2:30</span><span style="right:0">2:51</span></div>
+
+  <div class="grid">
+    <section class="scene">
+      <div class="when">0:00–0:05 · ナレーションなし</div>
+      <h2><span class="n">1</span>通話の声から入る</h2>
+      <img src="frames/01-hook.png">
+      <div class="thumbs single"><img src="frames/02-title.png"></div>
+      <p class="what">黒地に Hachi の第一声の字幕だけ。5 秒で「電話をかける AI」と分かったところでタイトル。</p>
+    </section>
+
+    <section class="scene">
+      <div class="when">0:05–0:29 · 49 語</div>
+      <h2><span class="n">2</span>世界の問題と出発点</h2>
+      <img src="frames/03-world.png">
+      <div class="thumbs"><img src="frames/04-phone.png"><img src="frames/05-japan.png"></div>
+      <p class="what">どの国の人にも自分の親に見える映像から。「電話なら届く」を文字カードで見せ、最後に日本は「出発点」として一度だけ。</p>
+      <span class="tag">一枚目は映像素材の代わりの生成画像</span>
+    </section>
+
+    <section class="scene">
+      <div class="when">0:29–1:00 · 46 語 ＋ 通話音声 9 秒</div>
+      <h2><span class="n">3</span>Edith と毎日の電話</h2>
+      <img src="frames/06-call.png">
+      <p class="what">主人公 Edith の紹介。録音を再生し、文字起こしが流れる。AI だと名乗ること、本人の同意があってから電話することを字幕で補う。</p>
+    </section>
+
+    <section class="scene">
+      <div class="when">1:00–1:16 · 32 語</div>
+      <h2><span class="n">4</span>職員の待ち行列</h2>
+      <img src="frames/07-queue.png">
+      <p class="what">緊急度別のレーンを上から下へ。「誰から、なぜ」が一行で分かる。Review soon の Edith のカードで止めて、押す。</p>
+    </section>
+
+    <section class="scene key">
+      <div class="when">1:16–1:40 · 43 語 ＋ 証拠の音声 3 秒</div>
+      <h2><span class="n">5</span>Edith の小さな変化</h2>
+      <img src="frames/08-change.png">
+      <p class="what">言ったことに問題はない。でも言い直しが聞こえる。本人の過去 4 週間の帯から、最新の点が外れている。診断ではなく変化の知らせ。</p>
+    </section>
+
+    <section class="scene key">
+      <div class="when">1:40–2:01 · 44 語</div>
+      <h2><span class="n">6</span>緊急と沈黙</h2>
+      <img src="frames/09-emergency.png">
+      <p class="what">胸の痛みは通話中に動く。救急車を呼ぶよう促し、職員と家族を通話に呼ぶ。「誰に届いたか」の記録まで見せる。</p>
+      <span class="tag">完成イメージ。本番に映すケースは未作成</span>
+    </section>
+
+    <section class="scene">
+      <div class="when">2:01–2:18 · 34 語</div>
+      <h2><span class="n">7</span>家族の画面</h2>
+      <img src="frames/10-family.png">
+      <p class="what">携帯の画面幅で。今日の通話、2 週間の一覧、繰り返し出る話題だけ。録音も文字起こしも、API が家族に渡さない。</p>
+    </section>
+
+    <section class="scene">
+      <div class="when">2:18–2:33 · 31 語</div>
+      <h2><span class="n">8</span>仕組み</h2>
+      <img src="frames/11-arch.png">
+      <p class="what">通話中は Twilio → Cloud Run → Gemini Live API、通話後は Gemini が全通話を見直す。月の AI 予算は緊急の連絡を止めない。</p>
+      <span class="tag">英語の構成図は新しく作る（今の architecture.png は日本語）</span>
+    </section>
+
+    <section class="scene">
+      <div class="when">2:33–2:51 · 36 語</div>
+      <h2><span class="n">9</span>評価とこれから</h2>
+      <img src="frames/12-eval.png">
+      <div class="thumbs single"><img src="frames/13-close.png"></div>
+      <p class="what">合成音声での結果を正直に（実際の電話はもっと難しい）。今は日本の英語話者、次は世界の英語話者。</p>
+    </section>
+  </div>
+
+  <div class="foot">
+    <span>画面はローカルプレビューの架空データ。人物はすべて架空。</span>
+    <span>台本 docs/DEMO_SCRIPT.md · コマ docs/storyboard/frames.html</span>
+  </div>
+</main>
+</body>
+</html>
