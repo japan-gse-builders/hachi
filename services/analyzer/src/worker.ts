@@ -5,11 +5,13 @@ import {
   HISTORY_CALLS,
   itemsForCall,
   localDate,
+  parseWav,
   spendMonth,
   type AnalysisFailure,
   type AnalysisGap,
   type Detection,
   type Locale,
+  type PcmAudio,
   type RuleId,
   type SpendSettings,
   type TimingSource,
@@ -88,6 +90,14 @@ function classifyFailure(part: AnalysisGap['part'], err: unknown, stored = true)
 
 const leaseActive = (c: CallRecord, nowIso: string) => !!c.analysisLease && c.analysisLease > nowIso;
 
+function parsedOrUndefined(wav: Buffer): PcmAudio | undefined {
+  try {
+    return parseWav(wav);
+  } catch {
+    return undefined;
+  }
+}
+
 /** True while a pass staff asked for has not run yet: a finished pass is newer than the request. */
 const reanalysisDue = (c: CallRecord) => {
   const asked = c.reanalysis?.requestedAt;
@@ -158,6 +168,8 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     const { recordings, listener } = deps;
     const audioUri = call.source !== 'imported' && spoke && recordings && listener ? call.audioUri : undefined;
     let stored = false;
+    // Kept for F02, which needs the same recording again; an object so TypeScript does not narrow it to undefined.
+    const kept: { wav?: Buffer } = {};
     const [reviewed, measured] = await Promise.allSettled([
       spoke
         ? deps.reviewer.review({
@@ -176,11 +188,12 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
           })
         : Promise.resolve(null),
       audioUri
-        ? recordings!.read(audioUri).then((wav) => {
+        ? recordings!.read(audioUri).then((data) => {
             stored = true;
+            kept.wav = data;
             // Listening is a second Gemini request, with a minute of audio as its prompt. Left
             // uncharged it was the largest thing the ledger could not see in normal operation.
-            return measureRecording(wav, transcript, listener!, (t) => void chargeTokens(deps, t));
+            return measureRecording(data, transcript, listener!, (t) => void chargeTokens(deps, t));
           })
         : Promise.resolve(null),
     ]);
@@ -202,6 +215,8 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     const voice = measured.status === 'fulfilled' ? measured.value : null;
     const timing: TimingSource = call.source === 'imported' ? 'transcript' : (voice ?? 'unavailable');
     const audioQuality = voice?.audioQuality ?? undefined;
+    // F02 only: an unreadable file just means no answer clips, never a failed analysis.
+    const audio = kept.wav ? parsedOrUndefined(kept.wav) : undefined;
 
     const history = (await store.listCalls(ref.residentId, { limit: HISTORY_CALLS })).filter((c) => c.id !== call.id);
     const result = analyse({
@@ -212,6 +227,7 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
       review,
       timing,
       ...(audioQuality !== undefined ? { audioQuality } : {}),
+      ...(audio ? { audio } : {}),
       model: deps.reviewer.model,
       ...(modelError ? { modelError } : {}),
       ...(voiceError ? { voiceError } : {}),

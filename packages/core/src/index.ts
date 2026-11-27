@@ -11,6 +11,7 @@ export * from './analysisGaps.js';
 export * from './callSlot.js';
 export * from './ending.js';
 export * from './voice.js';
+export * from './speechCompare.js';
 export * from './cases.js';
 export * from './priority.js';
 export * from './notifications.js';

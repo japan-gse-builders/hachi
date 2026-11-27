@@ -248,6 +248,8 @@ export interface CaseDetail {
   speechTrend: SpeechPoint[];
   /** Missing from servers older than the speech chart; null until the resident has a baseline. */
   speechBaseline?: SpeechBaseline | null;
+  /** F02: R3 cases only. Missing from servers older than the comparison, and null for other cases. */
+  speechComparison?: SpeechComparison | null;
   screening?: Screening;
   events: { at: string; actorUid: string; type: string; reason?: string; from?: string | number | null; to?: string | number | null }[];
   statusOptions: { value: string; label: string }[];
@@ -291,6 +293,31 @@ export interface SpeechBaseline {
   to: string;
   callCount: number;
   ranges: Record<string, { audio?: UsualRange; transcript?: UsualRange } | undefined>;
+}
+
+/** One answer to a set question, with where it is in the recording. */
+export interface ComparedAnswer {
+  callId: string;
+  at: string;
+  answer: string;
+  quote: string;
+  startMs: number;
+  endMs: number;
+  /** Null when the call has no recording to play. */
+  audioUrl: string | null;
+}
+
+export interface SpeechComparison {
+  callId: string;
+  at: string;
+  /** The features that moved in the flagged call, with the usual and this-call averages. */
+  changes: { feature: string; label: string; baselineMean: number; recentMean: number }[];
+  usualCalls: number;
+  usualRecordings: number;
+  recentRecording: boolean;
+  questions: { itemId: string; question: string; usual: ComparedAnswer; recent: ComparedAnswer }[];
+  /** Why nothing could be compared; null when there are questions to show. */
+  message: string | null;
 }
 
 export type DomainState = 'good' | 'mixed' | 'concern' | 'unmentioned';

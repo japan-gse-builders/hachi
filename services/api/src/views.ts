@@ -10,8 +10,11 @@ import {
   type SpendLedger,
   type SpendPolicy,
   combineStates,
+  compareSpeech,
   describeAnalysisGaps,
+  describeFeatureChange,
   domainStatus,
+  latestSpeechChange,
   effectiveUrgency,
   hasCallConsent,
   KIHON_DOMAIN_LABELS,
@@ -39,6 +42,8 @@ import {
   wellbeingTag,
   type AnalysisGap,
   type CheckInAttempt,
+  type ComparedAnswer,
+  type ComparisonGap,
   type DomainState,
   type LifeDomain,
   type Locale,
@@ -482,6 +487,7 @@ export async function buildCaseDetail(
       }))
       .reverse(),
     speechBaseline: speechBaselineView(calls, r.serviceStartedAt),
+    speechComparison: await speechComparisonView(c, r, calls, signer, locale),
     screening: screeningView(r, calls, now),
     events,
     // The update form offers every state and level, so their names come from here too rather than
@@ -535,6 +541,65 @@ function staffWellbeing(w: CallWellbeing, transcript: Turn[], locale: Locale) {
       confidence: t.confidence,
       quote: transcript[t.turn]?.text.slice(0, 300) ?? null,
     })),
+  };
+}
+
+/** Staff only (F02): what each comparison gap means for the reader, in the words the case page uses. */
+const COMPARISON_GAP_TEXT: Record<Locale, Record<ComparisonGap, string>> = {
+  en: {
+    no_recent_answers: 'No answer to a set question in this call could be found in the recording, so there is nothing to compare.',
+    no_usual_answers: 'The usual calls have no recorded answer to a set question, so there is nothing to compare with yet.',
+    no_shared_question: 'The usual calls answered different set questions from this call, so there is nothing to compare yet.',
+  },
+  ja: {
+    no_recent_answers: 'この通話では、録音から定型の質問への回答を見つけられなかったため、比較できません。',
+    no_usual_answers: '平常時の通話に、定型の質問への回答の録音がないため、まだ比較できません。',
+    no_shared_question: '平常時の通話と今回の通話では、答えた定型の質問が一致していないため、まだ比較できません。',
+  },
+};
+
+/**
+ * F02, staff only: the features that moved, and the usual and flagged answers to the same set
+ * questions, each with a link to its part of the recording. Null for cases that are not R3.
+ */
+async function speechComparisonView(c: StoredCase, r: Resident, calls: CallRecord[], signer: MediaSigner, locale: Locale) {
+  if (c.rule !== 'R3') return null;
+  const change = latestSpeechChange(c.detections);
+  if (!change) return null;
+  const baseline = buildBaseline(calls.flatMap((x) => (x.speech ? [x.speech] : [])), r.serviceStartedAt);
+  const cmp = compareSpeech(
+    change,
+    calls.map((x) => ({ callId: x.id, at: x.startedAt, hasRecording: Boolean(x.audioUri), clips: x.analysis?.clips ?? [] })),
+    baseline ? { from: baseline.from, to: baseline.to } : null,
+  );
+  if (!cmp) return null;
+  // Signed once per call, and only for the calls the page actually plays.
+  const uris = new Map(calls.flatMap((x) => (x.audioUri ? [[x.id, x.audioUri] as const] : [])));
+  const signed = new Map<string, Promise<string>>();
+  const audioUrl = (callId: string) => {
+    const uri = uris.get(callId);
+    if (!uri) return Promise.resolve(null);
+    let url = signed.get(callId);
+    if (!url) signed.set(callId, (url = signer.sign(uri)));
+    return url;
+  };
+  const side = async (a: ComparedAnswer) => ({ ...a, audioUrl: await audioUrl(a.callId) });
+  return {
+    callId: cmp.callId,
+    at: cmp.at,
+    changes: cmp.changes.map((ch) => ({
+      feature: ch.feature,
+      label: describeFeatureChange(ch, locale),
+      baselineMean: ch.baselineMean,
+      recentMean: ch.recentMean,
+    })),
+    usualCalls: cmp.usualCalls,
+    usualRecordings: cmp.usualRecordings,
+    recentRecording: cmp.recentRecording,
+    questions: await Promise.all(
+      cmp.questions.map(async (q) => ({ itemId: q.itemId, question: q.question, usual: await side(q.usual), recent: await side(q.recent) })),
+    ),
+    message: cmp.gap ? COMPARISON_GAP_TEXT[locale][cmp.gap] : null,
   };
 }
 
