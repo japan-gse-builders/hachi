@@ -33,8 +33,13 @@ export const STATES: Record<CellState, { symbol: string; word: string; tone: str
 
 export const LEGEND: CellState[] = ['good', 'mixed', 'concern', 'unmentioned', 'notes', 'missed', 'nocall', 'notyet'];
 
-const tokyoDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(d);
-const tokyoTime = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+const JAPAN = 'Asia/Tokyo';
+export function familyDate(d: Date, timeZone = JAPAN): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+  const { year, month, day } = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${year}-${month}-${day}`;
+}
+export const familyTime = (d: Date, timeZone = JAPAN) => new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
 const DAY = 86_400_000;
 
 /** `date` is a resident-local YYYY-MM-DD. */
@@ -46,33 +51,48 @@ export function dayOfMonth(date: string): string {
   return String(Number(date.slice(8, 10)));
 }
 
-/** "today", "yesterday" or "3 Oct", in Japan time. */
-function relativeDay(iso: string, now: Date): string {
-  const day = tokyoDay(new Date(iso));
-  if (day === tokyoDay(now)) return 'today';
-  if (day === tokyoDay(new Date(now.getTime() - DAY))) return 'yesterday';
-  if (day === tokyoDay(new Date(now.getTime() + DAY))) return 'tomorrow';
+function relativeDay(iso: string, now: Date, timeZone = JAPAN): string {
+  const day = familyDate(new Date(iso), timeZone);
+  const today = familyDate(now, timeZone);
+  const midnight = Date.parse(`${today}T00:00:00Z`);
+  if (day === today) return 'today';
+  if (day === new Date(midnight - DAY).toISOString().slice(0, 10)) return 'yesterday';
+  if (day === new Date(midnight + DAY).toISOString().slice(0, 10)) return 'tomorrow';
   return dayLabel(day);
 }
 
 /** "Today's call, 10:02", "Yesterday's call, 10:02" or "Latest call, 3 Oct, 10:02" (Japan time). */
-export function latestCallLabel(startedAt: string, now: Date): string {
-  const time = tokyoTime(new Date(startedAt));
-  const day = relativeDay(startedAt, now);
+export function latestCallLabel(startedAt: string, now: Date, timeZone = JAPAN): string {
+  const time = familyTime(new Date(startedAt), timeZone);
+  const day = relativeDay(startedAt, now, timeZone);
   if (day === 'today') return `Today's call, ${time}`;
   if (day === 'yesterday') return `Yesterday's call, ${time}`;
   return `Latest call, ${day}, ${time}`;
 }
 
-export function nextCallLabel(nextCallAt: string | null, now: Date): string {
-  if (!nextCallAt) return 'Daily calls are paused';
-  return `Next call ${relativeDay(nextCallAt, now)}, ${tokyoTime(new Date(nextCallAt))} (Japan time)`;
+export function nextCallLabel(nextCallAt: string | null, now: Date, timeZone = JAPAN): string {
+  if (!nextCallAt) return 'No upcoming call';
+  const day = relativeDay(nextCallAt, now, timeZone);
+  const zone = timeZone === JAPAN ? 'Japan time' : timeZone.replaceAll('_', ' ');
+  return `${day.charAt(0).toUpperCase() + day.slice(1)}, ${familyTime(new Date(nextCallAt), timeZone)} (${zone})`;
 }
 
 /** "Today's call is at 10:00." while today's call is still to come; '' otherwise. */
-export function todayCallNote(nextCallAt: string | null, now: Date): string {
-  if (!nextCallAt || relativeDay(nextCallAt, now) !== 'today') return '';
-  return `Today's call is at ${tokyoTime(new Date(nextCallAt))}.`;
+export function todayCallNote(nextCallAt: string | null, now: Date, timeZone = JAPAN): string {
+  if (!nextCallAt || Date.parse(nextCallAt) <= now.getTime() || relativeDay(nextCallAt, now, timeZone) !== 'today') return '';
+  return `Today's call is at ${familyTime(new Date(nextCallAt), timeZone)}.`;
+}
+
+/** An older API gives us only finished calls and the schedule. */
+export function familyToday(data: FamilyDashboard, now: Date): NonNullable<FamilyDashboard['today']> {
+  if (data.today) return data.today;
+  const date = familyDate(now, data.timeZone);
+  const calls = data.calls.filter((c) => Date.parse(c.startedAt) <= now.getTime() && familyDate(new Date(c.startedAt), data.timeZone) === date);
+  const talked = calls.find((c) => c.connected);
+  if (talked) return { status: 'talked', at: talked.startedAt };
+  if (calls[0]) return { status: 'interrupted', at: calls[0].startedAt };
+  if (!data.nextCallAt) return { status: 'paused', at: null };
+  return { status: todayCallNote(data.nextCallAt, now, data.timeZone) ? 'before_call' : 'waiting', at: null };
 }
 
 const TITLES = /(?:^|\s)(?:Mr|Mrs|Ms|Dr|St|Mt)\.$/;
@@ -99,16 +119,12 @@ export interface FamilyDay extends GlanceDay {
   notesPending: boolean;
 }
 
-/**
- * The API ends `days` on the resident's today, reckoned in their time zone, and sends no zone with
- * it; calls are placed on days in Japan time, as the rest of the page shows them. The last day is
- * marked today only while it still is today in Japan, so a page left open overnight marks none.
- */
-export function familyDays(days: readonly GlanceDay[], calls: readonly FamilyCall[], now: Date, callsActive: boolean): FamilyDay[] {
-  const dateOf = (c: FamilyCall) => tokyoDay(new Date(c.startedAt));
+/** History uses the same resident-local date as the daily schedule. */
+export function familyDays(days: readonly GlanceDay[], calls: readonly FamilyCall[], now: Date, callsActive: boolean, timeZone = JAPAN): FamilyDay[] {
+  const dateOf = (c: FamilyCall) => familyDate(new Date(c.startedAt), timeZone);
   const tried = new Set(calls.filter((c) => !c.connected).map(dateOf));
   const unready = new Set(calls.filter((c) => c.connected && c.notesPending).map(dateOf));
-  const today = tokyoDay(now);
+  const today = familyDate(now, timeZone);
   return days.map((d, i) => {
     const isToday = i === days.length - 1 && d.date === today;
     const kind: DayKind = d.domains ? 'reached' : tried.has(d.date) ? 'missed' : isToday && callsActive ? 'notyet' : 'nocall';
@@ -150,11 +166,11 @@ function reachSeverity(missed: number): Severity {
 }
 
 /** "Talked today, 10:02" while calls get through; "Last talked 3 Oct, 10:02" once they stop. */
-export function lastTalkedLevel(lastAt: string | null, missed: number, now: Date): FamilyLevel {
+export function lastTalkedLevel(lastAt: string | null, missed: number, now: Date, timeZone = JAPAN): FamilyLevel {
   if (!lastAt) return { severity: missed > 0 ? 'today' : 'none', word: 'No call in two weeks', detail: 'No call has got through in the last two weeks.' };
-  const when = `${relativeDay(lastAt, now)}, ${tokyoTime(new Date(lastAt))}`;
+  const when = `${relativeDay(lastAt, now, timeZone)}, ${familyTime(new Date(lastAt), timeZone)}`;
   if (missed > 0) return { severity: reachSeverity(missed), word: `Last talked ${when}`, detail: `No call has got through for ${plural(missed, 'day')}.` };
-  const recent = ['today', 'yesterday'].includes(relativeDay(lastAt, now));
+  const recent = ['today', 'yesterday'].includes(relativeDay(lastAt, now, timeZone));
   return { severity: recent ? 'good' : 'none', word: `Talked ${when}`, detail: '' };
 }
 

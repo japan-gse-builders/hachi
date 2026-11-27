@@ -76,6 +76,7 @@ export interface QueueItem {
   detectedAt: string;
   status: string;
   statusLabel: string;
+  assignment: StoredCase['assignment'] | null;
   notifications: StoredCase['notifications'];
   residentFacts: string[];
   householdNotes: string | null;
@@ -119,12 +120,13 @@ export function buildQueue(openCases: StoredCase[], residents: Map<string, Resid
       urgency: p.urgency,
       urgencyLabel: URGENCY_LABELS[locale][p.urgency],
       urgencyMeaning: URGENCY_MEANINGS[locale][p.urgency],
-      summary: c.detections.at(-1)?.summary ?? '',
+      summary: c.detections.at(-1)?.summary || RULE_NAMES[locale][c.rule],
       reason: p.reason,
       score: p.score,
       detectedAt: c.firstDetectedAt,
       status: c.status,
       statusLabel: CASE_STATUS_LABELS[locale][c.status],
+      assignment: c.assignment ?? null,
       notifications: c.notifications,
     };
   });
@@ -413,6 +415,7 @@ export async function buildCaseDetail(
       staffScoreOffset: c.staffScoreOffset ?? 0,
       status: c.status,
       statusLabel: CASE_STATUS_LABELS[locale][c.status],
+      assignment: c.assignment ?? null,
       reason: p.reason,
       score: p.score,
       firstDetectedAt: c.firstDetectedAt,
@@ -463,6 +466,7 @@ export async function buildCaseDetail(
       durationSec: x.durationSec ?? null,
       summary: x.summary ?? null,
       wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, x.transcript ?? [], locale) : null,
+      hasTranscript: Boolean(x.transcript?.length),
       transcript: evidenceCallIds.has(x.id) ? (x.transcript ?? []) : undefined,
     })),
     // Unusable calls are kept, marked, so staff can see e.g. a cold rather than a gap.
@@ -581,7 +585,7 @@ const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T0
  */
 function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const connected = [...calls].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  const dateOf = (c: CallRecord) => c.localDate ?? localDate(new Date(c.startedAt), r.timeZone);
+  const dateOf = (c: CallRecord) => localDate(new Date(c.startedAt), r.timeZone);
   const today = localDate(now, r.timeZone);
   const days = Array.from({ length: FAMILY_WINDOW_DAYS }, (_, i) => shiftDate(today, i + 1 - FAMILY_WINDOW_DAYS)).map((date) => {
     const onDay = connected.filter((c) => dateOf(c) === date);
@@ -611,6 +615,32 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
   };
 }
 
+type FamilyTodayStatus = 'talked' | 'before_call' | 'waiting' | 'calling' | 'missed' | 'interrupted' | 'no_reply' | 'paused';
+
+const familyConnected = (c: CallRecord) => c.status === 'completed' && missedReason(attemptOf(c)) === null;
+const noReply = (c: CallRecord) => c.status === 'completed' && c.conversation?.endedBy === 'silent_after_greeting';
+
+/** A missed call needs a recorded attempt. The schedule alone only tells us when a call was due. */
+function familyToday(calls: CallRecord[], now: Date, timeZone: string, next: Date | null): { status: FamilyTodayStatus; at: string | null } {
+  const date = localDate(now, timeZone);
+  const attempts = calls
+    .filter((c) => Date.parse(c.startedAt) <= now.getTime() && localDate(new Date(c.startedAt), timeZone) === date)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const talked = attempts.find((c) => familyConnected(c) && !noReply(c));
+  if (talked) return { status: 'talked', at: talked.startedAt };
+
+  const latest = attempts.find((c) => c.status !== 'scheduled' || c.providerCallId);
+  if (latest) {
+    const at = latest.startedAt;
+    if (latest.status === 'in_progress' || latest.status === 'scheduled') return { status: 'calling', at };
+    if (latest.status === 'no_answer') return { status: 'missed', at };
+    if (noReply(latest)) return { status: 'no_reply', at };
+    return { status: 'interrupted', at };
+  }
+  if (!next) return { status: 'paused', at: null };
+  return { status: localDate(next, timeZone) === date ? 'before_call' : 'waiting', at: null };
+}
+
 /**
  * FAM-02, FAM-03, FAM-04. Deliberately excludes recordings, transcripts, speech analysis and the
  * turns, basis and confidence behind tags, so residents can talk freely. Only `family` tags are
@@ -620,21 +650,26 @@ function familyGlance(r: Resident, calls: CallRecord[], cases: StoredCase[], now
 export function buildFamilyDashboard(r: Resident, calls: CallRecord[], cases: StoredCase[], now: Date, locale: Locale) {
   const since = now.getTime() - FAMILY_WINDOW_DAYS * 86_400_000;
   const finished = calls.filter((c) => Date.parse(c.startedAt) >= since && c.status !== 'scheduled' && c.status !== 'in_progress');
+  const next = r.active && hasCallConsent(r.callConsent) ? nextCallAt(r.callTime, r.timeZone, now) : null;
   return {
     resident: { id: r.id, name: r.name, portrait: r.portrait ?? null },
-    nextCallAt: r.active && hasCallConsent(r.callConsent) ? nextCallAt(r.callTime, r.timeZone, now).toISOString() : null,
-    glance: familyGlance(r, finished.filter((c) => c.status === 'completed'), cases, now, locale),
+    timeZone: r.timeZone,
+    today: familyToday(calls, now, r.timeZone, next),
+    nextCallAt: next?.toISOString() ?? null,
+    glance: familyGlance(r, finished.filter(familyConnected), cases, now, locale),
     calls: finished.map((c) => {
-      const w = c.status === 'completed' ? c.wellbeing : undefined;
+      const connected = familyConnected(c);
+      const w = connected ? c.wellbeing : undefined;
       return {
         startedAt: c.startedAt,
-        connected: c.status === 'completed',
+        connected,
+        ...(noReply(c) ? { noReply: true } : {}),
         // Whether notes are still to come, and nothing about why: a missing note must not read as
         // a quiet day, and the reason is a matter for staff (FAM-03).
-        notesPending: c.status === 'completed' && (c.analysisPending || analysisGaps(c).some((g) => g.part === 'review')),
-        durationSec: c.status === 'completed' ? (c.durationSec ?? null) : null,
-        summary: c.status === 'completed' && r.consent?.shareMood ? (c.familySummary ?? null) : null,
-        headline: c.status === 'completed' ? familyHeadline(r, c, cases, locale) : null,
+        notesPending: connected && (c.analysisPending || analysisGaps(c).some((g) => g.part === 'review')),
+        durationSec: connected ? (c.durationSec ?? null) : null,
+        summary: connected && r.consent?.shareMood ? (c.familySummary ?? null) : null,
+        headline: connected ? familyHeadline(r, c, cases, locale) : null,
         domains: w ? familyDomains(r, (d) => w.domains[d] ?? 'unmentioned') : null,
         tags: w ? familyTagIds(w).map((id) => describeTag(id, locale)) : [],
       };

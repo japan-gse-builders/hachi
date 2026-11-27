@@ -1,282 +1,279 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { CallNowButton } from '../components/CallNowButton';
-import { callDay, CaseCalls } from '../components/CaseCalls';
+import { CaseCalls } from '../components/CaseCalls';
 import { CaseDecision } from '../components/CaseDecision';
 import { CaseAbout, CaseHistory, CaseNotifications } from '../components/CaseRecords';
 import { ResidentAvatar } from '../components/ResidentAvatar';
 import { ScreeningCard } from '../components/ScreeningCard';
-import { IndicatorBar, LastReachedChip, SeverityChip, SignalsLegend } from '../components/Signals';
+import { IndicatorBar, SeverityChip, SignalsLegend } from '../components/Signals';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
 import { LoadError, Loading } from '../components/States';
-import { audioAt, clock, formatWhen, phoneDisplay, speakerLabel } from '../format';
+import { audioAt, clock, formatWhen } from '../format';
 import { queueLink } from '../queue';
-import { buildIndicators, caseSignals, uncheckedFor, urgencySeverity, type Severity } from '../signals';
-import '../styles/case.css';
+import { buildIndicators, caseSignals, uncheckedFor, urgencySeverity } from '../signals';
 import { useDocumentTitle } from '../title';
-import type { CaseDetail, IncompleteAnalyses } from '../types';
+import type { CaseDetail, Evidence, IncompleteAnalyses } from '../types';
+import '../styles/case.css';
 
-const STATUS_SEVERITY: Record<string, Severity> = { open: 'none', in_progress: 'monitor', closed: 'good' };
-
-function openFor(iso: string, now: Date): string {
-  const mins = Math.max(0, Math.round((now.getTime() - Date.parse(iso)) / 60_000));
-  if (mins < 60) return `${mins} min`;
-  const hours = Math.round(mins / 60);
-  return hours < 48 ? `${hours} h` : `${Math.round(hours / 24)} days`;
-}
-
-/** What was found, in one line: the latest detection's own summary. */
-function headlineOf(d: CaseDetail): string {
-  const latest = [...d.detections].sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))[0];
-  return latest?.summary ?? d.case.ruleName;
-}
-
-function callOn(iso: string, now: Date): string {
-  const day = callDay(iso, now);
-  return day === 'Today' || day === 'Yesterday' ? `${day}'s call` : `call on ${day}`;
-}
-
-/** Only what adds to the worry; `resident.facts` also lists the reassuring ones, which stay under About. */
-function riskFacts(r: CaseDetail['resident']): string[] {
-  const v = r.vulnerability;
-  const risks = [v.livesAlone && 'Lives alone', !v.hasCloseSupporter && 'No close supporter', v.needsCare && 'Needs care'];
-  return [...risks.filter((f): f is string => !!f), ...v.chronicConditions];
-}
-
-function CaseHeader({ detail, now, unchecked }: { detail: CaseDetail; now: Date; unchecked: number | undefined }) {
-  const c = detail.case;
-  const r = detail.resident;
-  const severity = urgencySeverity(c.urgency);
-  const signals = { ...caseSignals(detail, now), ...(unchecked !== undefined ? { unchecked } : {}) };
-  const facts = riskFacts(r);
-  const glance = `At a glance for ${r.name}`;
+function EvidenceAudio({ evidence }: { evidence: Evidence }) {
+  if (!evidence.audioUrl) return null;
   return (
-    <header className={`card case-head sev-${severity}`}>
-      <div className="case-head-top">
-        <p className="cluster case-head-state">
-          <SeverityChip spoken={false} severity={severity} label={c.urgencyLabel} detail={c.urgencyMeaning} />
-          <SeverityChip spoken={false} severity={STATUS_SEVERITY[c.status] ?? 'none'} label={c.statusLabel} />
-          {/* One case on the screen, so what the level asks for is written out rather than left to a tooltip. */}
-          <span className="meta">{c.urgencyMeaning}</span>
-        </p>
-        <div className="case-head-action">
-          {r.phone && (
-            <p className="case-phone">
-              <span className="control-label">Phone</span> <a href={`tel:${r.phone}`}>{phoneDisplay(r.phone)}</a>
-            </p>
-          )}
-          {/* The next step after reading a case is often to hear from them again (issue #13). */}
-          {(r.callable ?? !r.synthetic) && <CallNowButton residentId={r.id} name={r.preferredName || r.name} phone={r.phone} />}
-        </div>
-      </div>
-      <div className="resident-heading">
-        <ResidentAvatar id={r.id} name={r.name} portrait={r.portrait} />
-        <h1>{r.name}</h1>
-        <LastReachedChip reach={signals.reach} now={now} />
-        {facts.length > 0 && (
-          <ul className="cluster case-chips" aria-label="Circumstances">
-            {facts.map((f) => (
-              <li key={f}>
-                <SeverityChip spoken={false} severity="monitor" label={f} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <p className="case-headline">
-        <strong>{headlineOf(detail)}</strong>{' '}
-        <span className="meta">
-          {c.ruleName} ·{' '}
-          <span className="case-nowrap">
-            open <time dateTime={c.firstDetectedAt} title={`Since ${formatWhen(c.firstDetectedAt)}`}>{openFor(c.firstDetectedAt, now)}</time>
-          </span>
-        </span>
-      </p>
-      <div className="hide-below-xs">
-        <IndicatorBar signals={signals} now={now} label={glance} />
-      </div>
-      <div className="hide-from-xs">
-        <IndicatorBar signals={signals} now={now} label={glance} compact />
-      </div>
-      <details className="disclosure case-signals-legend">
-        <summary>What the colors and icons mean</summary>
-        <div className="disclosure-body"><SignalsLegend levels={buildIndicators(signals, now).map((i) => i.severity)} /></div>
-      </details>
-    </header>
+    <audio controls preload="none" aria-label="Call recording" src={audioAt(evidence.audioUrl, evidence.startMs)}>
+      <track kind="captions" />
+    </audio>
   );
 }
 
-/** What else is open for the same patient, so settling this case does not leave another unseen. */
-function OtherOpenCases({ detail, linkState }: { detail: CaseDetail; linkState: unknown }) {
-  const others = detail.otherOpenCases ?? [];
-  if (!others.length) return null;
-  return (
-    <section className="card notice stack stack-s case-others" aria-labelledby="other-cases-heading">
-      <h2 id="other-cases-heading" className="case-others-title">
-        Other open cases ({others.length})
-      </h2>
-      <ul className="case-others-list">
-        {others.map((o) => (
-          <li key={o.id}>
-            <SeverityChip spoken={false} severity={urgencySeverity(o.urgency)} label={o.urgencyLabel} detail={o.urgencyMeaning} />
-            <Link to={`/staff/cases/${o.id}`} state={linkState}>{o.summary || o.ruleName}</Link>
-            <span className="meta">{o.ruleName} · {o.statusLabel}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+function CaseEvidence({ evidence, noResponse, observation }: {
+  evidence: Evidence | undefined;
+  noResponse: CaseDetail['detections'][number]['noResponse'];
+  observation: string | undefined;
+}) {
+  if (evidence?.quote.trim()) {
+    return (
+      <blockquote className="quote case-evidence">
+        <p className="meta">From the call</p>
+        <p className="line-clamp">“{evidence.quote}”</p>
+      </blockquote>
+    );
+  }
+  if (evidence?.audioUrl) {
+    return <div className="quote case-evidence"><p className="meta">From the call</p><EvidenceAudio evidence={evidence} /></div>;
+  }
+  if (noResponse) {
+    return (
+      <div className="quote case-evidence">
+        <p className="meta">Observed on the call</p>
+        <p>{noResponse === 'stopped_responding' ? 'Replies stopped partway through the call.' : 'Hachi heard no reply to its greeting or follow-up prompts.'}</p>
+      </div>
+    );
+  }
+  if (observation) {
+    return <div className="quote case-evidence"><p className="meta">Observed pattern</p><p>{observation}</p></div>;
+  }
+  return <p className="meta">No call excerpt is available.</p>;
 }
 
-function CaseSaid({ detail, now }: { detail: CaseDetail; now: Date }) {
-  const callById = new Map(detail.calls.map((c) => [c.id, c]));
-  const silences = detail.detections.filter((d) => d.noResponse);
-  const evidence = detail.detections.flatMap((d) => d.evidence);
-  const call = detail.calls.find((c) => c.transcript?.length);
+function EvidenceRecords({ detail }: { detail: CaseDetail }) {
+  const callById = new Map(detail.calls.map((call) => [call.id, call]));
+  const evidence = detail.detections.flatMap((d) => d.evidence).filter((e) => e.quote.trim() || e.audioUrl);
+  if (!evidence.length) return null;
   return (
-    <section className="card stack case-said" aria-labelledby="said-heading">
-      <h2 id="said-heading">What was said</h2>
-      {silences.map((d, i) => (
-        <p key={`no-response-${i}`} className="case-silence">
-          <SeverityChip spoken={false} severity="monitor" label="Silence" /> {d.summary} This is an observation of silence; there is no patient quote.
-        </p>
-      ))}
+    <section className="stack" aria-labelledby="case-evidence-records">
+      <h2 id="case-evidence-records">Evidence from calls</h2>
       {evidence.map((e, i) => {
-        const from = callById.get(e.callId);
+        const call = callById.get(e.callId);
         return (
-          <blockquote className="quote" key={`${e.callId}-${i}`}>
-            {/* The quote is what makes the case checkable, so it reads before the rule that found it. */}
-            <p className="quote-words">“{e.quote}”</p>
+          <blockquote key={i} className="quote stack stack-s">
+            {e.quote.trim() && <p>“{e.quote}”</p>}
             <p className="meta">
-              In their own words{from ? ` · ${callOn(from.startedAt, now)}` : ''}
-              {e.startMs !== undefined ? ` · ${clock(e.startMs)} in` : ''}
+              {[call && formatWhen(call.startedAt) + ' JST', e.startMs !== undefined && `${clock(e.startMs)} into the call`].filter(Boolean).join(' · ') || 'From the call'}
             </p>
-            {e.audioUrl && (
-              <audio controls preload="metadata" src={audioAt(e.audioUrl, e.startMs)}>
-                <track kind="captions" />
-              </audio>
-            )}
+            <EvidenceAudio evidence={e} />
           </blockquote>
         );
       })}
-      {!evidence.length && !silences.length && <p className="meta">No words were quoted for this case.</p>}
-      {call && (
-        <details className="disclosure case-transcript">
-          <summary>
-            Whole conversation
-            <span className="disclosure-peek">{call.transcript!.length} turns</span>
-          </summary>
-          <div className="transcript disclosure-body">
-            {call.transcript!.map((t, i) => (
-              <p key={i} className={t.speaker === 'agent' ? 'agent' : ''}>
-                <strong>{speakerLabel(t.speaker, detail.resident.name)}: </strong>
-                {t.text}
-              </p>
-            ))}
-          </div>
-        </details>
-      )}
     </section>
   );
 }
 
-/** Below two columns the decision is further down, so a bar keeps it one tap away until it is on screen. */
-function useInView(id: string, ready: boolean): boolean {
-  const [inView, setInView] = useState(false);
+function CaseMetrics({ detail, now }: { detail: CaseDetail; now: Date }) {
+  const { token } = useAuth();
+  const [incomplete, setIncomplete] = useState<IncompleteAnalyses>();
   useEffect(() => {
-    const el = ready ? document.getElementById(id) : null;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(([entry]) => setInView(!!entry?.isIntersecting));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [id, ready]);
-  return inView;
+    const abort = new AbortController();
+    void token()
+      .then((t) => api<IncompleteAnalyses>('/api/incomplete-analyses?locale=en', t, { signal: abort.signal }))
+      .then(setIncomplete, () => undefined);
+    return () => abort.abort();
+  }, [token]);
+
+  const unchecked = uncheckedFor(incomplete, detail.resident.id);
+  const signals = { ...caseSignals(detail, now), ...(unchecked !== undefined ? { unchecked } : {}) };
+  return (
+    <div className="disclosure-body stack">
+      <div className="hide-below-xs"><IndicatorBar signals={signals} now={now} /></div>
+      <div className="hide-from-xs"><IndicatorBar signals={signals} now={now} compact /></div>
+      <details className="disclosure">
+        <summary>What the colors and icons mean</summary>
+        <div className="disclosure-body"><SignalsLegend levels={buildIndicators(signals, now).map((i) => i.severity)} /></div>
+      </details>
+      {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} name={detail.resident.preferredName || detail.resident.name} />}
+      {detail.screening && <ScreeningCard screening={detail.screening} />}
+    </div>
+  );
 }
 
 export function CasePage() {
   const { id = '' } = useParams();
+  return <CaseView key={id} id={id} />;
+}
+
+function CaseView({ id }: { id: string }) {
   const location = useLocation();
   const { token } = useAuth();
   const [detail, setDetail] = useState<CaseDetail | null>(null);
-  const [incomplete, setIncomplete] = useState<IncompleteAnalyses | undefined>();
-  const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState('');
-  const decisionInView = useInView('decision-heading', !!detail);
+  const [attempt, setAttempt] = useState(0);
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState('');
+  const [claimed, setClaimed] = useState(false);
+  const [metricsSeen, setMetricsSeen] = useState(false);
+  const decision = useRef<HTMLDetailsElement>(null);
   useDocumentTitle(detail ? `${detail.resident.name} · Case` : 'Case');
 
-  const load = async () => {
-    const data = await api<CaseDetail>(`/api/cases/${id}?locale=en`, await token());
-    setNow(new Date());
+  const path = `/api/cases/${encodeURIComponent(id)}`;
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const data = await api<CaseDetail>(`${path}?locale=en`, await token(), signal ? { signal } : {});
     setDetail(data);
-  };
-  const loadOrReport = () => {
-    setError('');
-    void load().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load this case'));
-  };
+  }, [path, token]);
 
   useEffect(() => {
-    loadOrReport();
-    // Only for the Checked indicator; without it that indicator says "Not known".
-    void token()
-      .then((t) => api<IncompleteAnalyses>('/api/incomplete-analyses?locale=en', t))
-      .then(setIncomplete, () => undefined);
-    // The case id is the only input. load closes over the latest token function.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    const abort = new AbortController();
+    void load(abort.signal).catch((err: unknown) => {
+      if (!abort.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load this case');
+    });
+    return () => abort.abort();
+  }, [load, attempt]);
 
   const save = async (body: Record<string, unknown>) => {
-    await api(`/api/cases/${id}`, await token(), { method: 'PATCH', body: JSON.stringify(body) });
+    await api(path, await token(), { method: 'PATCH', body: JSON.stringify(body) });
+    setClaimed(false);
+    setClaimError('');
     await load();
   };
 
-  const back = (
-    <p className="back-link">
-      <Link to={queueLink(location.state)}><span aria-hidden="true">← </span>Back to the queue</Link>
-    </p>
-  );
+  const takeCase = async () => {
+    setClaiming(true);
+    setClaimError('');
+    try {
+      const saved = await api<Pick<CaseDetail['case'], 'status' | 'statusLabel' | 'assignment'>>(`${path}/claim?locale=en`, await token(), { method: 'POST' });
+      setDetail((current) => current && { ...current, case: { ...current.case, ...saved } });
+      setClaimed(true);
+      void load().catch(() => undefined);
+    } catch (err) {
+      setClaimError(err instanceof Error ? err.message : 'Could not take this case');
+      if (err instanceof ApiError && err.status === 409) await load().catch(() => undefined);
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  const back = <p className="back-link"><Link to={queueLink(location.state)}><span aria-hidden="true">←</span> Back to the queue</Link></p>;
   if (!detail) {
     return (
-      <div className="stack page">
+      <div className="stack page case-page">
         {back}
-        {error ? <LoadError message={error} onRetry={loadOrReport} /> : <Loading layout="detail" label="Loading this case…" />}
+        {error ? <LoadError message={error} onRetry={() => { setError(''); setAttempt((n) => n + 1); }} /> : <Loading layout="detail" label="Loading this case…" />}
       </div>
     );
   }
 
+  const { case: c, resident, otherOpenCases } = detail;
+  const now = new Date();
+  const severity = urgencySeverity(c.urgency);
+  const latest = [...detail.detections].sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))[0];
+  const evidence = latest?.evidence.find((e) => e.quote.trim() || e.audioUrl);
+  const reason = evidence || latest?.noResponse ? latest?.summary || c.ruleName : c.ruleName;
   const quoted = new Set(detail.detections.flatMap((d) => d.evidence.map((e) => e.callId)));
-  const unchecked = uncheckedFor(incomplete, detail.resident.id);
+  const canClaim = c.status !== 'closed' && !c.assignment;
+  const openDecision = () => {
+    if (!decision.current) return;
+    decision.current.open = true;
+    decision.current.querySelector('summary')?.focus();
+  };
 
   return (
     <div className="stack page case-page">
       {back}
-      {error && <LoadError message={error} onRetry={loadOrReport} compact />}
-      <CaseHeader detail={detail} now={now} unchecked={unchecked} />
-      <OtherOpenCases detail={detail} linkState={location.state} />
-      {/* Evidence and supporting records first; the case controls stay in the right-hand column. */}
-      <div className="case-layout">
-        <div className="case-col case-col-evidence">
-          <CaseSaid detail={detail} now={now} />
-          {detail.speechTrend.length > 0 && <SpeechTrendCard trend={detail.speechTrend} baseline={detail.speechBaseline} name={detail.resident.preferredName || detail.resident.name} />}
-          {detail.screening && <ScreeningCard screening={detail.screening} />}
+      <header className={`card case-head sev-${severity}`}>
+        <div className="case-head-top">
+          <div className="resident-heading">
+            <ResidentAvatar id={resident.id} name={resident.name} portrait={resident.portrait} />
+            <h1>{resident.name}</h1>
+          </div>
+          <SeverityChip spoken={false} severity={severity} label={c.urgencyLabel} detail={c.urgencyMeaning} />
         </div>
-        <div className="case-col case-col-records">
-          <CaseCalls calls={detail.calls} now={now} quotedCallIds={quoted} />
-          <CaseAbout detail={detail} />
-          <CaseHistory events={detail.events} options={[...detail.statusOptions, ...detail.urgencyOptions]} />
+        <div className="case-review">
+          <div className="stack stack-s">
+            <h2 className="case-kicker">Why Hachi flagged this</h2>
+            <p className="case-headline">{reason}</p>
+            <CaseEvidence evidence={evidence} noResponse={latest?.noResponse} observation={latest?.summary === reason ? undefined : latest?.summary} />
+          </div>
+          <div className="case-next">
+            {c.status !== 'open' && (
+              <p className="case-owner">
+                <strong>{c.statusLabel}</strong>
+                {c.assignment && <> · {c.assignment.name}<br /><time className="meta" dateTime={c.assignment.claimedAt}>Taken {formatWhen(c.assignment.claimedAt)} JST</time></>}
+              </p>
+            )}
+            <div className="row">
+              <button type="button" disabled={claiming} onClick={canClaim ? () => void takeCase() : openDecision}>
+                {claiming ? 'Taking case…' : canClaim ? 'Take this case' : 'Update case'}
+              </button>
+              {resident.phone && <a className="case-call-patient" href={`tel:${resident.phone}`}>Call patient</a>}
+            </div>
+            <p className="sr-only" role="status">{claimed ? 'You have taken this case. It is in progress.' : ''}</p>
+            {claimError && <p className="error" role="alert">{claimError}</p>}
+          </div>
         </div>
-        <div className="case-col case-col-decide">
-          <CaseDecision detail={detail} onSave={save} />
-          <CaseNotifications notifications={detail.case.notifications} />
-        </div>
+      </header>
+
+      <div className="card case-sections">
+        <details className="disclosure case-section" ref={decision}>
+          <summary>Status, urgency and rank</summary>
+          <div className="disclosure-body">
+            <CaseDecision detail={detail} onSave={save} />
+          </div>
+        </details>
+        <details className="disclosure case-section">
+          <summary>Call history and transcripts</summary>
+          <div className="disclosure-body stack">
+            <EvidenceRecords detail={detail} />
+            <CaseCalls calls={detail.calls} now={now} quotedCallIds={quoted} resident={resident} />
+          </div>
+        </details>
+        <details className="disclosure case-section" onToggle={(event) => { if (event.currentTarget.open) setMetricsSeen(true); }}>
+          <summary>Indicators and trends</summary>
+          {metricsSeen && <CaseMetrics detail={detail} now={now} />}
+        </details>
+        <details className="disclosure case-section">
+          <summary>Notification history</summary>
+          <div className="disclosure-body"><CaseNotifications notifications={c.notifications} /></div>
+        </details>
+        <details className="disclosure case-section">
+          <summary>Patient details and contact</summary>
+          <div className="disclosure-body stack">
+            {(resident.callable ?? !resident.synthetic) && <CallNowButton residentId={resident.id} name={resident.preferredName || resident.name} phone={resident.phone} />}
+            <CaseAbout detail={detail} />
+          </div>
+        </details>
+        {!!otherOpenCases?.length && (
+          <details className="disclosure case-section">
+            <summary>Other open cases <span className="disclosure-peek">{otherOpenCases.length}</span></summary>
+            <div className="disclosure-body">
+              <ul className="case-others-list">
+                {otherOpenCases.map((o) => (
+                  <li key={o.id}>
+                    <SeverityChip spoken={false} severity={urgencySeverity(o.urgency)} label={o.urgencyLabel} detail={o.urgencyMeaning} />
+                    <Link to={`/staff/cases/${o.id}`} state={location.state}>{o.summary || o.ruleName}</Link>
+                    <span className="meta">{o.statusLabel}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        )}
+        {detail.events.length > 0 && (
+          <details className="disclosure case-section">
+            <summary>Case activity</summary>
+            <div className="disclosure-body"><CaseHistory events={detail.events} options={[...detail.statusOptions, ...detail.urgencyOptions]} /></div>
+          </details>
+        )}
       </div>
-      {!decisionInView && (
-        <div className="action-bar hide-from-md case-action-bar">
-          <SeverityChip spoken={false} severity={STATUS_SEVERITY[detail.case.status] ?? 'none'} label={detail.case.statusLabel} />
-          <a className="button" href="#decision-heading">Update this case</a>
-        </div>
-      )}
     </div>
   );
 }

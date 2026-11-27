@@ -67,8 +67,8 @@ describe('glance helpers', () => {
     expect(latestCallLabel('2026-10-05T01:02:00.000Z', now)).toBe("Today's call, 10:02");
     expect(latestCallLabel('2026-10-04T01:02:00.000Z', now)).toBe("Yesterday's call, 10:02");
     expect(latestCallLabel('2026-10-01T01:02:00.000Z', now)).toBe('Latest call, Oct 1, 10:02');
-    expect(nextCallLabel('2026-10-06T01:00:00.000Z', now)).toBe('Next call tomorrow, 10:00 (Japan time)');
-    expect(nextCallLabel(null, now)).toBe('Daily calls are paused');
+    expect(nextCallLabel('2026-10-06T01:00:00.000Z', now)).toBe('Tomorrow, 10:00 (Japan time)');
+    expect(nextCallLabel(null, now)).toBe('No upcoming call');
     expect(todayCallNote('2026-10-05T09:00:00.000Z', now)).toBe("Today's call is at 18:00.");
     expect(todayCallNote('2026-10-06T01:00:00.000Z', now)).toBe('');
     expect(todayCallNote(null, now)).toBe('');
@@ -251,17 +251,16 @@ describe('family dashboard view', () => {
   const render = (d: FamilyDashboard) => renderToStaticMarkup(createElement(FamilyDashboardView, { data: d, now }));
   const html = render(data);
 
-  it('leads with one state for how she is, the last time she was reached and the next call', () => {
-    expect(html).toContain('<span class="family-name-lead">Daily calls with</span> <span class="family-name-who">Margaret Smith</span>');
-    expect(html.indexOf('family-name-who')).toBeLessThan(html.indexOf('Worth a call'));
-    expect(html.indexOf('src="/avatars/grandmother-2.png"')).toBeLessThan(html.indexOf('family-name-who'));
-    expect(html.indexOf('class="family-state-title">Worth a call<')).toBeLessThan(html.indexOf("Today&#x27;s call, 10:02"));
-    expect(html).toContain('class="card family-status sev-today"');
-    expect(html).toContain('<p class="family-state-body">Margaret ate little today but enjoyed a chat.</p>');
+  it('shows today’s result, next scheduled call and care contact before the collapsed history', () => {
+    const summary = html.slice(0, html.indexOf('</header>'));
+    expect(summary).toContain('<span class="family-name-lead">Daily calls with</span> <span>Margaret Smith</span>');
+    expect(summary).toContain('src="/avatars/grandmother-2.png"');
+    expect(summary).toContain('Talked with Hachi');
+    expect(summary).toContain('Tomorrow, 10:00 (Japan time)');
+    expect(summary).toContain('href="tel:+81300000000">Call the care team</a>');
+    expect(html).toContain('<details class="card disclosure family-disclosure"><summary>Call history');
+    expect(html).toContain('Margaret ate little today but enjoyed a chat.');
     expect(html).not.toContain('She mentioned her grandson');
-    expect(html).toContain('Talked today, 10:02');
-    expect(html).toContain('Next call tomorrow, 10:00 (Japan time)');
-    expect(html).toContain('href="tel:+81300000000">Call the care team</a>');
   });
 
   it('shows the six areas as tiles, each with a colour, a symbol and a word', () => {
@@ -291,20 +290,24 @@ describe('family dashboard view', () => {
   it('marks today as not yet called, with the time, before the call', () => {
     const before = render({
       ...data,
+      today: { status: 'before_call', at: null },
       nextCallAt: '2026-10-05T09:00:00.000Z',
       glance: { ...data.glance!, latest: { ...data.glance!.latest!, startedAt: '2026-10-04T01:02:00.000Z' }, days: [day('2026-10-03', null), day('2026-10-04', today), day('2026-10-05', null)] },
     });
+    expect(before).toContain('Scheduled for later today');
     expect(before).toContain('title="Today, Oct 5: Not called yet. Today&#x27;s call is at 18:00."');
     expect(before).toContain('<p class="family-today-note">Today&#x27;s call is at 18:00.</p>');
     expect(before).toContain('Talked yesterday, 10:02');
   });
 
-  it('turns the header to calls not getting through, in plain words', () => {
+  it('says a call was attempted when it did not get through', () => {
     const missed = render({
       ...data,
+      today: { status: 'missed', at: '2026-10-05T01:00:00.000Z' },
       glance: { ...data.glance!, latest: { ...data.glance!.latest!, startedAt: '2026-10-03T01:02:00.000Z', domains: { ...quiet, social: 'good' } }, days: [day('2026-10-03', quiet), day('2026-10-04', null), day('2026-10-05', null)] },
       calls: [call('2026-10-05T01:00:00.000Z', false), call('2026-10-04T01:00:00.000Z', false), call('2026-10-03T01:00:00.000Z', true)],
     });
+    expect(missed.slice(0, missed.indexOf('</header>'))).toContain('Hachi called but could not get through');
     expect(missed).toContain('No call has reached Margaret Smith for 2 days');
     expect(missed).toContain('Last talked Oct 3, 10:02');
     expect(missed).toContain('Call the care team');
@@ -319,7 +322,7 @@ describe('family dashboard view', () => {
   });
 
   it('keeps the per-call notes collapsed and never shows recordings or transcripts', () => {
-    expect(html).toContain('<details><summary>Show the last two weeks (3 calls)</summary>');
+    expect(html.indexOf('Notes from each call')).toBeGreaterThan(html.indexOf('Call history'));
     expect(html).toContain('<strong>Meals.</strong> Ate very little');
     expect(html).toContain('class="tag concern"');
     expect(html).toContain('Didn&#x27;t get through');
@@ -329,7 +332,7 @@ describe('family dashboard view', () => {
   it('works with servers older than tags', () => {
     const { glance: _g, ...old } = data;
     const plain = render({ ...old, resident: { id: 'res-1', name: 'Margaret Smith' }, calls: [{ ...data.calls[2]! }] });
-    expect(plain).toContain('<span class="family-name-who">Margaret Smith</span>');
+    expect(plain).toContain('<span>Margaret Smith</span>');
     expect(plain).toContain('<span class="resident-avatar avatar-0" aria-hidden="true">MS</span>');
     expect(plain).not.toContain('glance');
     expect(plain).not.toContain('tag-list');

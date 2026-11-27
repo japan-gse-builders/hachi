@@ -8,6 +8,17 @@
   .org-switch select { width: auto; max-width: 16rem; min-height: 44px; }
   .org-name { font-weight: 600; color: var(--ink-muted); overflow-wrap: anywhere; }
 
+  @media (max-width: 640px) {
+    .top:has(> .nav) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+    .top:has(> .nav) > .account-bar { display: contents; }
+    .top:has(> .nav) > .brand { grid-area: 1 / 1; justify-self: start; }
+    .top:has(> .nav) .sign-out { grid-area: 1 / 2; justify-self: end; }
+    .top:has(> .nav) :is(.org-switch, .org-name) { grid-area: 2 / 1; min-width: 0; }
+    .top:has(> .nav) .org-switch select { width: 100%; }
+    .top:has(> .nav) .account-bar a { grid-area: 2 / 2; justify-self: end; }
+    .top:has(> .nav) > .nav { grid-area: 3 / 1 / auto / span 2; }
+  }
+
   /* Team, organization and activity are one section with its own tabs. */
   .subnav { display: flex; flex-wrap: wrap; gap: var(--space-1); border-bottom: 1px solid var(--line); }
   .subnav a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px var(--space-3); color: var(--ink); font-weight: 600; text-decoration: none; }

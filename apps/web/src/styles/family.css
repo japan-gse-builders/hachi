@@ -7,60 +7,41 @@
   .family-page { width: 100%; max-width: 1320px; margin-inline: auto; }
   .family-page .skeleton-columns { grid-template-columns: minmax(0, 1fr); }
 
-  /* ---------- Layout ---------- */
-
-  /* One column on phones, in reading order: how she is, today, the two weeks, then the rest. From
-     960px the columns hold themselves, so neither waits on the other's height. */
-  .family-layout { display: grid; gap: var(--flow-2); min-width: 0; }
-  .family-col { display: contents; }
-  .family-latest { order: 1; }
-  .family-weeks { order: 2; }
-  .family-alerts-card { order: 3; }
-  .family-care { order: 4; }
-  .family-trends-card { order: 5; }
-  .family-notes { order: 6; }
-  @container page (min-width: 960px) {
-    .family-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); align-items: start; }
-    .family-col { display: grid; gap: var(--flow-2); align-content: start; min-width: 0; }
-    .family-page .skeleton-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); }
+  .family-today { display: grid; gap: var(--space-4); }
+  .family-heading { gap: var(--space-3); margin: 0; }
+  .family-heading .resident-avatar { width: 54px; height: 54px; flex-basis: 54px; font-size: 20px; }
+  .family-name { display: grid; gap: 2px; margin: 0; font-size: clamp(28px, 2cqi + 23px, 44px); text-wrap: initial; }
+  .family-name-lead { color: var(--ink-muted); font: 600 var(--text-sm) / 1.3 var(--font-body); }
+  .family-today-grid { display: grid; align-items: stretch; gap: var(--space-3); }
+  .family-today-grid > section { display: grid; align-content: start; gap: var(--space-1); }
+  .family-today-grid > section > * { margin: 0; }
+  .family-today-grid h2 { color: var(--ink-muted); font: 700 var(--text-sm) / 1.3 var(--font-body); text-wrap: initial; }
+  .family-today-result {
+    padding: var(--space-3) var(--space-4);
+    border-inline-start: 4px solid var(--sev-line);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--sev-fill) 12%, var(--surface-sunken));
   }
-
-  /* ---------- How she is ---------- */
-
-  .family-status { display: grid; gap: var(--space-3); border-inline-start: 6px solid var(--sev-fill); }
-  .family-status:is(.sev-none, .sev-system) { border-inline-start: 6px var(--sev-line-style) var(--sev-line); }
-  .family-heading { gap: var(--space-4); margin: 0; }
-  .family-heading .resident-avatar { width: 72px; height: 72px; flex-basis: 72px; font-size: 26px; }
-  .family-name { display: grid; gap: 2px; margin: 0; line-height: 1.1; }
-  .family-name-lead { color: var(--ink-muted); font-size: var(--heading-section); font-weight: 600; }
-  /* Keep above .family-state-title's 30px: the name is the largest text on the page. */
-  .family-name-who { font-size: clamp(32px, 2cqi + 24px, 48px); font-weight: 800; overflow-wrap: anywhere; }
-  .family-status-grid { display: grid; gap: var(--space-4) var(--space-6); }
+  .family-today-label { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 700; line-height: 1.35; }
+  .family-today-label > .sev-mark { margin-top: 2px; }
+  .family-next, .family-contact { padding-block: var(--space-2); }
+  .family-next p { font-weight: 600; }
+  .family-contact > .row { margin-top: var(--space-1); }
+  .family-contact .button { min-height: 44px; font-size: var(--text-sm); }
   @container card (min-width: 720px) {
-    .family-status-grid { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-    .family-status-side { justify-items: end; }
-    .family-facts { justify-content: flex-end; }
+    .family-today-grid { grid-template-columns: 1.15fr 0.9fr 1fr; gap: var(--space-4); }
+    .family-next, .family-contact { padding: var(--space-3); }
+    .family-contact { border-inline-start: 1px solid var(--line); }
   }
-  .family-state { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
-  .family-state-mark {
-    display: inline-grid;
-    flex: none;
-    place-items: center;
-    inline-size: 2.75rem;
-    block-size: 2.75rem;
-    border: 2px var(--sev-line-style) var(--sev-line);
-    border-radius: 999px;
-    background: var(--sev-fill);
-    color: var(--sev-on);
-    font-size: 20px;
-    font-weight: 800;
-    line-height: 1;
+
+  .family-disclosure { padding-block: 0; }
+  .family-disclosure > summary { min-height: 54px; }
+  .family-disclosure > .disclosure-body { padding-block: var(--space-2) var(--space-4); }
+  .family-recap { padding-block-end: var(--space-2); }
+  .family-layout, .family-col { display: grid; align-content: start; gap: var(--flow-2); min-width: 0; }
+  @container card (min-width: 900px) {
+    .family-layout:has(> :nth-child(2)) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); align-items: start; }
   }
-  .family-state-title { font-size: clamp(22px, 1cqi + 18px, 30px); font-weight: 700; line-height: 1.2; }
-  .family-state-body { font-size: var(--text-md); line-height: 1.4; }
-  .family-status-side { display: grid; gap: var(--space-3); justify-items: start; min-width: 0; }
-  .family-facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; }
-  .family-next { color: var(--ink-muted); font-size: var(--text-sm); }
 
   /* ---------- Cells ---------- */
 

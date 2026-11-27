@@ -9,13 +9,8 @@ import {
   trendCount,
   trendTurn,
   type CellState,
-  type FamilyLevel,
-  type FamilyStatus,
 } from '../glance';
-import { SEVERITY } from '../signals';
-import type { FamilyGlance, Portrait, TagLabel, TagTrend } from '../types';
-import { ResidentAvatar } from './ResidentAvatar';
-import { SeverityChip } from './Signals';
+import type { FamilyGlance, TagLabel, TagTrend } from '../types';
 
 export function FamilyCell({ state, label, tall = false }: { state: CellState; label?: string; tall?: boolean }) {
   const s = STATES[state];
@@ -27,65 +22,13 @@ export function FamilyCell({ state, label, tall = false }: { state: CellState; l
   );
 }
 
-export function FamilyStatusCard({
-  id,
-  name,
-  portrait,
-  status,
-  reach,
-  next,
-  careTeamPhone,
-}: {
-  id: string;
-  name: string;
-  portrait?: Portrait | null | undefined;
-  status: FamilyStatus | null;
-  reach: FamilyLevel | null;
-  next: string;
-  careTeamPhone: string;
-}) {
-  const severity = status?.severity ?? 'none';
-  return (
-    <section className={`card family-status sev-${severity}`} aria-labelledby="family-name">
-      <div className="resident-heading family-heading">
-        <ResidentAvatar id={id} name={name} portrait={portrait} />
-        <h1 className="family-name" id="family-name">
-          <span className="family-name-lead">Daily calls with</span> <span className="family-name-who">{name}</span>
-        </h1>
-      </div>
-      <div className="family-status-grid">
-        {status && (
-          <div className="family-state">
-            <span className="family-state-mark" aria-hidden="true">{SEVERITY[severity].symbol}</span>
-            <div className="stack stack-s">
-              <p className="family-state-title">{status.title}</p>
-              {status.body && <p className="family-state-body">{status.body}</p>}
-            </div>
-          </div>
-        )}
-        <div className="family-status-side">
-          <ul className="family-facts" aria-label="Calls">
-            {reach && (
-              <li>
-                <SeverityChip spoken={false} severity={reach.severity} label={reach.word} detail={reach.detail} />
-              </li>
-            )}
-            <li className="family-next">{next}</li>
-          </ul>
-          {status?.askCareTeam && (
-            <a className="button family-ask" href={`tel:${careTeamPhone}`}>Call the care team</a>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 /** The latest call's six areas of life, each a colour, a symbol and a word. */
-export function LatestCall({ latest, now, shareMood, notesPending }: { latest: FamilyGlance['latest']; now: Date; shareMood: boolean; notesPending: boolean }) {
+export function LatestCall({ latest, now, shareMood, notesPending, timeZone }: {
+  latest: FamilyGlance['latest']; now: Date; shareMood: boolean; notesPending: boolean; timeZone?: string | undefined;
+}) {
   return (
     <section className="card family-latest" aria-labelledby="family-latest-heading">
-      <h2 id="family-latest-heading">{latest ? latestCallLabel(latest.startedAt, now) : 'Latest call'}</h2>
+      <h2 id="family-latest-heading">{latest ? latestCallLabel(latest.startedAt, now, timeZone) : 'Latest call'}</h2>
       {latest ? (
         <ul className="family-areas" aria-label="The latest call, by area of life">
           {latestAreas(latest, shareMood, notesPending).map((a) => {

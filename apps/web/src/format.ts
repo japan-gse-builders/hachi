@@ -15,11 +15,11 @@ export function speakerLabel(speaker: 'resident' | 'agent', residentName: string
   return residentName.trim() || 'Patient';
 }
 
-export function formatWhen(iso: string): string {
+export function formatWhen(iso: string, timeZone = 'Asia/Tokyo'): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
+    timeZone,
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -41,6 +41,7 @@ export function callStatusLabel(status: string): string {
 }
 
 const EVENT_TYPE: Record<string, string> = {
+  claimed: 'Case taken on',
   urgency_changed: 'Urgency changed',
   rank_changed: 'Rank adjusted',
   status_changed: 'Status changed',

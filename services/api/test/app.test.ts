@@ -343,8 +343,21 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(d.detections[0].evidence[0].audioUrl).toBe('https://signed.example/gs%3A%2F%2Fhachi-audio%2Fres-1%2Fcall-1.wav');
     expect(d.calls.find((c: { id: string }) => c.id === 'call-1').transcript).toHaveLength(2);
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').transcript).toBeUndefined();
+    expect(d.calls.find((c: { id: string }) => c.id === 'call-0').hasTranscript).toBe(true);
     expect(d.resident.householdNotes).toBeNull();
     expect(d.resident.synthetic).toBe(false);
+  });
+
+  it('returns the full transcript of an unquoted call only to staff in its organization', async () => {
+    const { app, as, store } = await seeded();
+    const unquoted = call({ id: 'call-0', startedAt: '2026-09-30T01:00:00.000Z' });
+    await store.addCalls([unquoted]);
+    const url = '/api/residents/res-1/calls/call-0/transcript';
+    const get = (who: string | null) => app.inject({ method: 'GET', url, ...as(who) });
+    expect((await get('staff')).json()).toEqual({ transcript: unquoted.transcript });
+    expect((await get('outsider')).statusCode).toBe(404);
+    expect((await get('familyEmail')).statusCode).toBe(403);
+    expect((await get(null)).statusCode).toBe(401);
   });
 
   it('sends the update form its choices, so their names are not written twice (QUE-03)', async () => {
@@ -489,6 +502,42 @@ describe('triage queue and cases (QUE-01..03)', () => {
     const events = await store.listCaseEvents('watch');
     expect(events.map((e) => e.type)).toEqual(['urgency_changed', 'rank_changed', 'status_changed']);
     expect(events[0]).toMatchObject({ actorUid: 'staff-1', autoUrgency: 'watch', from: 'watch', to: 'urgent' });
+  });
+
+  it('assigns the case once and shows its assignee in the queue and detail', async () => {
+    const { app, as, store } = await seeded();
+    const claim = (who: string, id = 'watch') => app.inject({ method: 'POST', url: `/api/cases/${id}/claim?locale=en`, ...as(who) });
+    const users = ['otherStaff', 'admin'];
+    const results = await Promise.all(users.map((who) => claim(who)));
+    const winner = results.findIndex((r) => r.statusCode === 200);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    const saved = results[winner]!.json();
+    expect(saved).toMatchObject({
+      status: 'in_progress', statusLabel: 'In progress',
+      assignment: { name: winner === 0 ? 'Sato' : 'Ito', claimedAt: NOW.toISOString() },
+    });
+    expect(results[1 - winner]!.json()).toMatchObject({ error: `${saved.assignment.name} has already taken this case.`, reason: 'case_already_claimed' });
+    expect((await claim(users[winner]!)).json()).toEqual(saved);
+    expect(await store.listCaseEvents('watch')).toHaveLength(1);
+    const legacy = await app.inject({ method: 'PATCH', url: '/api/cases/watch', payload: { status: 'in_progress' }, ...as(users[1 - winner]!) });
+    expect(legacy.statusCode).toBe(409);
+    expect((await claim('outsider')).statusCode).toBe(404);
+    expect((await claim('familyEmail')).statusCode).toBe(403);
+    expect((await claim('staff', 'closed')).json()).toMatchObject({ reason: 'case_closed' });
+
+    const queue = (await app.inject({ method: 'GET', url: '/api/queue?locale=en', ...as('staff') })).json();
+    expect(queue.items.find((item: { caseId: string }) => item.caseId === 'watch')).toMatchObject(saved);
+    const detail = (await app.inject({ method: 'GET', url: '/api/cases/watch?locale=en', ...as('staff') })).json();
+    expect(detail.case).toMatchObject(saved);
+  });
+
+  it('allows staff to take an in-progress case created before assignments existed', async () => {
+    const { app, as, store } = await seeded();
+    await store.putCase(storedCase({ id: 'legacy', status: 'in_progress' }));
+    const res = await app.inject({ method: 'POST', url: '/api/cases/legacy/claim', ...as('otherStaff') });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'in_progress', assignment: { uid: 'staff-2' } });
+    expect(await store.listCaseEvents('legacy')).toEqual([expect.objectContaining({ type: 'claimed', actorUid: 'staff-2' })]);
   });
 
   it.each([
@@ -727,6 +776,32 @@ describe('family dashboard (FAM-01..04)', () => {
     expect(other.statusCode).toBe(404);
     expect(missing.statusCode).toBe(404);
     expect(other.body).toBe(missing.body);
+  });
+
+  it('distinguishes the resident’s local scheduled time, a missed attempt and a conversation', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1', { timeZone: 'America/Los_Angeles', callTime: '21:00' }));
+    const get = async () => (await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard?locale=en', ...as('familyPhone') })).json();
+    expect(await get()).toMatchObject({
+      timeZone: 'America/Los_Angeles', nextCallAt: '2026-10-01T04:00:00.000Z', today: { status: 'before_call', at: null },
+    });
+    await store.updateResident('res-1', (r) => ({ ...r, callTime: '19:00' }));
+    expect((await get()).today).toEqual({ status: 'waiting', at: null });
+    const at = '2026-10-01T02:00:00.000Z';
+    await store.addCalls([call({ id: 'attempt', startedAt: at, status: 'scheduled' })]);
+    expect((await get()).today).toEqual({ status: 'waiting', at: null });
+    await store.updateCall('res-1', 'attempt', (c) => ({ ...c, status: 'no_answer' }));
+    expect((await get()).today).toEqual({ status: 'missed', at });
+    await store.updateCall('res-1', 'attempt', (c) => ({ ...c, status: 'failed' }));
+    expect((await get()).today).toEqual({ status: 'interrupted', at });
+    await store.updateCall('res-1', 'attempt', (c) => ({ ...c, status: 'in_progress' }));
+    expect((await get()).today).toEqual({ status: 'calling', at });
+    await store.updateCall('res-1', 'attempt', (c) => ({ ...c, status: 'completed', conversation: { endedBy: 'silent_after_greeting', at } }));
+    expect((await get()).today).toEqual({ status: 'no_reply', at });
+    await store.updateCall('res-1', 'attempt', (c) => ({ ...c, conversation: { endedBy: 'stopped_responding', at } }));
+    const result = await get();
+    expect(result.today).toEqual({ status: 'talked', at });
+    expect(result.glance.days.at(-1)).toMatchObject({ date: '2026-09-30', domains: expect.any(Object) });
   });
 
   it('shows no next call for paused residents and supports English labels', async () => {

@@ -1,87 +1,34 @@
-/*
- * Case page. Narrow: one column in reading order (what was said, the decision, who was told, the
- * calls, then the rest). From md (720px of page) the controls sit on the right; from xl (1200px)
- * the records get the middle column. Every column scrolls with the page.
- */
 @layer screens {
-  /* ---------- Header ---------- */
-
-  .case-head { display: grid; gap: var(--space-2); border-inline-start: 8px solid var(--sev-fill); }
+  .case-page { width: 100%; max-width: 1120px; margin-inline: auto; }
+  .case-head { display: grid; gap: var(--space-3); border-inline-start: 6px solid var(--sev-fill); }
   .case-head.sev-none { border-inline-start-color: var(--line); }
-  .case-head > * { min-width: 0; margin: 0; }
-  .case-head-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-4); }
-  .case-head-state { margin: 0; gap: var(--space-2) var(--space-3); }
-  .case-head .resident-heading { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
-  .case-head h1 { font-size: clamp(28px, 1cqi + 22px, 36px); }
-  .case-headline { font-size: var(--text-lg); line-height: 1.35; }
-  .case-nowrap { white-space: nowrap; }
-  .case-chips { list-style: none; margin: 0; padding: 0; gap: var(--space-2); }
-  .case-chips .sev-chip { font-size: 14px; font-weight: 600; }
-  /* On a phone four chips stack into four rows above the evidence; as one line of text they are a
-     sentence about the person, which is all they need to be there. */
-  @container card (max-width: 399px) {
-    .case-chips { gap: 0; }
-    .case-chips li:not(:last-child)::after { content: "·" / ""; margin-inline: 6px; color: var(--ink-muted); }
-    .case-chips .sev-chip { display: inline; padding: 0; border: 0; background: none; color: var(--ink-muted); }
-    .case-chips .sev-mark { display: none; }
+  .case-head-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+  .case-head-top > .resident-heading { margin: 0; }
+  .case-head h1 { margin: 0; font-size: clamp(28px, 1cqi + 22px, 38px); }
+  .case-head .resident-avatar { inline-size: 42px; block-size: 42px; flex-basis: 42px; font-size: 16px; }
+  .case-review { display: grid; align-items: start; gap: var(--space-3) var(--space-6); }
+  .case-kicker { color: var(--ink-muted); font: 700 var(--text-sm) / 1.4 var(--font-body); text-wrap: initial; }
+  .case-headline { font-size: var(--text-lg); font-weight: 650; line-height: 1.35; }
+  .case-evidence { margin: 0; padding-block: var(--space-2); --lines: 3; }
+  .case-evidence > .meta { margin-bottom: 2px; }
+  .case-evidence p:last-child { margin: 0; }
+  .case-next { display: grid; gap: var(--space-2); }
+  .case-next > * { margin: 0; }
+  .case-owner { font-size: var(--text-sm); }
+  .case-call-patient { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 4px; font-weight: 600; }
+  @container card (min-width: 740px) {
+    .case-review { grid-template-columns: minmax(0, 1fr) minmax(0, 20rem); }
+    .case-next { padding-inline-start: var(--space-4); border-inline-start: 1px solid var(--line); }
   }
-  .case-head-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-4); }
-  .case-head-action > * { margin: 0; }
-  .case-head-action .call-now p { margin: 0; }
 
-  .case-others-title { margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; }
-  .case-others-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .case-sections { padding-block: 0; }
+  .case-section + .case-section { border-top: 1px solid var(--line); }
+  .case-section > summary { min-height: 54px; }
+  .case-section > .disclosure-body { padding-block: var(--space-1) var(--space-4); }
+  .case-others-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
   .case-others-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
   .case-others-list a { font-weight: 600; }
-  /* A confirmation or a call in progress needs room to be read. */
-  .case-head-action:has(.confirm, [role="status"], .error) { flex-basis: 100%; justify-content: flex-start; }
-  .case-head-action .call-now { max-width: 420px; }
-  .case-phone { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
-  .case-phone .control-label { margin: 0; }
-  .case-phone a { font-weight: 700; }
-  .case-signals-legend { border-top: 1px solid var(--line); padding-top: var(--space-2); }
-  .case-signals-legend > summary { font-size: var(--text-sm); min-height: 44px; }
-  .case-signals-legend .disclosure-body { padding-block: var(--space-2); }
-
-  /* ---------- Columns ---------- */
-
-  .case-layout { display: flex; flex-direction: column; gap: var(--flow-2); min-width: 0; }
-  .case-col { display: contents; }
-  .case-said { order: 1; }
-  .case-decision { order: 2; }
-  .case-notifications { order: 3; }
-  .case-calls { order: 4; }
-  .case-speech { order: 5; }
-  .case-screening { order: 6; }
-  .case-about { order: 7; }
-  .case-history { order: 8; }
-
-  @container page (min-width: 720px) {
-    .case-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr);
-      grid-template-areas: "evidence decide" "records decide";
-      align-items: start;
-    }
-    .case-col { display: grid; gap: var(--flow-2); min-width: 0; align-content: start; }
-    .case-col > * { order: 0; }
-    .case-col-evidence { grid-area: evidence; }
-    .case-col-decide { grid-area: decide; }
-    .case-col-records { grid-area: records; }
-  }
-  @container page (min-width: 1200px) {
-    .case-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(360px, 1fr);
-      grid-template-areas: "evidence records decide";
-    }
-  }
-
   .case-card-head { justify-content: space-between; }
-
-  /* ---------- What was said ---------- */
-
-  .case-said .quote { margin: 0; }
-  .case-silence { margin: 0; }
   .case-transcript .transcript { padding-inline-start: var(--space-3); border-inline-start: 2px solid var(--line); }
 
   /* ---------- Decision ---------- */
@@ -107,11 +54,6 @@
     .case-seg-option:hover input:not(:checked) + span { border-color: var(--brand); color: var(--brand); }
   }
   .case-priority > summary { color: var(--brand); }
-
-  /* One row, so the bar covers as little of the page as it can. */
-  .case-action-bar { flex-wrap: nowrap; justify-content: space-between; }
-  .case-action-bar > .sev-chip { min-width: 0; }
-  .case-action-bar > .button { flex: none; padding-inline: 14px; }
 
   /* ---------- Who was told, history, about ---------- */
 

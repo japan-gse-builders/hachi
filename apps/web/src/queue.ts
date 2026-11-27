@@ -1,6 +1,6 @@
 import { hasCallConsent } from './privacy';
 import { bySeverity, checkedLevel, reachLevel, urgencySeverity, type Level, type ReachInput, type Severity } from './signals';
-import type { NotificationItem, QueueItem, Resident, ResidentSignals, UnreachedResident } from './types';
+import type { QueueItem, Resident, ResidentSignals, UnreachedResident } from './types';
 
 const URGENCIES = ['emergency', 'urgent', 'action', 'watch'];
 export interface QueueFilters { urgency: string; query: string; includeClosed: boolean }
@@ -36,69 +36,22 @@ export function avatarDetails(id: string, name: string): { initials: string; col
   return { initials, color: hash % 4 };
 }
 
-/** A card on the queue: one patient's most urgent shown case, with their other open cases. */
-export type QueueCard = QueueItem & { alsoOpen: QueueItem[] };
-
 /** `null` urgency is the closed lane, which comes last whatever the urgency its cases had. */
-export interface QueueLane { key: string; urgency: string | null; severity: Severity; items: QueueCard[] }
+export interface QueueLane { key: string; urgency: string | null; severity: Severity; items: QueueItem[] }
 
 /**
- * One lane per urgency, most urgent first, each keeping the core's order; empty lanes are left out.
- * Staff ring a person, not a rule, so a patient with several open cases is one card, in the lane of
- * the most urgent of them that `items` shows. `all`, the unfiltered queue, says what else is open.
+ * Keep the core's order within each urgency. A patient can have several cases with different
+ * staff handling them, so each case keeps its own card.
  */
-export function queueLanes(items: QueueItem[], all: QueueItem[] = items): QueueLane[] {
+export function queueLanes(items: QueueItem[]): QueueLane[] {
   const open = items.filter((i) => i.status !== 'closed');
-  const allOpen = all.filter((i) => i.status !== 'closed');
   const urgencies = [...new Set([...URGENCIES, ...open.map((i) => i.urgency)])];
-  const placed = new Set<string>();
   const lanes: QueueLane[] = urgencies
-    .map((urgency) => {
-      const cards: QueueCard[] = [];
-      for (const i of open) {
-        if (i.urgency !== urgency || placed.has(i.residentId)) continue;
-        placed.add(i.residentId);
-        cards.push({ ...i, alsoOpen: allOpen.filter((o) => o.residentId === i.residentId && o.caseId !== i.caseId) });
-      }
-      return { key: urgency, urgency, severity: urgencySeverity(urgency), items: cards };
-    })
+    .map((urgency) => ({ key: urgency, urgency, severity: urgencySeverity(urgency), items: open.filter((i) => i.urgency === urgency) }))
     .filter((l) => l.items.length > 0);
   const closed = items.filter((i) => i.status === 'closed');
-  if (closed.length) lanes.push({ key: 'closed', urgency: null, severity: 'good', items: closed.map((i) => ({ ...i, alsoOpen: [] })) });
+  if (closed.length) lanes.push({ key: 'closed', urgency: null, severity: 'good', items: closed });
   return lanes;
-}
-
-/** Open cases at each of the four urgencies, zeros included, whatever the filters show. */
-export function openCounts(items: QueueItem[]): { urgency: string; severity: Severity; count: number }[] {
-  return URGENCIES.map((urgency) => ({
-    urgency,
-    severity: urgencySeverity(urgency),
-    count: items.filter((i) => i.status !== 'closed' && i.urgency === urgency).length,
-  }));
-}
-
-/** "25 min ago", "3 h ago", "2 days ago": how long a case has been waiting, not when it began. */
-export function ageLabel(iso: string, now: Date): string {
-  const ms = now.getTime() - Date.parse(iso);
-  if (Number.isNaN(ms)) return '';
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min} min ago`;
-  const hours = Math.floor(min / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-}
-
-const UNDELIVERED = new Set(['undelivered', 'failed', 'no_answer', 'busy', 'canceled']);
-
-/** One mark per recipient: not delivered when any message to them failed, otherwise sent. */
-export function notifiedSummary(notifications: NotificationItem[]): { recipient: string; delivered: boolean; items: NotificationItem[] }[] {
-  const recipients = [...new Set(notifications.map((n) => n.recipient))];
-  return recipients.map((recipient) => {
-    const items = notifications.filter((n) => n.recipient === recipient);
-    return { recipient, delivered: !items.some((n) => n.delivery && UNDELIVERED.has(n.delivery.status)), items };
-  });
 }
 
 /** Three days or more without a call first; a call that failed on our side comes after the ladder. */
