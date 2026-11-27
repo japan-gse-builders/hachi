@@ -1,12 +1,14 @@
 import { effectiveUrgency } from '@hachi/core';
 import type { CaseEvent, CaseMutation, StoredCase } from '@hachi/store';
+import type { StaffPrincipal } from './auth.js';
+import { HttpError } from './errors.js';
 import type { CaseUpdate } from './schemas.js';
 
 /** QUE-03 / PRI-06: applies a staff update and records every change as an event. */
 export function applyStaffUpdate(
   current: StoredCase,
   update: CaseUpdate,
-  actorUid: string,
+  actor: Pick<StaffPrincipal, 'uid' | 'name' | 'email'>,
   now: Date,
   newId: () => string,
 ): CaseMutation {
@@ -14,8 +16,18 @@ export function applyStaffUpdate(
   const c: StoredCase = { ...current };
   const events: CaseEvent[] = [];
   const event = (e: Omit<CaseEvent, 'id' | 'caseId' | 'at' | 'actorUid' | 'autoUrgency'>) =>
-    events.push({ id: newId(), caseId: c.id, at, actorUid, autoUrgency: c.autoUrgency, ...e });
+    events.push({ id: newId(), caseId: c.id, at, actorUid: actor.uid, autoUrgency: c.autoUrgency, ...e });
 
+  if (update.status === 'in_progress') {
+    const active = c.status === 'in_progress' ? c.assignment : undefined;
+    if (active && active.uid !== actor.uid) {
+      throw new HttpError(409, `${active.name} has already taken this case.`, 'case_already_claimed');
+    }
+    if (!active) {
+      c.assignment = { uid: actor.uid, name: actor.name?.trim() || actor.email, claimedAt: at };
+      if (c.status === 'in_progress') event({ type: 'claimed', reason: update.reason });
+    }
+  }
   if (update.urgency && update.urgency !== effectiveUrgency(c)) {
     event({ type: 'urgency_changed', from: effectiveUrgency(c), to: update.urgency, reason: update.reason });
     c.staffUrgency = update.urgency;
@@ -35,6 +47,7 @@ export function applyStaffUpdate(
         delete c.closedAt;
         delete c.outcome;
       }
+      if (update.status === 'open') delete c.assignment;
     }
     c.status = update.status;
   }

@@ -5,9 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { QueueLanes } from '../src/components/QueueLanes';
 import { QueueUnreached } from '../src/components/QueueNotices';
 import { queueLanes } from '../src/queue';
-import type { Queue, QueueItem, ResidentSignals, UnreachedResident } from '../src/types';
+import type { QueueItem, UnreachedResident } from '../src/types';
 
-/** States the preview fixtures never produce: indicator inputs, days without a call, unchecked calls. */
 const now = new Date('2026-10-13T05:00:00.000Z');
 const render = (el: Parameters<typeof createElement>[0], props: object) =>
   renderToStaticMarkup(createElement(MemoryRouter, null, createElement(el as never, props as never)));
@@ -26,14 +25,6 @@ const miss = (residentId: string, missedDays: number, ourFault = false): Unreach
   tried: 'Called 3 times',
   missedDays,
 });
-
-const signals: ResidentSignals = {
-  latestCallAt: '2026-10-13T01:00:00.000Z',
-  domains: { body: 'unmentioned', food: 'concern', sleep: 'good', mood: 'good', social: 'good', activity: 'unmentioned' },
-  speech: 'clear_change',
-  reach: { lastReachedAt: '2026-10-13T01:00:00.000Z', missedDays: 0, ourFault: false },
-  unchecked: 1,
-};
 
 const item = (o: Partial<QueueItem>): QueueItem => ({
   caseId: 'c1',
@@ -67,29 +58,27 @@ describe('queue notices', () => {
   });
 });
 
-describe('queue cards with indicators', () => {
-  const queue = { items: [], legend: [], unreached: { items: [miss('r1', 2)], note: null } } as unknown as Queue;
-
-  it('draw a compact and a full bar, and fill Calls from the unreached list when signals leave it out', () => {
-    const { reach: _, ...noReach } = signals;
-    const lanes = queueLanes([item({ signals: noReach }), item({ caseId: 'c2', residentId: 'r2', signals: undefined })]);
-    const html = render(QueueLanes, { lanes, queue, now, linkState: null });
-    expect(html.match(/class="card queue-case[^"]*has-signals/g)).toHaveLength(1);
-    expect(html.match(/<ul class="sev-bar"/g)).toHaveLength(2);
-    expect(html).toContain('<span class="sr-only">Calls: No call for 2 days</span>');
-    expect(html).toContain('<span class="sr-only">Speech: Clear change</span>');
-    expect(html).not.toContain('<span class="sr-only">Review today: </span>');
+describe('queue cards', () => {
+  it('shows urgent cases first, with a reason and review link, and folds monitoring cases', () => {
+    const lanes = queueLanes([
+      item({ caseId: 'w', urgency: 'watch', urgencyLabel: 'Monitor', summary: 'Not eating enough' }),
+      item({ caseId: 'e', urgency: 'emergency', urgencyLabel: 'Act now', summary: 'Trouble breathing' }),
+      item({ caseId: 'u', urgency: 'urgent' }),
+    ]);
+    const html = render(QueueLanes, { lanes, linkState: null });
+    expect(html.indexOf('Trouble breathing')).toBeLessThan(html.indexOf('Very little to eat'));
+    expect(html.indexOf('Very little to eat')).toBeLessThan(html.indexOf('<details'));
+    expect(html).toContain('<details class="card disclosure queue-fold"><summary>');
+    expect(html).toContain('Review case for Margaret Ellis, Act now');
+    expect(html).toContain('href="/staff/cases/w"');
+    expect(render(QueueLanes, { lanes, linkState: null, revealFolded: true })).toMatch(/<details[^>]* open=""/);
   });
 
-  it('put a patient’s other open cases on their one card, each linking to its case', () => {
-    const lanes = queueLanes([
-      item({ caseId: 'e', urgency: 'emergency', urgencyLabel: 'Act now', summary: 'Trouble breathing' }),
-      item({ caseId: 'w', urgency: 'watch', urgencyLabel: 'Monitor', summary: 'Not eating enough' }),
-    ]);
-    const html = render(QueueLanes, { lanes, queue, now, linkState: null });
-    expect(html.match(/class="card queue-case /g)).toHaveLength(1);
-    expect(html).toContain('Also open for Margaret Ellis');
-    expect(html).toMatch(/<a href="\/staff\/cases\/w"[^>]*>Not eating enough<\/a>/);
-    expect(html).toContain('1<span class="sr-only"> patient</span>');
+  it('shows the case assignee and claim time when work is in progress', () => {
+    const claimedAt = now.toISOString();
+    const lanes = queueLanes([item({ status: 'in_progress', statusLabel: 'In progress', assignment: { uid: 's1', name: 'Aiko Tanaka', claimedAt } })]);
+    const html = render(QueueLanes, { lanes, linkState: null });
+    expect(html).toContain('<strong>In progress</strong> · Aiko Tanaka · ');
+    expect(html).toContain(`dateTime="${claimedAt}"`);
   });
 });

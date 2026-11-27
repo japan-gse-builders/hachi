@@ -10,7 +10,8 @@ import {
   type OutboxEntry,
   type Store,
 } from '@hachi/store';
-import { call, makeResident, membership, organization, storedCase } from './helpers.js';
+import { applyStaffUpdate } from '../src/caseUpdate.js';
+import { call, idGen, makeResident, membership, NOW, organization, storedCase } from './helpers.js';
 
 function heldEntry(id: string, orgId: string): OutboxEntry {
   return {
@@ -153,6 +154,20 @@ function contract(name: string, make: () => Promise<Store & AccountStore>) {
       expect((await s.getCase('a'))?.status).toBe('in_progress');
       expect((await s.listCaseEvents('a')).map((e) => e.id)).toEqual(['e1', 'e2']);
       await expect(s.mutateCase('missing', (c) => ({ case: c, events: [] }))).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it('keeps one assignee and one event when two staff take a case at once', async () => {
+      const s = await make();
+      await s.putCase(storedCase({ id: 'ready' }));
+      const newId = idGen();
+      const results = await Promise.allSettled(['Sato', 'Ito'].map((name) =>
+        s.mutateCase('ready', (c) => applyStaffUpdate(c, { status: 'in_progress' }, { uid: name, name, email: `${name}@example.org` }, NOW, newId)),
+      ));
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { statusCode: 409, reason: 'case_already_claimed' } });
+      const saved = await s.getCase('ready');
+      expect(saved).toMatchObject({ status: 'in_progress', assignment: { claimedAt: NOW.toISOString() } });
+      expect(await s.listCaseEvents('ready')).toEqual([expect.objectContaining({ to: 'in_progress', actorUid: saved?.assignment?.uid })]);
     });
 
     it('lists only active residents', async () => {

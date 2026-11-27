@@ -1,11 +1,15 @@
 import { useId, useState } from 'react';
-import { callStatusLabel, minutes, topicList } from '../format';
+import { api } from '../api';
+import { useAuth } from '../auth';
+import { callStatusLabel, minutes, speakerLabel, topicList } from '../format';
 import { LIFE_DOMAINS, STATES, staffTagLine } from '../glance';
 import { domainLevel, SEVERITY, type Severity } from '../signals';
 import type { CaseDetail, DomainState } from '../types';
 import { SeverityChip } from './Signals';
+import { LoadError } from './States';
 
 type Call = CaseDetail['calls'][number];
+type Resident = Pick<CaseDetail['resident'], 'id' | 'name'>;
 
 /** A week of calls is enough to compare with; the rest are a click away. */
 const SHOWN = 7;
@@ -51,10 +55,51 @@ export function CaseDomainDots({ domains }: { domains: Record<string, DomainStat
   );
 }
 
-function CallRow({ call, now, quoted }: { call: Call; now: Date; quoted: boolean }) {
+function CallTranscript({ call, resident }: { call: Call; resident: Resident }) {
+  const { token } = useAuth();
+  const [fetched, setFetched] = useState<Call['transcript']>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const turns = call.transcript ?? fetched;
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const path = `/api/residents/${encodeURIComponent(resident.id)}/calls/${encodeURIComponent(call.id)}/transcript`;
+      const data = await api<{ transcript: NonNullable<Call['transcript']> }>(path, await token());
+      setFetched(data.transcript);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the transcript');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <details className="disclosure case-transcript" onToggle={(event) => {
+      if (event.currentTarget.open && !turns && !loading && !error) void load();
+    }}>
+      <summary>Full transcript</summary>
+      <div className="disclosure-body transcript">
+        {loading && <p className="meta" role="status">Loading transcript…</p>}
+        {error && <LoadError compact message={error} onRetry={() => void load()} />}
+        {turns?.length === 0 && <p className="meta">No transcript is available for this call.</p>}
+        {turns?.map((turn, i) => (
+          <p key={i} className={turn.speaker === 'agent' ? 'agent' : ''}>
+            <strong>{speakerLabel(turn.speaker, resident.name)}: </strong>{turn.text}
+          </p>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function CallRow({ call, now, quoted, resident }: { call: Call; now: Date; quoted: boolean; resident: Resident }) {
   const severity = CALL_SEVERITY[call.status] ?? 'none';
   const line = oneLine(call);
   const tags = call.wellbeing?.tags ?? [];
+  const hasTranscript = call.hasTranscript ?? (call.status === 'completed' || Boolean(call.transcript?.length));
   return (
     <details className="case-call">
       <summary>
@@ -91,14 +136,14 @@ function CallRow({ call, now, quoted }: { call: Call; now: Date; quoted: boolean
           </dl>
         )}
         {!call.summary && !tags.length && <p className="meta">{call.status === 'completed' ? 'No notes for this call.' : `${callStatusLabel(call.status)}: nothing was said.`}</p>}
-        {quoted && <p className="meta"><a href="#said-heading">The quoted words and the whole conversation are under What was said.</a></p>}
+        {hasTranscript && <CallTranscript call={call} resident={resident} />}
       </div>
     </details>
   );
 }
 
 /** One line per call, newest first: when, whether it got through, the six areas and what came up. */
-export function CaseCalls({ calls, now, quotedCallIds }: { calls: Call[]; now: Date; quotedCallIds: ReadonlySet<string> }) {
+export function CaseCalls({ calls, now, quotedCallIds, resident }: { calls: Call[]; now: Date; quotedCallIds: ReadonlySet<string>; resident: Resident }) {
   const headingId = useId();
   const [all, setAll] = useState(false);
   const sorted = [...calls].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
@@ -123,7 +168,7 @@ export function CaseCalls({ calls, now, quotedCallIds }: { calls: Call[]; now: D
           <ol className="case-call-list">
             {shown.map((c) => (
               <li key={c.id}>
-                <CallRow call={c} now={now} quoted={quotedCallIds.has(c.id)} />
+                <CallRow call={c} now={now} quoted={quotedCallIds.has(c.id)} resident={resident} />
               </li>
             ))}
           </ol>

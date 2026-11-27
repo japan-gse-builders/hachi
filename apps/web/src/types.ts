@@ -1,3 +1,9 @@
+export interface CaseAssignment {
+  uid: string;
+  name: string;
+  claimedAt: string;
+}
+
 export interface QueueItem {
   caseId: string;
   residentId: string;
@@ -13,6 +19,7 @@ export interface QueueItem {
   detectedAt: string;
   status: string;
   statusLabel: string;
+  assignment?: CaseAssignment | null;
   notifications: NotificationItem[];
   residentFacts?: string[];
   householdNotes?: string | null;
@@ -188,6 +195,7 @@ export interface CaseDetail {
     staffScoreOffset: number;
     status: string;
     statusLabel: string;
+    assignment?: CaseAssignment | null;
     reason: string;
     score: number;
     firstDetectedAt: string;
@@ -234,6 +242,7 @@ export interface CaseDetail {
     summary: { health: string; meals: string; topics: string[] } | null;
     /** Missing from older servers; null for calls analysed before tags existed. */
     wellbeing?: StaffWellbeing | null;
+    hasTranscript?: boolean;
     transcript?: { speaker: 'resident' | 'agent'; text: string; startMs: number; endMs: number }[];
   }[];
   speechTrend: SpeechPoint[];
@@ -315,12 +324,18 @@ export interface FamilyGlance {
 export interface FamilyDashboard {
   /** `portrait` is missing from servers older than the family dashboard's picture. */
   resident: { id: string; name: string; portrait?: Portrait | null };
+  timeZone?: string;
+  today?: {
+    status: 'talked' | 'before_call' | 'waiting' | 'calling' | 'missed' | 'interrupted' | 'no_reply' | 'paused';
+    at: string | null;
+  };
   nextCallAt: string | null;
   /** Missing from servers older than wellbeing tags. */
   glance?: FamilyGlance;
   calls: {
     startedAt: string;
     connected: boolean;
+    noReply?: true;
     /** True while Hachi's notes on a connected call are not ready; never says why. Missing on older servers. */
     notesPending?: boolean;
     durationSec: number | null;

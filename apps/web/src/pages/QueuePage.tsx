@@ -2,18 +2,14 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { filterQueue, queueFilters, queueLanes } from '../queue';
 import { ContactRequests } from '../components/ContactRequests';
 import { QueueLanes } from '../components/QueueLanes';
-import { QueueCounts, QueueLegend, QueueUnchecked, QueueUnreached } from '../components/QueueNotices';
-import { SeverityMark } from '../components/Signals';
+import { QueueUnchecked, QueueUnreached } from '../components/QueueNotices';
 import { LoadError, Loading } from '../components/States';
-import { urgencySeverity } from '../signals';
+import { filterQueue, queueFilters, queueLanes } from '../queue';
 import { useDocumentTitle } from '../title';
 import type { Queue, SpendNotice } from '../types';
 import '../styles/queue.css';
-
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function QueuePage() {
   useDocumentTitle('Triage queue');
@@ -35,14 +31,16 @@ export function QueuePage() {
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const filtered = Boolean(filters.urgency || filters.query.trim() || filters.includeClosed);
-  const [filtersOpen, setFiltersOpen] = useState(true);
 
   useEffect(() => {
     let stop = false;
     const load = async () => {
       try {
         const t = await token();
-        const [data, money] = await Promise.all([api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t), api<SpendNotice | null>('/api/spend?locale=en', t)]);
+        const [data, money] = await Promise.all([
+          api<Queue>(`/api/queue?locale=en${filters.includeClosed ? '&includeClosed=true' : ''}`, t),
+          api<SpendNotice | null>('/api/spend?locale=en', t),
+        ]);
         if (!stop) {
           setQueue(data);
           setSpend(money);
@@ -66,101 +64,62 @@ export function QueuePage() {
   };
   const now = new Date();
   const visible = queue ? filterQueue(queue.items, filters) : [];
-  const selectedLevel = queue?.legend.find((item) => item.urgency === filters.urgency);
-  const filterSummary = [
-    selectedLevel?.label ?? 'All levels',
-    filters.query.trim() && `“${filters.query.trim()}”`,
-    filters.includeClosed && 'closed included',
-  ].filter(Boolean).join(' · ');
+  const lanes = queueLanes(visible);
+  const needsToday = lanes.filter((lane) => lane.urgency === 'emergency' || lane.urgency === 'urgent');
+  const later = lanes.filter((lane) => !needsToday.includes(lane));
+  const linkState = { queueSearch: params.toString() };
   const unreached = queue?.unreached?.items.length ? queue.unreached : null;
   const incomplete = queue?.incomplete?.items.length ? queue.incomplete : null;
+  const filterSummary = [
+    queue?.legend.find((level) => level.urgency === filters.urgency)?.label,
+    filters.query.trim() && `“${filters.query.trim()}”`,
+    filters.includeClosed && 'Closed included',
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="stack page queue-page">
-      <header className="page-header">
-        <h1>Triage queue</h1>
-        <p className="meta">Open cases, most urgent first. This page refreshes every 15 seconds.</p>
-      </header>
-      {queue && <QueueCounts queue={queue} />}
+      <header className="page-header"><h1>Triage queue</h1></header>
       {error && <LoadError message={error} onRetry={retry} />}
       {queue === null && !error && <Loading layout="queue" label="Loading the queue…" />}
-      {/* Staff are the ones who get asked why nobody was called today, so they can see the answer. */}
       {spend?.paused && <p className="card card-emergency"><strong>{spend.note}</strong></p>}
-      {(queue || error) && (
-        <div className="queue-layout">
-          {queue && (
-            <section className="queue-cases stack" aria-labelledby="cases-heading">
-              <h2 id="cases-heading" className="sr-only">Cases</h2>
-              <details className="card disclosure queue-filters" open={filtersOpen} onToggle={(e) => setFiltersOpen(e.currentTarget.open)}>
-                <summary>
-                  <span>Filter cases</span>
-                  <span className="disclosure-peek">{filterSummary}</span>
-                </summary>
-                <div className="disclosure-body queue-filters-grid" role="search" aria-label="Filter cases">
-                  <div className="queue-filter-controls">
-                    <div className="queue-filter-row">
-                      <fieldset>
-                        <legend className="control-label">Urgency</legend>
-                        <div className="row segmented" aria-describedby="urgency-explanation">
-                          <button type="button" className="ghost" aria-pressed={!filters.urgency} onClick={() => changeFilter('urgency', '')}>All levels</button>
-                          {queue.legend.map((level) => {
-                            const severity = urgencySeverity(level.urgency);
-                            const tipId = `urgency-tip-${level.urgency}`;
-                            return (
-                              <span key={level.urgency} className="urgency-filter">
-                                <button type="button" className="ghost urgency-option" aria-pressed={filters.urgency === level.urgency}
-                                  aria-describedby={tipId} onClick={() => changeFilter('urgency', level.urgency)}>
-                                  <SeverityMark severity={severity} />
-                                  {level.label}
-                                </button>
-                                <span id={tipId} role="tooltip" className="urgency-tip">{capital(level.action)}</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </fieldset>
-                      <label className="check"><input type="checkbox" checked={filters.includeClosed} onChange={(event) => changeFilter('includeClosed', event.target.checked ? 'true' : '')} />Include closed cases</label>
-                      <button type="button" className="subtle" onClick={clearFilters}>Clear filters</button>
-                    </div>
-                    <p id="urgency-explanation" className="meta">{selectedLevel?.meaning ?? selectedLevel?.action ?? 'All urgency levels, in priority order.'}</p>
-                  </div>
-                  <div className="queue-search">
-                    <label>Search by patient or case summary
-                      <input type="search" value={filters.query} maxLength={200} autoComplete="off" spellCheck={false} onChange={(event) => changeFilter('q', event.target.value)} />
-                    </label>
-                  </div>
-                </div>
-              </details>
-              {/* A resident with no case may still need attention, so these stay above the case list. */}
-              {(unreached || incomplete) && (
-                <div className="queue-notices stack">
-                  {unreached && <QueueUnreached unreached={unreached} now={now} />}
-                  {incomplete && <QueueUnchecked incomplete={incomplete} />}
-                </div>
-              )}
-              <div className="queue-list-head">
-                <p className="meta" role="status">Showing {visible.length} of {queue.items.length} {filters.includeClosed ? 'open and closed cases' : 'open cases'}.</p>
-                <details className="disclosure queue-legend">
-                  <summary>What the colors and icons mean</summary>
-                  <div className="disclosure-body"><QueueLegend queue={queue} includeClosed={filters.includeClosed} /></div>
-                </details>
+      {queue && (
+        <>
+          <details className="card disclosure queue-filters">
+            <summary>Filter cases {filterSummary && <span className="disclosure-peek">{filterSummary}</span>}</summary>
+            <div className="disclosure-body stack" role="search" aria-label="Filter cases">
+              <div className="queue-filter-fields">
+                <label>Search cases
+                  <input type="search" placeholder="Patient name or reason" value={filters.query} maxLength={200} autoComplete="off"
+                    onChange={(event) => changeFilter('q', event.target.value)} />
+                </label>
+                <label>Urgency
+                  <select value={filters.urgency} onChange={(event) => changeFilter('urgency', event.target.value)}>
+                    <option value="">All levels</option>
+                    {queue.legend.map((level) => <option key={level.urgency} value={level.urgency}>{level.label}</option>)}
+                  </select>
+                </label>
               </div>
-              {visible.length === 0 && (
-                <div className="card stack empty">
-                  <h3>{filtered ? 'No cases match these filters' : 'No open cases need attention'}</h3>
-                  <p>Try all urgency levels or clear the search to see more cases.</p>
-                  <p><button type="button" className="ghost" onClick={clearFilters}>Show all open cases</button></p>
-                </div>
-              )}
-              {visible.length > 0 && <QueueLanes lanes={queueLanes(visible, queue.items)} queue={queue} now={now} linkState={{ queueSearch: params.toString() }} />}
-            </section>
+              <div className="row">
+                <label className="check"><input type="checkbox" checked={filters.includeClosed}
+                  onChange={(event) => changeFilter('includeClosed', event.target.checked ? 'true' : '')} />Include closed cases</label>
+                {filtered && <button type="button" className="subtle" onClick={clearFilters}>Clear filters</button>}
+              </div>
+              {filtered && <p className="meta" role="status">{visible.length} {visible.length === 1 ? 'case matches' : 'cases match'}</p>}
+            </div>
+          </details>
+          <QueueLanes lanes={needsToday} linkState={linkState} />
+          {visible.length === 0 && (
+            <div className="card stack empty">
+              <h2>{filtered ? 'No cases match these filters' : 'No open cases'}</h2>
+              {filtered && <button type="button" className="ghost" onClick={clearFilters}>Show all open cases</button>}
+            </div>
           )}
-          {/* Contact requests load separately, after the case list. */}
-          <div className="queue-requests">
-            <ContactRequests />
-          </div>
-        </div>
+          {unreached && <QueueUnreached unreached={unreached} now={now} />}
+          <QueueLanes lanes={later} linkState={linkState} revealFolded={filtered} />
+          {incomplete && <QueueUnchecked incomplete={incomplete} />}
+        </>
       )}
+      {(queue || error) && <ContactRequests />}
     </div>
   );
 }

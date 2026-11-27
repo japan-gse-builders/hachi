@@ -41,32 +41,37 @@ describe('auth helpers', () => {
 });
 
 describe('applyStaffUpdate', () => {
+  const staff = { uid: 'u', email: 'staff@example.org' };
+
   it('records nothing when values are unchanged', () => {
     const c = storedCase();
-    const m = applyStaffUpdate(c, { status: 'open', urgency: 'watch', scoreOffset: 0, reason: 'same' }, 'u', NOW, idGen());
+    const m = applyStaffUpdate(c, { status: 'open', urgency: 'watch', scoreOffset: 0, reason: 'same' }, staff, NOW, idGen());
     expect(m.events).toEqual([]);
     expect(m.case.updatedAt).toBe(c.updatedAt);
   });
 
   it('lets staff lower an emergency, keeping the automatic value in the event', () => {
-    const m = applyStaffUpdate(storedCase({ autoUrgency: 'emergency' }), { urgency: 'action', reason: 'Was a joke' }, 'u', NOW, idGen());
+    const m = applyStaffUpdate(storedCase({ autoUrgency: 'emergency' }), { urgency: 'action', reason: 'Was a joke' }, staff, NOW, idGen());
     expect(m.case.staffUrgency).toBe('action');
     expect(m.events[0]).toMatchObject({ type: 'urgency_changed', from: 'emergency', to: 'action', autoUrgency: 'emergency', reason: 'Was a joke' });
   });
 
-  it('reopening a closed case clears the outcome', () => {
-    const closed = storedCase({ status: 'closed', closedAt: NOW.toISOString(), outcome: { anomalyConfirmed: true } });
-    const m = applyStaffUpdate(closed, { status: 'open' }, 'u', NOW, idGen());
+  it('reopening a closed case clears the outcome and previous assignment', () => {
+    const assignment = { uid: staff.uid, name: staff.email, claimedAt: '2026-10-01T02:00:00.000Z' };
+    const closed = storedCase({ status: 'closed', closedAt: NOW.toISOString(), outcome: { anomalyConfirmed: true }, assignment });
+    const m = applyStaffUpdate(closed, { status: 'open' }, staff, NOW, idGen());
     expect(m.case.status).toBe('open');
     expect(m.case.closedAt).toBeUndefined();
     expect(m.case.outcome).toBeUndefined();
+    expect(m.case.assignment).toBeUndefined();
     expect(m.events[0]).toMatchObject({ type: 'status_changed', from: 'closed', to: 'open' });
   });
 
   it('does not mutate the input', () => {
     const c = storedCase();
-    applyStaffUpdate(c, { status: 'in_progress' }, 'u', NOW, idGen());
+    applyStaffUpdate(c, { status: 'in_progress' }, staff, NOW, idGen());
     expect(c.status).toBe('open');
+    expect(c.assignment).toBeUndefined();
   });
 });
 

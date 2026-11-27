@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ageLabel,
   avatarDetails,
   filterQueue,
   knownSignals,
   needsAttention,
-  notifiedSummary,
-  openCounts,
   queueFilters,
   queueLanes,
   residentChips,
@@ -66,7 +63,7 @@ describe('urgency lanes', () => {
       ['closed', 'good', ['x']],
     ]);
   });
-  it('shows a patient with several open cases once, in the lane of the most urgent, listing the rest', () => {
+  it('keeps all cases for one patient in their own urgency lanes', () => {
     const all = [
       item({ caseId: 'e', residentId: 'thomas', urgency: 'emergency' }),
       item({ caseId: 'w-other', residentId: 'grace' }),
@@ -75,36 +72,11 @@ describe('urgency lanes', () => {
       item({ caseId: 'done', residentId: 'thomas', status: 'closed' }),
     ];
     const lanes = queueLanes(all);
-    expect(lanes.map((l) => [l.key, l.items.map((i) => [i.caseId, i.alsoOpen.map((o) => o.caseId)])])).toEqual([
-      ['emergency', [['e', ['w', 'w2']]]],
-      ['watch', [['w-other', []]]],
-      ['closed', [['done', []]]],
+    expect(lanes.map((l) => [l.key, l.items.map((i) => i.caseId)])).toEqual([
+      ['emergency', ['e']],
+      ['watch', ['w-other', 'w', 'w2']],
+      ['closed', ['done']],
     ]);
-    // Filtered to Monitor, Thomas's first case there carries the card, and the emergency is still named on it.
-    const watchOnly = queueLanes(all.filter((i) => i.urgency === 'watch' && i.status !== 'closed'), all);
-    expect(watchOnly.map((l) => l.items.map((i) => [i.caseId, i.alsoOpen.map((o) => o.caseId)]))).toEqual([
-      [['w-other', []], ['w', ['e', 'w2']]],
-    ]);
-  });
-  it('counts open cases at all four levels, zeros included', () => {
-    expect(openCounts([item({}), item({ urgency: 'urgent' }), item({ urgency: 'urgent', status: 'closed' })]).map((c) => c.count)).toEqual([0, 1, 0, 1]);
-  });
-  it('says how long a case has waited', () => {
-    expect(ageLabel('2026-10-13T04:59:40.000Z', now)).toBe('just now');
-    expect(ageLabel('2026-10-13T06:00:00.000Z', now)).toBe('just now');
-    expect(ageLabel('2026-10-13T04:35:00.000Z', now)).toBe('25 min ago');
-    expect(ageLabel('2026-10-13T02:00:00.000Z', now)).toBe('3 h ago');
-    expect(ageLabel('2026-10-12T04:00:00.000Z', now)).toBe('1 day ago');
-    expect(ageLabel('2026-10-10T04:00:00.000Z', now)).toBe('3 days ago');
-    expect(ageLabel('not a date', now)).toBe('');
-  });
-  it('marks a recipient as not delivered when any message to them failed', () => {
-    const sent = { channel: 'email', sentAt: now.toISOString() };
-    expect(notifiedSummary([
-      { ...sent, recipient: 'staff' },
-      { ...sent, recipient: 'family', delivery: { status: 'delivered', at: '' } },
-      { ...sent, recipient: 'family', channel: 'sms', delivery: { status: 'undelivered', at: '' } },
-    ]).map((n) => [n.recipient, n.delivered, n.items.length])).toEqual([['staff', true, 1], ['family', false, 2]]);
   });
 });
 

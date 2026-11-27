@@ -323,16 +323,24 @@ export interface CaseOutcome {
   note?: string;
 }
 
+export interface CaseAssignment {
+  uid: string;
+  name: string;
+  claimedAt: string;
+}
+
 export interface StoredCase extends Case {
   /** Copied from the resident, so one organization's queue can be listed on its own. */
   orgId: string;
   /** QUE-03: staff adjustment added to the computed priority score. */
   staffScoreOffset?: number;
+  /** The staff member handling this case, independent of who is in charge of the resident. */
+  assignment?: CaseAssignment;
   outcome?: CaseOutcome;
   closedAt?: string;
 }
 
-export type CaseEventType = 'status_changed' | 'urgency_changed' | 'rank_changed' | 'closed';
+export type CaseEventType = 'status_changed' | 'urgency_changed' | 'rank_changed' | 'closed' | 'claimed';
 
 /** PRI-06: every staff correction is kept with the automatic value at that time. */
 export interface CaseEvent {

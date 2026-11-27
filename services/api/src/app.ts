@@ -1,5 +1,6 @@
 import { staffCallTask, type TaskQueue } from '@hachi/cloud';
 import {
+  CASE_STATUS_LABELS,
   claimSlot,
   emptyLedger,
   gatewayVerdict,
@@ -593,6 +594,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return view;
   });
 
+  app.get<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId/transcript', async (req) => {
+    const staff = await requireStaff(req);
+    if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
+    const r = await getResidentOr404(req.params.id, staff);
+    const call = await store.getCall(r.id, req.params.callId);
+    if (!call) throw new NotFoundError('Call');
+    return { transcript: call.transcript ?? [] };
+  });
+
   // ---- Staff: triage queue and cases (QUE-01..03) ----
 
   /** Each active resident with their calls since `since`. */
@@ -692,12 +702,30 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return buildCaseDetail(c, r, residentCases, calls, events, signer, now(), localeOf(req));
   });
 
+  app.post<{ Params: { id: string } }>('/api/cases/:id/claim', async (req) => {
+    const staff = await requireStaff(req);
+    let claimed = false;
+    const saved = await store.mutateCase(req.params.id, (c) => {
+      assertSameOrg(c.orgId, staff, 'Case');
+      if (c.status === 'closed') throw new HttpError(409, 'This case has already been closed.', 'case_closed');
+      const update = applyStaffUpdate(c, { status: 'in_progress' }, staff, now(), newId);
+      claimed = update.events.length > 0;
+      return update;
+    });
+    if (claimed) await auditAs(req, staff, {
+      action: 'case.updated',
+      target: { type: 'case', id: saved.id },
+      detail: { fields: 'assignment,status' },
+    });
+    return { status: saved.status, statusLabel: CASE_STATUS_LABELS[localeOf(req)][saved.status], assignment: saved.assignment };
+  });
+
   app.patch<{ Params: { id: string } }>('/api/cases/:id', async (req) => {
     const staff = await requireStaff(req);
     const update = parse(caseUpdateSchema, req.body);
     const saved = await store.mutateCase(req.params.id, (c) => {
       assertSameOrg(c.orgId, staff, 'Case');
-      return applyStaffUpdate(c, update, staff.uid, now(), newId);
+      return applyStaffUpdate(c, update, staff, now(), newId);
     });
     await auditAs(req, staff, {
       action: 'case.updated',

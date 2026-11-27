@@ -1,52 +1,7 @@
-/*
- * Triage: overview counts, filters, then urgency lanes. Each card's own width decides how its
- * parts are arranged; narrow screens scroll the overview and filter rows without clipping text.
- */
 @layer screens {
-  /* A severity stripe down the leading edge; blue and grey are dashed or edged so pale fills still show. */
+  .queue-page { max-width: 1120px; margin-inline: auto; }
   .queue-stripe { --stripe: var(--sev-fill); border-inline-start: 6px var(--sev-line-style, solid) var(--stripe); }
   .queue-stripe:is(.sev-system, .sev-none) { --stripe: var(--sev-line); }
-
-  /* ---------- Page layout ---------- */
-
-  .queue-layout { display: grid; gap: var(--flow-2); grid-template-columns: minmax(0, 1fr); align-items: start; }
-  .queue-requests:empty { display: none; }
-
-  /* ---------- Overview counts ---------- */
-
-  .queue-overview-panel { display: grid; gap: var(--space-2); }
-  .queue-counts {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(10rem, 1fr);
-    gap: var(--space-2);
-    margin: 0;
-    padding-bottom: var(--space-1);
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-  }
-  .queue-count {
-    display: flex;
-    flex-direction: column-reverse;
-    justify-content: flex-end;
-    gap: 2px;
-    min-width: 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-top: 5px var(--sev-line-style, solid) var(--sev-fill, var(--brand));
-    border-radius: var(--radius-control);
-    scroll-snap-align: start;
-  }
-  .queue-count:is(.sev-system, .sev-none) { border-top-color: var(--sev-line); }
-  .queue-count-residents { border-top-color: var(--line-control); }
-  .queue-count dt { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); font-weight: 700; color: var(--ink-muted); }
-  .queue-count dt .sev-mark { font-size: 18px; }
-  .queue-count dd { margin: 0; font-size: clamp(26px, 1.6cqi + 18px, 36px); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .queue-count.is-zero { border-top-color: var(--line); }
-  .queue-count.is-zero dd { color: var(--ink-muted); font-weight: 600; }
-  .queue-count.is-zero .sev-mark { opacity: 0.45; }
-  .queue-overview-panel > .meta { font-size: var(--text-xs); }
 
   .queue-count-pill {
     display: inline-flex;
@@ -64,173 +19,60 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ---------- Notices ---------- */
+  .card.queue-filters, .card.queue-fold { padding-block: 0; }
+  .queue-filters > summary, .queue-fold > summary { min-height: 52px; }
+  :is(.queue-filters, .queue-fold)[open] > .disclosure-body { padding-block: 0 var(--space-4); }
+  .queue-filter-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    align-items: end;
+    gap: var(--space-3);
+  }
 
-  .queue-notices { --stack-gap: var(--flow-2); }
+  .queue-lane { display: grid; gap: var(--space-2); }
+  .queue-lane-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: var(--text-md);
+    font-weight: 700;
+  }
+  .queue-lane-title > .sev-mark { font-size: 18px; }
+  .queue-lane-items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .queue-fold .queue-case { box-shadow: none; border-block-color: var(--line); border-inline-end-color: var(--line); }
+
+  .queue-case {
+    display: grid;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+  }
+  .queue-case-copy { display: grid; gap: var(--space-1); min-width: 0; }
+  .queue-case-copy > p { margin: 0; }
+  .queue-case-identity { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+  .queue-case-identity > .sev-chip { font-size: var(--text-xs); }
+  .queue-case-name { margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; gap: var(--space-2); }
+  .queue-case .resident-avatar { width: 36px; height: 36px; flex-basis: 36px; font-size: 14px; }
+  .queue-case-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-case-assignment { font-variant-numeric: tabular-nums; }
+  .queue-case-action { justify-self: start; min-height: 44px; font-size: var(--text-sm); }
+  @container page (min-width: 600px) {
+    .queue-case { grid-template-columns: minmax(0, 1fr) auto; }
+  }
+
   .card.queue-notice { display: grid; gap: var(--space-3); padding: var(--space-4); }
   .queue-notice-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--heading-section); }
   .queue-notice > p { margin: 0; }
   .queue-unreached { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
   .queue-unreached > li { display: grid; gap: 0; padding: var(--space-2) var(--space-3) 0; border-radius: var(--radius-inner); background: var(--surface-sunken); }
-  /* Three days or more without a call: tinted and edged, and sorted to the top. */
   .queue-unreached > li.is-escalated { background: var(--danger-tint); box-shadow: inset 4px 0 0 var(--danger); }
   .queue-unreached-who { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin: 0; font-weight: 700; }
   .queue-unreached .disclosure > summary { min-height: 44px; font-size: var(--text-sm); }
   .queue-unreached .disclosure-body { padding-block: 0 var(--space-2); }
   .queue-unreached .disclosure-body p { margin: 0 0 var(--space-1); }
-
-  /* ---------- Filters and legend ---------- */
-
-  .card.queue-filters { padding-block: var(--space-2); }
-  .queue-filters > summary { font-size: var(--text-md); }
-  .queue-filters-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4) var(--space-5); padding-bottom: var(--space-2); }
-  .queue-filter-controls { flex: 1 1 62rem; min-width: 0; }
-  .queue-filter-row { display: flex; align-items: flex-end; gap: var(--space-4); overflow-x: auto; padding: var(--space-1); }
-  .queue-filter-row > * { flex: none; }
-  .queue-filter-row fieldset { gap: 0; }
-  .queue-filter-row :is(.segmented, .check) { flex-wrap: nowrap; white-space: nowrap; }
-  .queue-filter-row :is(button, .check) { font-size: var(--text-sm); }
-  .queue-filter-row .segmented button { flex: none; }
-  .queue-filter-controls > .meta { margin-top: var(--space-2); }
-  .queue-filters .queue-search { flex: 1 1 18rem; min-width: 0; }
-  .queue-filters .segmented button .sev-mark { font-size: 18px; }
-  .queue-filters .segmented button[aria-pressed="true"] .sev-mark { color: inherit; }
-
-  .urgency-filter { position: relative; display: inline-flex; }
-  /* What the level asks of staff, on hover or keyboard focus. */
-  .urgency-tip {
-    display: none;
-    position: absolute;
-    inset-block-start: calc(100% + 8px);
-    inset-inline-start: 50%;
-    z-index: 30;
-    translate: -50% 0;
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-inner);
-    background: var(--ink);
-    color: #fff;
-    box-shadow: var(--shadow-raised);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    white-space: nowrap;
-    pointer-events: none;
-  }
-  .urgency-tip::before { content: ""; position: absolute; inset-block-end: 100%; inset-inline-start: 50%; translate: -50% 0; border: 6px solid transparent; border-block-end-color: var(--ink); }
-  .urgency-filter:hover > .urgency-tip,
-  .urgency-filter:has(> .urgency-option:focus-visible) > .urgency-tip { display: block; }
-  .queue-case-sev .sev-chip { background: color-mix(in srgb, var(--sev-fill) 16%, var(--surface)); border-color: color-mix(in srgb, var(--sev-line) 55%, var(--surface)); }
-
-  .queue-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-4); }
-  .queue-list-head > .meta { margin: 0; }
-  .queue-legend > summary { min-height: 44px; font-size: var(--text-sm); }
-  .queue-legend[open] { flex-basis: 100%; }
-  .queue-legend .disclosure-body { padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); }
-  .queue-urgency-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
-  .queue-urgency-legend li { display: grid; justify-items: start; align-content: start; gap: var(--space-2); }
-
-  /* ---------- Lanes ---------- */
-
-  /* Cards span the lanes, so the lanes' width is each card's width; a card cannot query itself. */
-  .queue-lanes { container: lanes / inline-size; display: grid; gap: var(--flow-3); }
-  .queue-lane { display: grid; gap: var(--space-2); }
-  .queue-lane-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; font-family: var(--font-body); font-size: var(--text-md); font-weight: 700; }
-  .queue-lane-title > .sev-mark { font-size: 18px; }
-  .queue-lane-ask { color: var(--ink-muted); font-size: var(--text-sm); font-weight: 400; }
-  .queue-lane-items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
-
-  /* ---------- One case ---------- */
-
-  .card.queue-case {
-    display: grid;
-    gap: var(--space-1) var(--space-3);
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "name when" "what what" "state state";
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-  }
-  .queue-case > * { min-width: 0; margin: 0; }
-  .queue-case-name { grid-area: name; }
-  .queue-case-what { grid-area: what; display: grid; gap: var(--space-1); }
-  .queue-case-bar { grid-area: bar; }
-  .queue-case-when { grid-area: when; justify-self: end; white-space: nowrap; font-size: var(--text-xs); }
-  .queue-case-state { grid-area: state; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); font-size: var(--text-sm); }
-
-  .queue-case-name { margin: 0; font-family: var(--font-body); font-size: var(--text-lg); font-weight: 700; gap: var(--space-2); }
-  .queue-case .resident-avatar { width: 44px; height: 44px; flex-basis: 44px; font-size: 16px; }
-  .queue-case-summary { margin: 0; font-weight: 600; line-height: 1.35; }
-  .queue-case-facts { margin: 0; font-size: var(--text-xs); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-  .queue-status { padding: 1px 10px; border: 1px solid var(--line-control); border-radius: 999px; font-weight: 600; white-space: nowrap; }
-  .queue-notified { position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin: 0; padding: 0; list-style: none; color: var(--ink-muted); }
-  .queue-notification { position: relative; }
-  .queue-notified-trigger, .queue-notified-trigger:hover {
-    min-height: 24px;
-    padding: 0;
-    gap: 0;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: start;
-  }
-  .queue-notified-name { text-decoration: underline dotted; text-underline-offset: 3px; }
-  .queue-notified-trigger:hover .queue-notified-name { text-decoration-style: solid; }
-  .queue-notified-mark { margin-inline-end: 3px; color: var(--sev-good); font-weight: 800; }
-  .queue-notified .is-failed { color: var(--danger-ink); font-weight: 700; }
-  .queue-notified .is-failed .queue-notified-mark { color: var(--danger); }
-  .queue-case-also { position: relative; z-index: 2; display: grid; gap: 2px; margin-block-start: var(--space-1); padding-block-start: var(--space-1); border-block-start: 1px dashed var(--line); }
-  .queue-case-also > .meta { margin: 0; font-size: var(--text-xs); }
-  .queue-case-also ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-  .queue-case-also li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); font-size: var(--text-sm); }
-  .queue-case-also a { font-weight: 600; }
-  .queue-notification.is-open > .sev-tip { display: block; }
-  .queue-notification-tip {
-    inset-block-start: var(--notification-tip-top, calc(100% + 6px));
-    max-inline-size: min(21rem, var(--tip-room, calc(100vw - 16px)));
-    max-block-size: min(24rem, var(--notification-tip-room, calc(100dvh - 32px)));
-    overflow-y: auto;
-  }
-  .queue-notification-tip::before { display: none; }
-  .queue-notification::after { content: ""; position: absolute; inset-inline: 0; inset-block: -6px; z-index: -1; }
-  .queue-notification-tip p { margin: var(--space-2) 0; }
-  .queue-notification-tip p:last-child { margin-bottom: 0; }
-  .queue-notification-tip ul { margin: var(--space-2) 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
-  .queue-notification-tip li { display: grid; gap: 2px; }
-  .queue-notification-tip time { font-size: var(--text-xs); color: #e6dfd2; }
-  @media (pointer: coarse) { .queue-notified-trigger { min-height: 44px; } }
-  .queue-case.is-closed { background: var(--surface-sunken); }
-  .queue-case.is-closed .queue-case-summary { font-weight: 400; }
-
-  /* The name's link covers the card; the indicator bar sits above it so its tips still open. */
-  .queue-case-link { color: var(--brand); text-decoration: none; }
-  .queue-case-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-  .queue-case-signals { position: relative; z-index: 2; }
-  .queue-case:has(.queue-case-link:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
-  .queue-case-link:focus-visible { outline: none; text-decoration: underline; }
-  @media (hover: hover) {
-    .queue-case:has(.queue-case-link:hover) { box-shadow: var(--shadow-raised); }
-    .queue-case:has(.queue-case-link:hover) .queue-case-link { text-decoration: underline; text-underline-offset: 0.15em; }
-  }
-
-  /* From 600px a case is one row: who on the left, what in the middle, where it stands on the right. */
-  @container lanes (min-width: 600px) {
-    .card.queue-case {
-      grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) auto;
-      grid-template-areas: "name what when" "name what state";
-      align-items: start;
-      column-gap: var(--space-4);
-    }
-    .queue-case-name { align-self: center; }
-    .queue-case-state { flex-direction: column; align-items: flex-end; justify-self: end; text-align: end; }
-    .queue-case-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-  }
-  /* From 960px the nine indicators get a column of their own. Every column but the summary has a set
-     width, so the bars and the states line up from case to case and lane to lane. */
-  @container lanes (min-width: 960px) {
-    .card.queue-case { grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) 11rem; }
-    .card.queue-case.has-signals {
-      grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) var(--sev-bar-full) 11rem;
-      grid-template-areas: "name what bar when" "name what bar state";
-    }
-  }
+  .queue-notice:has(> .queue-notice-fold) { padding-block: 0; }
+  .queue-notice-fold > .disclosure-body { padding-bottom: var(--space-4); }
 }
