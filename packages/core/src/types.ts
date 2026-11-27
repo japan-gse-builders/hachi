@@ -1,3 +1,4 @@
+import type { FeatureChange } from './r3.js';
 import type { NoResponseKind } from './r4.js';
 import type { Urgency } from './urgency.js';
 
@@ -26,6 +27,8 @@ export interface Detection {
   /** R3: composite change magnitude (adverse z-score). */
   changeMagnitude?: number;
   trend?: Trend;
+  /** R3: the call the change was measured in, and the features that moved in it (F02 compares its answers). */
+  speechChange?: { callId: string; contributors: FeatureChange[] };
   /** R4: which silence was heard, since the two mean different things. */
   noResponse?: NoResponseKind;
 }

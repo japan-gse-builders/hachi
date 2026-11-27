@@ -7,6 +7,7 @@ import { CaseCalls } from '../components/CaseCalls';
 import { CaseDecision } from '../components/CaseDecision';
 import { CaseAbout, CaseHistory, CaseNotifications } from '../components/CaseRecords';
 import { ResidentAvatar } from '../components/ResidentAvatar';
+import { SpeechCompareCard } from '../components/SpeechCompareCard';
 import { ScreeningCard } from '../components/ScreeningCard';
 import { IndicatorBar, SeverityChip, SignalsLegend } from '../components/Signals';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
@@ -223,6 +224,14 @@ function CaseView({ id }: { id: string }) {
       </header>
 
       <div className="card case-sections">
+        {detail.speechComparison && (
+          <details className="disclosure case-section" open>
+            <summary>Usual calls and this call</summary>
+            <div className="disclosure-body">
+              <SpeechCompareCard comparison={detail.speechComparison} name={resident.preferredName || resident.name} />
+            </div>
+          </details>
+        )}
         <details className="disclosure case-section" ref={decision}>
           <summary>Status, urgency and rank</summary>
           <div className="disclosure-body">

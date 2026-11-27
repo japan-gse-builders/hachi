@@ -13,13 +13,17 @@ import {
   normalizeUtterance,
   parseSpokenNumber,
   screenItem,
+  answerClips,
   type AnalysisGap,
+  type AnswerClip,
   type CallSpeechSample,
   type ContactRequest,
   type Detection,
   type Evidence,
+  type GroundedAnswer,
   type IntakeObservation,
   type ItemAnswer,
+  type PcmAudio,
   type SpeechExample,
   type TimingSource,
   type Turn,
@@ -40,6 +44,8 @@ export interface AnalysisInput {
   timing?: TimingSource;
   /** 0..1 line quality heard in the recording (SPK-04). */
   audioQuality?: number;
+  /** The decoded recording, when it could be read: F02 finds each set-question answer in it. */
+  audio?: PcmAudio;
   model?: string;
   modelError?: string;
   voiceError?: string;
@@ -121,7 +127,12 @@ function r1Detection(input: AnalysisInput): Detection | null {
  * behind it. The rest is discarded, because a wrong answer here would be scored as if it were real.
  */
 export function groundAnswers(review: ModelReview, transcript: Turn[], date: string): ItemAnswer[] {
-  const out = new Map<string, ItemAnswer>();
+  return groundAnswerTurns(review, transcript).map(({ itemId, option }) => ({ date, itemId, option }));
+}
+
+/** As `groundAnswers`, but keeps the resident turn each answer came from, which F02 needs to find it in the recording. */
+export function groundAnswerTurns(review: ModelReview, transcript: Turn[]): GroundedAnswer[] {
+  const out = new Map<string, GroundedAnswer>();
   for (const a of review.answers) {
     if (transcript[a.turn]?.speaker !== 'resident') continue;
     let item;
@@ -132,7 +143,7 @@ export function groundAnswers(review: ModelReview, transcript: Turn[], date: str
     }
     const option = matchAnswer(item, a.answer);
     if (option === null) continue;
-    out.set(item.id, { date, itemId: item.id, option });
+    out.set(item.id, { itemId: item.id, option, turn: a.turn });
   }
   return [...out.values()];
 }
@@ -241,6 +252,7 @@ function r3Detection(input: AnalysisInput, sample: CallSpeechSample): Detection 
     confidence: Math.min(0.9, 0.5 + a.magnitude / 8),
     changeMagnitude: a.magnitude,
     trend: a.trend,
+    speechChange: { callId: input.call.id, contributors: a.contributors },
     summary: trend ? `${changes}; ${trend}` : changes,
     evidence: examples,
     detectedAt: input.now.toISOString(),
@@ -281,7 +293,10 @@ function r4Detection(input: AnalysisInput): Detection | null {
 export function analyse(input: AnalysisInput): AnalysisResult {
   const { review, call, transcript } = input;
   const intake = intakeFor(input);
-  const answers = review ? groundAnswers(review, transcript, intake.date) : [];
+  const grounded = review ? groundAnswerTurns(review, transcript) : [];
+  const answers: ItemAnswer[] = grounded.map(({ itemId, option }) => ({ date: intake.date, itemId, option }));
+  // Only a call with a recording has clips; the answers themselves are kept either way.
+  const clips: AnswerClip[] = input.audio && call.source !== 'imported' ? answerClips(input.audio, transcript, grounded) : [];
   const contactRequest = review ? groundContactRequest(review, transcript) : null;
   const speech = extractSpeechSample(
     call.id,
@@ -312,6 +327,7 @@ export function analyse(input: AnalysisInput): AnalysisResult {
         intake,
         memory: review?.memory ?? EMPTY_MEMORY,
         ...(answers.length ? { answers } : {}),
+        ...(clips.length ? { clips } : {}),
         ...(contactRequest ? { contactRequest } : {}),
         ...(input.incomplete?.length ? { incomplete: input.incomplete } : {}),
         ...(input.modelError ? { error: input.modelError } : {}),

@@ -1,5 +1,6 @@
 import type {
   AnalysisGap,
+  AnswerClip,
   Case,
   CallConsent,
   CallSlot,
@@ -218,6 +219,8 @@ export interface CallAnalysis {
   memory: CallMemory;
   /** The call's set screening questions that the resident actually answered. */
   answers?: ItemAnswer[];
+  /** F02: where each answer sits in the recording, so staff can hear it. Absent without a recording. */
+  clips?: AnswerClip[];
   /** The resident asked for someone to ring them (kept whether or not a message could be sent). */
   contactRequest?: ContactRequest;
   /**

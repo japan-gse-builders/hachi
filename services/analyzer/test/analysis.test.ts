@@ -1,7 +1,7 @@
-import type { CallSpeechSample, Turn } from '@hachi/core';
+import { parseWav, type CallSpeechSample, type Turn } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { analyse, groundAnswers, groundContactRequest, groundEmergencies, type AnalysisInput } from '../src/analysis.js';
-import { call, NOW, resident, review, TRANSCRIPT } from './fixtures.js';
+import { call, NOW, recording, resident, review, TRANSCRIPT } from './fixtures.js';
 
 function input(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
   return { resident: resident(), call: call(), transcript: TRANSCRIPT, history: [], review: review(), model: 'gemini-test', now: NOW, ...overrides };
@@ -340,6 +340,13 @@ describe('analyse', () => {
       expect(r.update.speech!.usable).toBe(true);
     });
 
+    it('records which call the change came from and which features moved, for the comparison', () => {
+      const r = analyse(input({ transcript: long, review: slowReview, history: [...baseline, ...recent] }));
+      const d = r.detections.find((x) => x.rule === 'R3')!;
+      expect(d.speechChange).toMatchObject({ callId: '2026-10-02-1' });
+      expect(d.speechChange!.contributors.map((c) => c.feature)).toContain('responseLatencyMs');
+    });
+
     it('words the trend so a flat one does not read as "no change"', () => {
       const growing = [3000, 4500, 6000].map((ms, i) =>
         past(`g${i}`, `2026-09-2${7 + i}T02:00:00.000Z`, features({ responseLatencyMs: ms, repairRate: 1 + i * 4 })),
@@ -464,4 +471,28 @@ describe('issue #15: exhausted prompt sequence', () => {
 it('does not duplicate an R1 no-response flag after staff have already handled it', () => {
   const result = analyse(input({ call: call({ conversation: { endedBy: 'silent_after_greeting', at: NOW.toISOString(), noResponseEscalated: true, noResponseCaseId: 'already-flagged' } }), transcript: [], review: null }));
   expect(result.detections).toEqual([]);
+});
+
+describe('F02: answer clips', () => {
+  // The fixture recording answers TRANSCRIPT: the resident speaks from 5 s and from 13 s, and turn 3 is the 13 s answer.
+  const answered = (turn: number) => review({ answers: [{ itemId: 'uls3.left_out', answer: 'Often', turn }] });
+
+  it('locates a set-question answer in the recording and stores it on the call', () => {
+    const r = analyse(input({ audio: parseWav(recording()), review: answered(3) }));
+    expect(r.update.analysis.clips).toEqual([
+      { itemId: 'uls3.left_out', answer: 'Often', startMs: 12000, endMs: 17000, quote: TRANSCRIPT[3]!.text },
+    ]);
+    expect(r.update.analysis.answers).toEqual([{ date: '2026-10-02', itemId: 'uls3.left_out', option: 2 }]);
+  });
+
+  it('leaves the clips off without a recording, and keeps the answers', () => {
+    const r = analyse(input({ review: answered(3) }));
+    expect(r.update.analysis.clips).toBeUndefined();
+    expect(r.update.analysis.answers).toHaveLength(1);
+  });
+
+  it('makes no clips for imported history', () => {
+    const r = analyse(input({ audio: parseWav(recording()), review: answered(3), call: call({ source: 'imported' }) }));
+    expect(r.update.analysis.clips).toBeUndefined();
+  });
 });

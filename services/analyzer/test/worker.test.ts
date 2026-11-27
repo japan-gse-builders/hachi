@@ -472,3 +472,24 @@ describe('sweep', () => {
     expect(r.errors[0]).toContain('tasks unavailable');
   });
 });
+
+describe('F02: answer clips from the recording', () => {
+  it('stores where each set-question answer sits in the recording the worker already read', async () => {
+    const { deps, store, reviewer, recordings } = await setup({ calls: [call({ audioUri: 'gs://rec/res-1/2026-10-02-1.wav' })], voice: true });
+    reviewer.next(review({ answers: [{ itemId: 'uls3.left_out', answer: 'Often', turn: 3 }] }));
+    await expect(analyzeCall(deps, ref)).resolves.toMatchObject({ outcome: 'analyzed' });
+    expect(recordings.reads).toHaveLength(1);
+    const c = (await store.getCall('res-1', ref.callId))!;
+    expect(c.analysis!.clips).toEqual([{ itemId: 'uls3.left_out', answer: 'Often', startMs: 12000, endMs: 17000, quote: TRANSCRIPT[3]!.text }]);
+  });
+
+  it('still analyses the call when the recording is unreadable, with no clips', async () => {
+    const { deps, store, reviewer, recordings } = await setup({ calls: [call({ audioUri: 'gs://rec/res-1/2026-10-02-1.wav' })], voice: true });
+    recordings.fallback = Buffer.from('not audio');
+    reviewer.next(review({ answers: [{ itemId: 'uls3.left_out', answer: 'Often', turn: 3 }] }));
+    await expect(analyzeCall(deps, ref)).resolves.toMatchObject({ outcome: 'analyzed' });
+    const c = (await store.getCall('res-1', ref.callId))!;
+    expect(c.analysis!.clips).toBeUndefined();
+    expect(c.analysis!.answers).toHaveLength(1);
+  });
+});

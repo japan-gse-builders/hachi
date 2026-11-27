@@ -447,6 +447,94 @@ describe('triage queue and cases (QUE-01..03)', () => {
       },
     });
 
+  it('pairs the flagged call\'s set-question answers with the usual ones, each with a signed recording link (F02)', async () => {
+    const { app, as, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, serviceStartedAt: '2026-06-01T00:00:00.000Z' }));
+    const day = (n: number) => new Date(Date.parse('2026-06-01T01:00:00.000Z') + n * 86_400_000).toISOString();
+    const answered = (id: string, at: string, itemId: string, answer: string) =>
+      call({
+        id,
+        startedAt: at,
+        audioUri: `gs://hachi-audio/res-1/${id}.wav`,
+        speech: { callId: id, at, usable: true, exclusionReasons: [], features: { lexicalDiversity: 0.7, repairRate: 1, responseLatencyMs: 900, topicCoherence: null } },
+        analysis: {
+          at,
+          turns: 4,
+          intake: { date: at.slice(0, 10), status: 'unknown' },
+          memory: { topics: [], plans: [], likes: [] },
+          clips: [{ itemId, answer, startMs: 1000, endMs: 4000, quote: `${answer} said` }],
+        },
+      });
+    const usual = Array.from({ length: 8 }, (_, i) => answered(`u${i}`, day(i * 3), 'uls3.left_out', 'Hardly ever or never'));
+    await store.addCalls([...usual, answered('now', '2026-10-01T01:00:00.000Z', 'uls3.left_out', 'Often')]);
+    await store.putCase(
+      storedCase({
+        id: 'r3',
+        rule: 'R3',
+        detections: [
+          detection({
+            rule: 'R3',
+            speechChange: { callId: 'now', contributors: [{ feature: 'responseLatencyMs', adverseZ: 3, baselineMean: 900, recentMean: 5000 }] },
+          }),
+        ],
+      }),
+    );
+
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/r3?locale=en', ...as('staff') })).json();
+    expect(d.speechComparison).toMatchObject({ callId: 'now', usualCalls: 8, usualRecordings: 8, recentRecording: true, message: null });
+    expect(d.speechComparison.changes).toEqual([expect.objectContaining({ feature: 'responseLatencyMs', baselineMean: 900, recentMean: 5000 })]);
+    const [pair] = d.speechComparison.questions;
+    expect(pair).toMatchObject({ itemId: 'uls3.left_out', question: 'How often do you feel left out?' });
+    // The newest usual answer is the one shown, and each side links to its own call's recording.
+    expect(pair.usual).toMatchObject({ callId: 'u7', answer: 'Hardly ever or never' });
+    expect(pair.usual.audioUrl).toBe(`https://signed.example/${encodeURIComponent('gs://hachi-audio/res-1/u7.wav')}`);
+    expect(pair.recent).toMatchObject({ callId: 'now', answer: 'Often', startMs: 1000, endMs: 4000 });
+    expect(pair.recent.audioUrl).toBe(`https://signed.example/${encodeURIComponent('gs://hachi-audio/res-1/now.wav')}`);
+
+    // Other cases do not carry a comparison.
+    const other = (await app.inject({ method: 'GET', url: '/api/cases/emergency?locale=en', ...as('staff') })).json();
+    expect(other.speechComparison).toBeNull();
+  });
+
+  it('says what is missing when the usual calls have no recorded answer to compare (F02)', async () => {
+    const { app, as, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, serviceStartedAt: '2026-06-01T00:00:00.000Z' }));
+    const day = (n: number) => new Date(Date.parse('2026-06-01T01:00:00.000Z') + n * 86_400_000).toISOString();
+    // Usual calls analysed before answers were clipped: recordings exist, but there is no clip to play.
+    await store.addCalls([
+      ...Array.from({ length: 8 }, (_, i) => call({ id: `old${i}`, startedAt: day(i * 3), speech: { callId: `old${i}`, at: day(i * 3), usable: true, exclusionReasons: [], features: { lexicalDiversity: 0.7, repairRate: 1, responseLatencyMs: 900, topicCoherence: null } } })),
+      call({
+        id: 'now',
+        startedAt: '2026-10-01T01:00:00.000Z',
+        analysis: {
+          at: NOW.toISOString(),
+          turns: 4,
+          intake: { date: '2026-10-01', status: 'unknown' },
+          memory: { topics: [], plans: [], likes: [] },
+          clips: [{ itemId: 'uls3.left_out', answer: 'Often', startMs: 1000, endMs: 4000, quote: 'Often' }],
+        },
+      }),
+    ]);
+    await store.putCase(storedCase({ id: 'r3', rule: 'R3', detections: [detection({ rule: 'R3', speechChange: { callId: 'now', contributors: [] } })] }));
+
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/r3?locale=en', ...as('staff') })).json();
+    expect(d.speechComparison).toMatchObject({ usualCalls: 8, usualRecordings: 8, recentRecording: true, questions: [], message: expect.stringContaining('no recorded answer') });
+  });
+
+  it('counts the usual calls that have a recording to play, when none does (F02)', async () => {
+    const { app, as, store } = await seeded();
+    await store.updateResident('res-1', (r) => ({ ...r, serviceStartedAt: '2026-06-01T00:00:00.000Z' }));
+    const day = (n: number) => new Date(Date.parse('2026-06-01T01:00:00.000Z') + n * 86_400_000).toISOString();
+    await store.addCalls([
+      ...Array.from({ length: 8 }, (_, i) => call({ id: `silent${i}`, startedAt: day(i * 3), audioUri: undefined, speech: { callId: `silent${i}`, at: day(i * 3), usable: true, exclusionReasons: [], features: { lexicalDiversity: 0.7, repairRate: 1, responseLatencyMs: 900, topicCoherence: null } } })),
+      call({ id: 'now', startedAt: '2026-10-01T01:00:00.000Z', analysis: { at: NOW.toISOString(), turns: 4, intake: { date: '2026-10-01', status: 'unknown' }, memory: { topics: [], plans: [], likes: [] }, clips: [{ itemId: 'uls3.left_out', answer: 'Often', startMs: 1000, endMs: 4000, quote: 'Often' }] } }),
+    ]);
+    await store.putCase(storedCase({ id: 'r3', rule: 'R3', detections: [detection({ rule: 'R3', speechChange: { callId: 'now', contributors: [] } })] }));
+
+    const d = (await app.inject({ method: 'GET', url: '/api/cases/r3?locale=en', ...as('staff') })).json();
+    expect(d.speechComparison).toMatchObject({ usualCalls: 8, usualRecordings: 0, recentRecording: true, questions: [], message: expect.stringContaining('no recorded answer') });
+  });
+
   it('includes the speech trend oldest first, marking calls left out of the analysis', async () => {
     const { app, as, store } = await seeded();
     await store.addCalls([
