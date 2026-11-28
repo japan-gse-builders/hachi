@@ -305,9 +305,9 @@ PROJECT_ID="$PROJECT_ID" RECORDINGS_BUCKET="$RECORDINGS_BUCKET" ./infra/deploy-a
 PROJECT_ID="$PROJECT_ID" ./infra/deploy-code.sh telephony voice-gateway notifier api
 ```
 
-After Hosting publishes, an organization admin can enable retention in **Team → Organization**.
-Allow 15 minutes after the API switches to authenticated recording playback for previously issued
-recording links to expire. The scheduled analyzer sweep removes expired media. Cloud Storage recovery
+After Hosting publishes and the API has served authenticated recording playback for 15 minutes,
+an organization admin can enable retention in **Team → Organization**. This gives previously issued
+recording links time to expire. The scheduled analyzer sweep removes expired media. Cloud Storage recovery
 and object holds follow the bucket's settings. [Cloud Storage soft delete](https://docs.cloud.google.com/storage/docs/soft-delete)
 
 ## Limitations and roadmap
@@ -319,8 +319,7 @@ and object holds follow the bucket's settings. [Cloud Storage soft delete](https
 - **A phone that never rings through is not followed up yet**: there is no automatic retry for
   no-answer (technical failures are retried). Picking up and not speaking is now R4.
 - **Consent is recorded by staff**, from the resident's explicit first-use approval. There is no
-  automated spoken withdrawal or repeated approval prompt. **Retention and deletion remain
-  operational** (see the privacy doc).
+  automated spoken withdrawal or repeated approval prompt.
 - **The monthly AI budget has never actually been reached** in production. The ceiling and the
   degradation are covered by tests, and the numbers it counts are our estimate, not Google's
   invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
@@ -330,7 +329,7 @@ and object holds follow the bucket's settings. [Cloud Storage soft delete](https
   from a US number and only reach verified numbers. Production needs a Japanese 050 number. This is
   an account to buy, not a design decision: the phone channel itself is the point of the service.
 - Roadmap: more rules (medication, sleep, mood, falls, heat-stroke alerts), escalation and
-  acknowledgement of notifications, WhatsApp calling, retention and deletion management in the app,
+  acknowledgement of notifications, WhatsApp calling, handling individual deletion requests in the app,
   Japanese conversations, and evaluation on consented real-world calls.
 
 ## License
