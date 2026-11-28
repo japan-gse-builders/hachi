@@ -1,10 +1,12 @@
 import { ANALYZE_CALL_PATH, type TaskCallerVerifier } from '@hachi/cloud';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { sweepCallMedia, type RecordingDeletion } from './retention.js';
 import { analyzeCall, parseAnalyzeInput, sweep, type WorkerDeps } from './worker.js';
 
 export interface AnalyzerAppDeps extends WorkerDeps {
   verifier: TaskCallerVerifier;
   logger?: boolean;
+  mediaDeletion?: RecordingDeletion;
 }
 
 function retryCount(header: string | string[] | undefined): number {
@@ -55,10 +57,15 @@ export function buildApp(deps: AnalyzerAppDeps): FastifyInstance {
   });
 
   app.post('/tasks/sweep', async (req, reply) => {
-    const result = await sweep(deps);
+    const [result, media] = await Promise.all([
+      sweep(deps),
+      deps.mediaDeletion ? sweepCallMedia(deps.store, deps.mediaDeletion, deps.now()) : undefined,
+    ]);
     if (result.errors.length) req.log.error(result, 'sweep could not queue some calls');
     else if (result.queued) req.log.warn(result, 'sweep queued calls for analysis');
-    return reply.status(result.errors.length ? 500 : 200).send(result);
+    if (media?.errors.length) req.log.error(media, 'recording and transcript cleanup will retry');
+    else if (media?.purged) req.log.info({ purged: media.purged }, 'expired call media purged');
+    return reply.status(result.errors.length || media?.errors.length ? 500 : 200).send({ ...result, ...(media ? { media } : {}) });
   });
 
   return app;

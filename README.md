@@ -112,9 +112,8 @@ Urgency levels:
   14 days of calls (time, connected or not, duration), a short plain-language summary per call, the
   next call time, alerts sent to them and their status, and the staff contact. This is enforced in the
   API (`buildFamilyDashboard`), so residents can talk freely.
-- **Recordings are staff-only.** Only the staff case page gets audio, through V4 signed URLs that
-  expire after 15 minutes and only for the configured recordings bucket. The Voice Gateway can only
-  create objects in that bucket.
+- **Recordings and transcripts are staff-only.** The API checks organization access and the
+  retention deadline on each read. The Voice Gateway can create recordings in the configured bucket.
 - **No direct database access from browsers.** Firestore rules deny all client reads and writes; every
   request goes through the API, which checks Firebase ID tokens on each route. Staff belong to an
   organization (a care company) with a role of owner, admin or member, and only ever see their own
@@ -143,10 +142,10 @@ the resident can simply say **“Yes, I agree.”** or give another clear affirm
 is available on the page and in an expandable section of the form. Staff record the explicit
 approval on **Add resident** or **Residents**. Details can be saved while approval is pending, but daily
 calls cannot start. Existing residents need this record too; no approvals are inferred or backfilled.
-Once recorded, approval is reused on later calls. **Pause calls** stops future check-ins; retention and
-deletion requests are handled by the care organisation. The short first-use explanation includes
-family updates about mood and loneliness, so there is no separate sharing checkbox. Previously
-recorded sharing choices remain unchanged.
+The first-use explanation includes short family updates about mood and loneliness. In a patient's
+**Consent** card, the assigned staff member or an admin can record separate withdrawals for calls
+and family sharing. An admin can set a recording and transcript retention period under **Team →
+Organization**.
 
 ## Running cost, and the ceiling on it
 
@@ -295,6 +294,22 @@ Every push to `main` deploys the web app and the Firestore rules and indexes thr
 `.github/workflows/deploy-web.yml` (Cloud Run services still deploy with the scripts above). The
 workflow header lists the GitHub variables it needs.
 
+### Deploying consent and retention changes
+
+On an existing installation, deploy the analyzer with the project's current recordings bucket.
+The full analyzer script configures the cleanup worker and its bucket-scoped deletion permission.
+Deploy the other services from the same source before merging to `main`.
+
+```bash
+PROJECT_ID="$PROJECT_ID" RECORDINGS_BUCKET="$RECORDINGS_BUCKET" ./infra/deploy-analyzer.sh
+PROJECT_ID="$PROJECT_ID" ./infra/deploy-code.sh telephony voice-gateway notifier api
+```
+
+After Hosting publishes and the API has served authenticated recording playback for 15 minutes,
+an organization admin can enable retention in **Team → Organization**. This gives previously issued
+recording links time to expire. The scheduled analyzer sweep removes expired media. Cloud Storage recovery
+and object holds follow the bucket's settings. [Cloud Storage soft delete](https://docs.cloud.google.com/storage/docs/soft-delete)
+
 ## Limitations and roadmap
 
 - **English only**, residents in Japan only (SMS is limited to +81 numbers).
@@ -304,8 +319,7 @@ workflow header lists the GitHub variables it needs.
 - **A phone that never rings through is not followed up yet**: there is no automatic retry for
   no-answer (technical failures are retried). Picking up and not speaking is now R4.
 - **Consent is recorded by staff**, from the resident's explicit first-use approval. There is no
-  automated spoken withdrawal or repeated approval prompt. **Retention and deletion remain
-  operational** (see the privacy doc).
+  automated spoken withdrawal or repeated approval prompt.
 - **The monthly AI budget has never actually been reached** in production. The ceiling and the
   degradation are covered by tests, and the numbers it counts are our estimate, not Google's
   invoice ([docs/COST_CONTROL.md](docs/COST_CONTROL.md)).
@@ -315,7 +329,7 @@ workflow header lists the GitHub variables it needs.
   from a US number and only reach verified numbers. Production needs a Japanese 050 number. This is
   an account to buy, not a design decision: the phone channel itself is the point of the service.
 - Roadmap: more rules (medication, sleep, mood, falls, heat-stroke alerts), escalation and
-  acknowledgement of notifications, WhatsApp calling, retention and deletion management in the app,
+  acknowledgement of notifications, WhatsApp calling, handling individual deletion requests in the app,
   Japanese conversations, and evaluation on consented real-world calls.
 
 ## License

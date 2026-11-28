@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { callStatusLabel, minutes, speakerLabel, topicList } from '../format';
 import { LIFE_DOMAINS, STATES, staffTagLine } from '../glance';
@@ -7,6 +7,7 @@ import { domainLevel, SEVERITY, type Severity } from '../signals';
 import type { CaseDetail, DomainState } from '../types';
 import { SeverityChip } from './Signals';
 import { LoadError } from './States';
+import { expiredMediaLabel, isMediaExpired, RecordingPlayer } from './RecordingPlayer';
 
 type Call = CaseDetail['calls'][number];
 type Resident = Pick<CaseDetail['resident'], 'id' | 'name'>;
@@ -60,6 +61,7 @@ function CallTranscript({ call, resident }: { call: Call; resident: Resident }) 
   const [fetched, setFetched] = useState<Call['transcript']>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expired, setExpired] = useState(false);
   const turns = call.transcript ?? fetched;
 
   const load = async () => {
@@ -70,7 +72,8 @@ function CallTranscript({ call, resident }: { call: Call; resident: Resident }) 
       const data = await api<{ transcript: NonNullable<Call['transcript']> }>(path, await token());
       setFetched(data.transcript);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load the transcript');
+      if (err instanceof ApiError && err.reason === 'media_expired') setExpired(true);
+      else setError(err instanceof Error ? err.message : 'Could not load the transcript');
     } finally {
       setLoading(false);
     }
@@ -78,12 +81,13 @@ function CallTranscript({ call, resident }: { call: Call; resident: Resident }) 
 
   return (
     <details className="disclosure case-transcript" onToggle={(event) => {
-      if (event.currentTarget.open && !turns && !loading && !error) void load();
+      if (event.currentTarget.open && !turns && !loading && !error && !expired) void load();
     }}>
       <summary>Full transcript</summary>
       <div className="disclosure-body transcript">
         {loading && <p className="meta" role="status">Loading transcript…</p>}
         {error && <LoadError compact message={error} onRetry={() => void load()} />}
+        {expired && <p className="meta" role="status">{expiredMediaLabel}</p>}
         {turns?.length === 0 && <p className="meta">No transcript is available for this call.</p>}
         {turns?.map((turn, i) => (
           <p key={i} className={turn.speaker === 'agent' ? 'agent' : ''}>
@@ -99,6 +103,7 @@ function CallRow({ call, now, quoted, resident }: { call: Call; now: Date; quote
   const severity = CALL_SEVERITY[call.status] ?? 'none';
   const line = oneLine(call);
   const tags = call.wellbeing?.tags ?? [];
+  const expired = isMediaExpired(call.media, now);
   const hasTranscript = call.hasTranscript ?? (call.status === 'completed' || Boolean(call.transcript?.length));
   return (
     <details className="case-call">
@@ -109,7 +114,8 @@ function CallRow({ call, now, quoted, resident }: { call: Call; now: Date; quote
         <SeverityChip spoken={false} severity={severity} label={callStatusLabel(call.status)} />
         {call.wellbeing ? <CaseDomainDots domains={call.wellbeing.domains} /> : <span className="case-dots" aria-hidden="true" />}
         <span className="case-call-line">
-          {quoted && <span className="case-call-flag">Quoted · </span>}
+          {expired && <span className="case-call-flag">Media expired · </span>}
+          {quoted && !expired && <span className="case-call-flag">Quoted · </span>}
           {call.trigger === 'staff' && <span className="case-call-flag">Staff call · </span>}
           {line}
         </span>
@@ -121,7 +127,7 @@ function CallRow({ call, now, quoted, resident }: { call: Call; now: Date; quote
         {tags.length > 0 && (
           <ul className="tag-list" aria-label="What came up, with the turn each came from">
             {tags.map((t) => (
-              <li key={t.id} className={`tag ${t.polarity} ${t.basis}`} title={t.quote ? `${staffTagLine(t)}: “${t.quote}”` : staffTagLine(t)}>
+              <li key={t.id} className={`tag ${t.polarity} ${t.basis}`} title={t.quote && !expired ? `${staffTagLine(t)}: “${t.quote}”` : staffTagLine(t)}>
                 {t.label}
                 {t.basis === 'inferred' && <span className="sr-only"> (inferred)</span>}
               </li>
@@ -136,7 +142,9 @@ function CallRow({ call, now, quoted, resident }: { call: Call; now: Date; quote
           </dl>
         )}
         {!call.summary && !tags.length && <p className="meta">{call.status === 'completed' ? 'No notes for this call.' : `${callStatusLabel(call.status)}: nothing was said.`}</p>}
-        {hasTranscript && <CallTranscript call={call} resident={resident} />}
+        {expired && <p className="meta">{expiredMediaLabel}</p>}
+        {!expired && hasTranscript && <CallTranscript call={call} resident={resident} />}
+        {!expired && call.recordingAvailable && <RecordingPlayer residentId={resident.id} callId={call.id} />}
       </div>
     </details>
   );

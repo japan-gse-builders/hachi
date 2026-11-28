@@ -5,6 +5,7 @@ import type {
   CallSlot,
   CallSpeechSample,
   CallTag,
+  ConsentWithdrawal,
   Contact,
   ContactRequest,
   DeliveryReport,
@@ -53,6 +54,7 @@ export interface ResidentConsent {
   recordedAt: string;
   /** The staff member who heard the resident say it. */
   recordedBy: string;
+  lastWithdrawal?: ConsentWithdrawal;
 }
 
 /** The staff account responsible for a resident: the only one who may change their record. */
@@ -111,12 +113,19 @@ export interface Resident {
   /** The call that holds this resident's line right now, if any (see `CallSlot`). */
   callSlot?: CallSlot;
   /** The latest call staff asked Hachi to make; numbers the day's series and spaces requests out. */
-  lastStaffCall?: { callId: string; at: string; requestedBy: string };
+  lastStaffCall?: { callId: string; at: string; requestedBy: string; consentRevision?: number };
+  /** Progress through historical calls. A new import rewinds this scan in the same write. */
+  mediaScan?: { importRevision: number; after?: CallMediaCursor };
   createdAt: string;
   updatedAt: string;
 }
 
 export type CallStatus = 'scheduled' | 'in_progress' | 'completed' | 'no_answer' | 'failed';
+
+export interface CallMediaCursor {
+  id: string;
+  startedAt: string;
+}
 
 export interface CallSummary {
   health: string;
@@ -163,6 +172,8 @@ export interface CallRecord {
   providerCallId?: string;
   /** Resident-local date the call belongs to (YYYY-MM-DD). */
   localDate?: string;
+  /** The withdrawal revision on the task that authorized this check-in. */
+  consentRevision?: number;
   failure?: { code?: string; message: string; retryable: boolean };
   /** Held while a worker is dialing, so a redelivered task does not dial the same call twice. */
   dialLease?: { token: string; at: string };
@@ -183,6 +194,10 @@ export interface CallRecord {
   };
   /** Recordings of additional media streams after a reconnect. */
   extraAudioUris?: string[];
+  /** A durable expiry marker. The associated case and call metadata are retained. */
+  mediaExpiredAt?: string;
+  /** Present until recording versions and stored extracts have been removed. */
+  mediaPurgeDueAt?: string;
   /** R1 raised during the call; the resident is bridged to family and staff. */
   emergency?: EmergencyState;
   /** Set by the analysis worker after the call. */
@@ -267,7 +282,7 @@ export interface EmergencyLeg {
 export interface EmergencyState {
   at: string;
   caseId: string;
-  quote: string;
+  quote?: string;
   /** Outbound alert calls to family and staff who are offered to join the resident's call. */
   legs?: EmergencyLeg[];
 }
@@ -303,6 +318,9 @@ export interface OutboxEntry extends OutboxMessage {
   orgId: string;
   status: OutboxStatus;
   attempts: number;
+  /** The withdrawal revision when a family update was prepared. */
+  familySharingRevision?: number;
+  familyAlertLocale?: import('@hachi/core').Locale;
   createdAt: string;
   updatedAt?: string;
   /** A worker is sending until this time; after it, another worker may take over. */

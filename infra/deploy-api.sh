@@ -31,9 +31,6 @@ for role in roles/datastore.user roles/firebaseauth.admin roles/cloudtasks.enque
 done
 gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectViewer >/dev/null
-# Signed URLs without a key file.
-gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
-  --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountTokenCreator >/dev/null
 # Lets the API create dial tasks that carry an OIDC token for the invoker account. The account is
 # created by deploy-telephony.sh; without it "Call now" stays off (the route answers 503).
 TELEPHONY_ENV=""

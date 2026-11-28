@@ -217,17 +217,17 @@ export function ResidentsPage() {
         <IncompleteAnalysisList items={incomplete?.items.filter((i) => i.residentId === r.id) ?? null} showResident={false} />
         {!hasCallConsent(r.callConsent) && (
           <div className="stack notice notice-warning">
-            <p role="status"><strong>Approval needed.</strong> Daily calls will wait until the patient agrees.</p>
-            {mine && consentFor !== r.id && <p><button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>Record first-use approval</button></p>}
+            <p role="status"><strong>{r.callConsent?.lastWithdrawal ? 'Call consent withdrawn.' : 'Approval needed.'}</strong> Daily calls will wait until the patient agrees.</p>
+            {mine && consentFor !== r.id && <p><button type="button" disabled={busyId !== null} onClick={() => setConsentFor(r.id)}>{r.callConsent?.lastWithdrawal ? 'Record new approval' : 'Record first-use approval'}</button></p>}
             {!mine && <p className="meta">{r.owner ? `${ownerName(r.owner)} can record it.` : 'Assign yourself to this patient to record their approval.'}</p>}
             {consentFor === r.id && (
               <form className="stack" onSubmit={(event) => {
                 event.preventDefault();
                 if (new FormData(event.currentTarget).get('callConsent') !== 'on') return;
-                void updateResident(r.id, { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version } })
+                void updateResident(r.id, { callConsent: { accepted: true, noticeVersion: PRIVACY_NOTICE.version, revision: r.callConsent?.lastWithdrawal?.revision } })
                   .then((saved) => { if (saved) setConsentFor(null); });
               }}>
-                <CallConsentField required />
+                <CallConsentField required renewal={Boolean(r.callConsent?.lastWithdrawal)} />
                 <div className="row">
                   <button type="submit" disabled={busyId !== null}>{busyId === r.id ? 'Saving…' : 'Save approval'}</button>
                   <button className="ghost" type="button" disabled={busyId !== null} onClick={() => setConsentFor(null)}>Cancel</button>

@@ -160,6 +160,14 @@ function familyMessage(change: CaseChange, ctx: NotificationContext, channel: Co
   };
 }
 
+/** Emergency contact is part of check-in consent. Sharing the details is a separate choice. */
+export function familyEmergencyNotice(name: string, locale: Locale, channel: ContactChannel): { subject: string; body: string } {
+  const subject = locale === 'ja' ? '【Hachi 緊急】ご連絡のお願い' : '[Hachi] Urgent contact requested';
+  const head = locale === 'ja' ? '' : 'Please contact ';
+  const tail = locale === 'ja' ? 'さん、または担当のケアチームにすぐご連絡ください。' : ' or the care team right away.';
+  return { subject, body: channel === 'sms' ? fitSms(head, name, tail, locale === 'ja') : head + name + tail };
+}
+
 /**
  * NTF-01 / NTF-02 / NTF-03: decides who is notified on which channels for a case change.
  * Only new cases and escalations notify; plain updates do not.

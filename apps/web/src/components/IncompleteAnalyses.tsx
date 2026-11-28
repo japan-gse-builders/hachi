@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { formatWhen } from '../format';
 import type { IncompleteAnalysis } from '../types';
+import { expiredMediaLabel } from './RecordingPlayer';
 
 /**
  * Issue #11: calls the analysis could not finish. Each says what is unchecked and what still ran,
@@ -48,7 +49,7 @@ export function IncompleteAnalysisList({ items, showResident = true }: { items: 
             </p>
             <p>{item.notChecked}</p>
             <p className="meta">{item.checked}</p>
-            {pending ? (
+            {item.mediaExpired ? <p className="meta">{expiredMediaLabel}</p> : pending ? (
               <p className="meta" role="status">Asked to analyze again. The result usually appears within about 10 minutes.</p>
             ) : (
               <button className="ghost" type="button" disabled={busy !== null} onClick={() => void request(item, key)}>

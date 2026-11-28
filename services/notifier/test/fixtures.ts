@@ -1,6 +1,6 @@
 import type { EnqueueRequest, TaskQueue } from '@hachi/cloud';
 import { notificationKey } from '@hachi/core';
-import { MemoryStore, outboxId, type Organization, type OutboxEntry, type StoredCase } from '@hachi/store';
+import { MemoryStore, outboxId, type Organization, type OutboxEntry, type Resident, type StoredCase } from '@hachi/store';
 import { DeliveryError, type ChannelSender, type Senders } from '../src/channels.js';
 import type { WorkerDeps } from '../src/worker.js';
 
@@ -93,9 +93,23 @@ export class FakeQueue implements TaskQueue {
 export const retryable = () => new DeliveryError('Twilio 503: unavailable', true, '20500');
 export const permanent = () => new DeliveryError('Twilio 400: invalid To', false, '21211');
 
-export async function setup(opts: { entries?: OutboxEntry[]; senders?: Senders; now?: () => Date; organization?: Partial<Organization> } = {}) {
+function resident(): Resident {
+  return {
+    id: 'res-1', orgId: 'org-1', name: 'Maggie', preferredName: 'Maggie', phone: '+819000000001',
+    channel: 'pstn', callTime: '10:00', timeZone: 'Asia/Tokyo', active: true,
+    vulnerability: { livesAlone: true, hasCloseSupporter: true, needsCare: false, chronicConditions: [] },
+    staff: { name: 'Care team', phone: '+81300000000' },
+    family: { name: 'Alice', email: 'alice@example.org', sms: '+819000000002' },
+    familyLookup: ['+819000000002', 'alice@example.org'],
+    consent: { shareMood: true, recordedAt: NOW.toISOString(), recordedBy: 'staff-1' },
+    serviceStartedAt: NOW.toISOString(), createdAt: NOW.toISOString(), updatedAt: NOW.toISOString(),
+  };
+}
+
+export async function setup(opts: { entries?: OutboxEntry[]; senders?: Senders; now?: () => Date; organization?: Partial<Organization>; withResident?: boolean } = {}) {
   const store = new MemoryStore();
   store.seedAccounts({ organizations: [organization('org-1', opts.organization)] });
+  if (opts.withResident !== false) await store.createResident(resident());
   await store.putCase(storedCase());
   await store.enqueueOutbox(opts.entries ?? [entry()]);
   const sms = new FakeSender();

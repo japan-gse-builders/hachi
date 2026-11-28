@@ -1,8 +1,9 @@
+import { Readable } from 'node:stream';
 import type { Auth } from 'firebase-admin/auth';
 import type { Storage } from 'firebase-admin/storage';
 import { describe, expect, it, vi } from 'vitest';
 import { FirebaseAuthAdmin, FirebaseTokenVerifier } from '../src/auth.js';
-import { GcsMediaSigner } from '../src/gcs.js';
+import { GcsMediaReader } from '../src/gcs.js';
 
 describe('FirebaseTokenVerifier', () => {
   it('maps decoded Firebase claims', async () => {
@@ -44,27 +45,30 @@ describe('FirebaseTokenVerifier', () => {
   });
 });
 
-describe('GcsMediaSigner', () => {
-  it('signs a read URL for the bucket and object in the gs:// URI', async () => {
-    const getSignedUrl = vi.fn(async () => ['https://signed']);
-    const file = vi.fn(() => ({ getSignedUrl }));
+describe('GcsMediaReader', () => {
+  it('streams the exact generation read from the configured bucket', async () => {
+    const recording = Readable.from(['fictional audio']);
+    const getMetadata = vi.fn(async () => [{ generation: '1234567890000001' }]);
+    const createReadStream = vi.fn(() => recording);
+    const file = vi.fn(() => ({ getMetadata, createReadStream }));
     const bucket = vi.fn(() => ({ file }));
-    const signer = new GcsMediaSigner({ bucket } as unknown as Storage, 'hachi-audio', 60_000);
-    await expect(signer.sign('gs://hachi-audio/res-1/call-1.wav')).resolves.toBe('https://signed');
+    const reader = new GcsMediaReader({ bucket } as unknown as Storage, 'hachi-audio');
+    await expect(reader.open('gs://hachi-audio/res-1/call-1.wav')).resolves.toBe(recording);
     expect(bucket).toHaveBeenCalledWith('hachi-audio');
     expect(file).toHaveBeenCalledWith('res-1/call-1.wav');
-    expect(getSignedUrl).toHaveBeenCalledWith(expect.objectContaining({ version: 'v4', action: 'read' }));
+    expect(file).toHaveBeenCalledWith('res-1/call-1.wav', { generation: '1234567890000001' });
+    expect(createReadStream).toHaveBeenCalledOnce();
   });
 
   it('rejects non-gs URIs', async () => {
-    const signer = new GcsMediaSigner({} as Storage, 'hachi-audio');
-    await expect(signer.sign('https://example.org/x.wav')).rejects.toThrow(/Not a gs/);
+    const reader = new GcsMediaReader({} as Storage, 'hachi-audio');
+    await expect(reader.open('https://example.org/x.wav')).rejects.toThrow(/Invalid gs/);
   });
 
-  it('refuses to sign objects in other buckets', async () => {
+  it('refuses to read objects in other buckets', async () => {
     const bucket = vi.fn();
-    const signer = new GcsMediaSigner({ bucket } as unknown as Storage, 'hachi-audio');
-    await expect(signer.sign('gs://someone-else/secret.wav')).rejects.toThrow(/Refusing to sign/);
+    const reader = new GcsMediaReader({ bucket } as unknown as Storage, 'hachi-audio');
+    await expect(reader.open('gs://someone-else/secret.wav')).rejects.toThrow(/outside the configured/);
     expect(bucket).not.toHaveBeenCalled();
   });
 });

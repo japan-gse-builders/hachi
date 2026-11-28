@@ -63,6 +63,18 @@ describe('CallSession: stream start', () => {
     expect((await ctx.store.getCall(IDS.residentId, IDS.callId))!.streams).toBeUndefined();
   });
 
+  it('rejects a stream from the withdrawn call approval even after fresh approval', async () => {
+    const ctx = await setup();
+    await ctx.store.updateResident(IDS.residentId, (r) => ({
+      ...r,
+      callConsent: { ...r.callConsent!, lastWithdrawal: { at: '2026-10-01T01:00:00.000Z', by: 'staff-1', revision: 1 } },
+    }));
+    await ctx.session.onMessage(startMessage());
+    expect(ctx.socket.closed).toBe(true);
+    expect(ctx.live.sessions).toEqual([]);
+    expect(ctx.recordings.saved).toEqual([]);
+  });
+
   it.each([
     ['an unknown call', { callId: 'nope' }, 'CA1'],
     ['an unknown resident', { residentId: 'nobody' }, 'CA1'],

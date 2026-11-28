@@ -16,6 +16,29 @@ describe('parseSendInput', () => {
 });
 
 describe('deliver', () => {
+  it('skips a waiting loneliness notice even when sharing was approved again after withdrawal', async () => {
+    const notice = entry({ kind: 'loneliness', urgency: 'watch', familySharingRevision: 0 });
+    const { store, deps, sms } = await setup({ entries: [notice] });
+    await store.updateResident('res-1', (r) => ({
+      ...r, consent: { ...r.consent!, shareMood: true, lastWithdrawal: { at: NOW.toISOString(), by: 'staff-1', revision: 1 } },
+    }));
+    expect(await deliver(deps, notice.id)).toMatchObject({ outcome: 'skipped', error: { code: 'family_sharing_not_allowed', retryable: false } });
+    expect(await store.getOutbox(notice.id)).toMatchObject({ status: 'skipped' });
+    expect(sms.sent).toHaveLength(0);
+  });
+
+  it('re-checks a retried emergency notification and sends only a neutral alert after withdrawal', async () => {
+    const { store, deps, sms } = await setup();
+    sms.failWith(retryable());
+    expect((await deliver(deps, e.id)).outcome).toBe('retry');
+    await store.updateResident('res-1', (r) => ({ ...r, consent: { ...r.consent!, shareMood: false } }));
+    expect((await deliver(deps, e.id)).outcome).toBe('sent');
+    expect(sms.sent).toHaveLength(1);
+    expect(sms.sent[0]?.body).toBe('Please contact Maggie or the care team right away.');
+    expect(await store.getOutbox(e.id)).toMatchObject({ status: 'sent', body: sms.sent[0]!.body });
+    expect(await store.getCase('case-1')).toMatchObject({ notifications: [expect.objectContaining({ recipient: 'family' })] });
+  });
+
   it('sends, marks the entry sent and records it on the case (NTF-04)', async () => {
     const { store, sms, deps } = await setup();
     expect(await deliver(deps, e.id)).toEqual({ outcome: 'sent', providerId: 'P1' });

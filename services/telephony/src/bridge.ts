@@ -1,4 +1,4 @@
-import { gatewayVerdict, hasCallConsent } from '@hachi/core';
+import { gatewayVerdict, permitsCall } from '@hachi/core';
 import { orgMayContactPeople, type EmergencyLeg, type Resident } from '@hachi/store';
 import { scheduleRetry, type CallDeps } from './calls.js';
 import { escapeXml, streamTwiml, TelephonyError } from './twilio.js';
@@ -51,7 +51,7 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
   if (ended && ended !== 'gateway_error') return HANGUP;
 
   const resident = await deps.store.getResident(ids.residentId);
-  if (!resident?.active || !hasCallConsent(resident.callConsent)) return HANGUP;
+  if (!resident?.active || !permitsCall(resident.callConsent, call.consentRevision)) return HANGUP;
 
   // The gateway records what went wrong before closing the stream, so this reads a verdict about
   // this very call. Reconnecting into a fault that meets every session identically costs nine Live
@@ -78,12 +78,13 @@ export async function afterStream(deps: CallDeps, ids: CallIds): Promise<string>
       retryable: retry,
     },
   }));
-  if (retry) {
-    await scheduleRetry(deps, { residentId: ids.residentId, localDate: call.localDate!, attempt: call.attempt! });
-  }
+  const queued = retry && await scheduleRetry(deps, {
+    residentId: ids.residentId, localDate: call.localDate!, attempt: call.attempt!,
+    ...(call.consentRevision ? { consentRevision: call.consentRevision } : {}),
+  });
   const apology = down
     ? "I'm sorry, our system isn't working at the moment, so we can't talk today. Your care team can see that we could not reach you. Goodbye."
-    : retry
+    : queued
       ? "I'm sorry, we're having a technical problem. We will call you back in a few minutes. Goodbye."
       : "I'm sorry, we're having a technical problem, so we can't talk right now. Your care team can see that the call did not work. Goodbye.";
   return `<Response>${say(deps, apology)}<Hangup/></Response>`;

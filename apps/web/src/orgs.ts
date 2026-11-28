@@ -65,6 +65,7 @@ export interface OrganizationView {
   timeZone: string;
   role: OrgRole;
   verified: boolean;
+  callMediaRetentionDays?: number | null;
   createdAt?: string;
   billing?: { plan: 'trial' | 'internal'; email: string; limits: { residents: number; members: number } };
   usage?: { residents: number; members: number };
@@ -157,6 +158,9 @@ export function describeAudit(e: AuditEntry): string {
     case 'resident.created':
       return `Registered ${who}`;
     case 'resident.updated':
+      if (d.withdrawal === 'both') return `Withdrew call consent and family sharing for ${who}`;
+      if (d.withdrawal === 'calls') return `Withdrew call consent for ${who}`;
+      if (d.withdrawal === 'family') return `Withdrew family sharing for ${who}`;
       return `Changed details of ${who}`;
     case 'resident.owner_changed':
       if (!d.to) return `Handed ${who} over${d.fromName ? ` from ${d.fromName}` : ''}`;

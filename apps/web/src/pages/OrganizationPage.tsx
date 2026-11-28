@@ -6,6 +6,7 @@ import { LoadError, Loading } from '../components/States';
 import { TeamNav } from '../components/TeamNav';
 import { formatWhen } from '../format';
 import { atLeast, PLAN_LABEL, timeZoneOptions, type OrganizationView } from '../orgs';
+import { MAX_CALL_MEDIA_RETENTION_DAYS } from '../privacy';
 import { useDocumentTitle } from '../title';
 
 /** The organization itself: its name and time zone, and for admins its plan and how much of it is used. */
@@ -47,10 +48,72 @@ export function OrganizationPage() {
       {org && (
         <>
           <GeneralSettings org={org} onSaved={saved} />
+          <RetentionSettings org={org} onSaved={load} />
           {org.billing && org.usage && <PlanCard org={org as Required<OrganizationView>} onSaved={saved} />}
         </>
       )}
     </div>
+  );
+}
+
+function RetentionSettings({ org, onSaved }: { org: OrganizationView; onSaved: () => Promise<void> }) {
+  const { token } = useAuth();
+  const current = org.callMediaRetentionDays ?? null;
+  const [days, setDays] = useState(String(current ?? ''));
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const canEdit = atLeast(org.role, 'admin');
+  const value = Number(days);
+  const valid = Number.isInteger(value) && value >= 1 && value <= MAX_CALL_MEDIA_RETENTION_DAYS;
+  useEffect(() => { setDays(String(current ?? '')); }, [current]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canEdit || busy || !valid || value === current) return;
+    if (!confirming && (current === null || value < current)) {
+      setConfirming(true);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setSaved(false);
+    try {
+      await api('/api/organization', await token(), { method: 'PATCH', body: JSON.stringify({ callMediaRetentionDays: value }) });
+      setConfirming(false);
+      setSaved(true);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the retention period.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="card stack" onSubmit={(event) => void submit(event)} aria-labelledby="retention-heading">
+      <h2 id="retention-heading">Recording and transcript retention</h2>
+      <p className="meta">The period starts when each call begins. It applies to past and future calls.</p>
+      <p>{current === null ? 'No automatic retention period is set.' : `Current period: ${current} ${current === 1 ? 'day' : 'days'}.`}</p>
+      {canEdit && (
+        <>
+          <div className="retention-setting">
+            <label>Retention period in days
+              <input type="number" min={1} max={MAX_CALL_MEDIA_RETENTION_DAYS} step={1} required value={days} disabled={busy}
+                onChange={(event) => { setDays(event.target.value); setConfirming(false); setError(''); setSaved(false); }} />
+            </label>
+          </div>
+          {confirming && <p className="notice" role="status">Saving this period can permanently delete recordings and transcripts from past calls.</p>}
+          {error && <p className="error" role="alert">{error}</p>}
+          {saved && <p className="notice-success" role="status">Retention period saved.</p>}
+          <div className="row">
+            <button type="submit" disabled={busy || !valid || value === current}>{busy ? 'Saving…' : confirming ? 'Confirm retention period' : 'Save retention period'}</button>
+            {confirming && <button type="button" className="ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>}
+          </div>
+        </>
+      )}
+    </form>
   );
 }
 

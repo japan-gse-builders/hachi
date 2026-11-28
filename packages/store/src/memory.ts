@@ -1,6 +1,7 @@
 import { emptyLedger, healthyGateway, type GatewayBreaker, type SpendLedger } from '@hachi/core';
 import { byJoined, membershipId, type AuditEntry, type Invitation, type Membership, type Organization } from './accounts.js';
-import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
+import type { CallMediaCursor, CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
+import { compareMediaCursor } from './retention.js';
 import { NotFoundError, type AccountStore, type CaseMutation, type ListCallsOptions, type Roster, type Store } from './types.js';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -51,6 +52,11 @@ export class MemoryStore implements Store, AccountStore {
   }
 
   async addCalls(calls: CallRecord[]): Promise<void> {
+    const imports = new Set(calls.filter((c) => c.source === 'imported').map((c) => c.residentId));
+    for (const id of imports) {
+      const resident = this.residents.get(id);
+      if (resident) this.residents.set(id, { ...resident, mediaScan: { importRevision: (resident.mediaScan?.importRevision ?? 0) + 1 } });
+    }
     for (const c of calls) this.calls.set(`${c.residentId}/${c.id}`, clone(c));
   }
 
@@ -81,6 +87,22 @@ export class MemoryStore implements Store, AccountStore {
       .filter((c) => c.residentId === residentId && (!opts.since || c.startedAt >= opts.since))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     return (opts.limit ? list.slice(0, opts.limit) : list).map(clone);
+  }
+
+  async listCallsForMediaExpiry(residentId: string, through: string, after: CallMediaCursor | undefined, limit: number): Promise<CallMediaCursor[]> {
+    return [...this.calls.values()]
+      .filter((c) => c.residentId === residentId && c.startedAt <= through && (!after || compareMediaCursor(c, after) > 0))
+      .sort(compareMediaCursor).slice(0, limit).map(({ id, startedAt }) => ({ id, startedAt }));
+  }
+
+  async listDueMediaPurges(residentId: string, through: string, limit: number): Promise<CallRecord[]> {
+    return [...this.calls.values()]
+      .filter((c) => c.residentId === residentId && c.mediaPurgeDueAt && c.mediaPurgeDueAt <= through)
+      .sort((a, b) => a.mediaPurgeDueAt!.localeCompare(b.mediaPurgeDueAt!)).slice(0, limit).map(clone);
+  }
+
+  async listOrganizationsWithMediaRetention(): Promise<Organization[]> {
+    return [...this.orgs.values()].filter((o) => !!o.callMediaRetention).map(clone);
   }
 
   async getCase(id: string): Promise<StoredCase | null> {

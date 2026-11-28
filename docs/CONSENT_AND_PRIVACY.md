@@ -41,8 +41,9 @@ Each point is marked:
   explained in the short prompt and full notice. The API records this sharing approval in
   `resident.consent` with the same staff identity and time; there is no separate sharing checkbox.
   Pending enrollment does not imply sharing approval. Existing sharing choices are preserved,
-  including opt-outs, and resubmitting an old call approval does not expand its scope. Staff can
-  still record a later sharing request through `shareMood` in the API without altering call approval.
+  including opt-outs. On a patient's **Consent** card, their assigned staff member or an admin can
+  withdraw call approval and family sharing separately. The server records the actor and time.
+  A fresh approval is recorded against the current withdrawal revision.
 - **[Operational]** The family member agrees to receive alerts and access the dashboard, and the
   resident agrees to the chosen family contact (requirements §4). There is no separate family
   approval record in Hachi.
@@ -50,6 +51,13 @@ Each point is marked:
   This stops future daily calls, queued attempts and stream reconnections. It does not interrupt an
   AI conversation already running. The resident can hang up to end that conversation. Emergency
   bridges and alert calls for an emergency already raised remain available.
+- **[Code]** Withdrawing call approval invalidates the queued check-ins, staff requests and retries
+  created under that approval. The dial worker rechecks consent just before asking the provider to
+  place a call. A conversation already on the line can end when the resident hangs up.
+- **[Code]** The family view and sending worker check the current sharing choice. Pending
+  loneliness updates tied to the previous approval are skipped. Emergency contact can still go
+  out with a brief request to get in touch. Individually requested contact messages follow the
+  resident's request.
 - **[Operational]** Stopping future calls is a request to the enrolling care team. There is no
   automatic spoken withdrawal detector in the call. Deletion and retention are separate processes.
   Removing a family contact (`family: null` on `PATCH /api/residents/:id`) stops their dashboard
@@ -80,7 +88,7 @@ historical data.
 
 | Data | Care staff | Family | Enforced by |
 |---|---|---|---|
-| Call recordings | Yes, on the case page (signed URL valid 15 minutes) | **No** | [Code] API |
+| Call recordings | Yes, on the case page until the retention deadline | **No** | [Code] API |
 | Transcripts and quoted evidence | Yes | **No** | [Code] API |
 | Speech analysis (R3 features, baseline, trend) | Yes | **No** | [Code] API |
 | Short plain-language summary per call | Yes | With mood-sharing approval (last 14 days) | [Code] API |
@@ -119,18 +127,20 @@ historical data.
   made-up names and no contact details, and are never called.
 - **[Operational]** Entering only what is needed in the free-text household notes.
 
-## 5. Retention — [Operational]
+## 5. Recording and transcript retention
 
-Hachi does **not** delete data automatically yet: there is no Firestore TTL policy and no Cloud
-Storage lifecycle rule in this repository. The organisation must decide and apply retention periods,
-for example:
-
-- recordings: a short period (such as 90 days), set as a lifecycle rule on the recordings bucket;
-- transcripts and speech features: as long as needed for the 28-day baseline and recent trend;
-- cases and staff decisions: as required for care records and for evaluating the rules (PRI-06);
-- everything about a resident: deleted when they leave the service, unless a record must be kept.
-
-Two things already expire in code: signed recording URLs (15 minutes) and family sign-in links.
+- **[Operational]** An organization admin chooses the number of days under **Team → Organization**.
+  Existing organizations begin with the period unset. Setting it applies to past and future calls.
+- **[Code]** Access to recordings, transcripts and their case excerpts ends at the deadline, measured
+  from the start of each call. Staff see an expiry notice on the case. Increasing the period preserves
+  expiry already applied under the previous setting.
+- **[Code]** The analyzer's scheduled sweep removes transcripts and verbatim evidence copies from
+  Firestore, and recordings and reconnect segments from the configured storage bucket. The sweep
+  runs every 10 minutes and retries storage errors. Call dates, care cases, summaries, and numeric
+  speech features remain available as care records.
+- **[Operational]** Cloud Storage can retain recoverable copies under its soft-delete policy.
+  Object holds and bucket retention settings can also delay physical deletion. Check the bucket
+  settings against the organization's chosen period. [Cloud Storage object deletion](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete)
 
 ## 6. Where data is processed
 

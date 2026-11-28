@@ -38,6 +38,13 @@ done
 # Speech timing and hesitations are measured from the call recording.
 gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectViewer >/dev/null
+# Retention deletes expired objects and their generations from the recordings bucket.
+PURGE_ROLE=hachiRecordingDeletion
+gcloud iam roles describe "$PURGE_ROLE" --project "$PROJECT_ID" >/dev/null 2>&1 \
+  || gcloud iam roles create "$PURGE_ROLE" --project "$PROJECT_ID" --title "Hachi recording deletion" \
+    --permissions storage.objects.delete --stage GA
+gcloud storage buckets add-iam-policy-binding "gs://${RECORDINGS_BUCKET}" \
+  --member "serviceAccount:$RUNTIME_SA" --role "projects/$PROJECT_ID/roles/$PURGE_ROLE" >/dev/null
 gcloud iam service-accounts add-iam-policy-binding "$INVOKER_SA" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/iam.serviceAccountUser >/dev/null
 
@@ -67,7 +74,7 @@ fi
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_SA" \
   --no-allow-unauthenticated --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi \
   --concurrency 8 --timeout 180 --cpu-boost \
-  --set-env-vars "PUBLIC_BASE_URL=${URL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GEMINI_LOCATION=global,GEMINI_MODEL=gemini-3.8-flash,STAFF_LOCALE=en,TASKS_LOCATION=${REGION},ANALYSIS_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA},APP_BASE_URL=${APP_BASE_URL}${NOTIFY_ENV}"
+  --set-env-vars "PUBLIC_BASE_URL=${URL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},RECORDINGS_BUCKET=${RECORDINGS_BUCKET},GEMINI_LOCATION=global,GEMINI_MODEL=gemini-3.8-flash,STAFF_LOCALE=en,TASKS_LOCATION=${REGION},ANALYSIS_QUEUE=${QUEUE},TASKS_INVOKER_SA=${INVOKER_SA},TASK_CALLER_EMAILS=${INVOKER_SA},APP_BASE_URL=${APP_BASE_URL}${NOTIFY_ENV}"
 gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
   --member "serviceAccount:$INVOKER_SA" --role roles/run.invoker >/dev/null
 

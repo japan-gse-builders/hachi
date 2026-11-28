@@ -1,5 +1,6 @@
 import { staffCallTask, type TaskQueue } from '@hachi/cloud';
 import {
+  callConsentRevision,
   CASE_STATUS_LABELS,
   claimSlot,
   emptyLedger,
@@ -7,6 +8,7 @@ import {
   hasCallConsent,
   HISTORY_CALLS,
   localDate,
+  permitsCall,
   nextStaffCallSeq,
   PRIVACY_NOTICE,
   slotBusy,
@@ -16,6 +18,7 @@ import {
   staffCallCooldownLeft,
   staffCallId,
   type GatewayPolicy,
+  type CallMediaRetention,
   type Locale,
   type SpendSettings,
 } from '@hachi/core';
@@ -27,17 +30,21 @@ import { familyContacts, toIdentity, type AuthAdmin, type FamilyPrincipal, type 
 import { ID, ORG_HEADER, parse, requireIdentity, requireVerifiedEmail } from './request.js';
 import { applyStaffUpdate } from './caseUpdate.js';
 import {
+  callMediaState,
   decideContactRequest,
   mayContactPeople,
   NotFoundError,
   orgMayContactPeople,
+  stripCallMediaText,
   type AccountStore,
+  type CallRecord,
   type Resident,
   type StaffRef,
   type Store,
 } from '@hachi/store';
 import { buildHeldRequests } from './contactRequests.js';
 import { HttpError } from './errors.js';
+import type { MediaReader } from './gcs.js';
 import {
   addPushToken,
   assignResident,
@@ -81,7 +88,6 @@ import {
   INCOMPLETE_DAYS,
   UNREACHED_LOOKBACK_DAYS,
   urgencyLegend,
-  type MediaSigner,
 } from './views.js';
 
 export interface AppDeps {
@@ -89,7 +95,7 @@ export interface AppDeps {
   verifier: TokenVerifier;
   /** Display names and "sign out everywhere" in Firebase itself; without it only Hachi's own records change. */
   authAdmin?: AuthAdmin;
-  signer: MediaSigner;
+  recordings?: MediaReader;
   now?: () => Date;
   newId?: () => string;
   logger?: boolean;
@@ -155,7 +161,7 @@ function localeOf(req: FastifyRequest): Locale {
 }
 
 export function buildApp(deps: AppDeps): FastifyInstance {
-  const { store, verifier, signer } = deps;
+  const { store, verifier } = deps;
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? (() => crypto.randomUUID());
   const app = Fastify({ logger: deps.logger ?? false, bodyLimit: 5 * 1024 * 1024 });
@@ -326,10 +332,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const staff = await requireStaff(req);
     const patch = parse(residentPatchSchema, req.body);
     let owner: Resident['owner'];
+    let withdrawal: 'calls' | 'family' | 'both' | undefined;
     const saved = await updateOwnResident(req.params.id, staff, (r) => {
       assertMayEdit(r, staff);
       owner = r.owner;
-      return patchResident(r, patch, now(), staff.uid);
+      const next = patchResident(r, patch, now(), staff.uid, staff.name ?? staff.email);
+      const calls = r.callConsent?.lastWithdrawal?.revision !== next.callConsent?.lastWithdrawal?.revision;
+      const family = r.consent?.lastWithdrawal?.revision !== next.consent?.lastWithdrawal?.revision;
+      withdrawal = calls ? (family ? 'both' : 'calls') : family ? 'family' : undefined;
+      return next;
     });
     const ownerUid = (owner as Resident['owner'])?.uid;
     await auditAs(req, staff, {
@@ -337,6 +348,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       target: { type: 'resident', id: saved.id, label: saved.name },
       detail: {
         fields: Object.keys(patch).sort().join(','),
+        ...(withdrawal ? { withdrawal } : {}),
         ...(ownerUid !== staff.uid ? { asAdmin: true, owner: ownerUid ?? null } : {}),
       },
     });
@@ -475,7 +487,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const staff = await requireStaff(req);
     const input = parse(callImportSchema, req.body);
     const r = await getResidentOr404(req.params.id, staff);
-    const calls = buildImportedCalls(r, input, newId, now());
+    const at = now();
+    const calls = buildImportedCalls(r, input, newId, at).map((call) => {
+      const media = callMediaState(call, staff.org.callMediaRetention, at);
+      return media.expired ? stripCallMediaText({ ...call, mediaExpiredAt: media.expiresAt ?? at.toISOString() }) : call;
+    });
     await store.addCalls(calls);
     return reply.status(201).send({ imported: calls.length, usableForBaseline: calls.filter((c) => c.speech?.usable).length });
   });
@@ -515,6 +531,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const t = now();
     const refusal = await callRefusal(r, staff, t);
     if (refusal) throw refusal;
+    const consentRevision = callConsentRevision(r.callConsent);
 
     // The cooldown spares the resident a second ring too soon. A call that went wrong on our side
     // (refused, line busy, a fault while dialling or mid-call, or a request that never reached the
@@ -534,7 +551,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     type Outcome = { kind: 'busy'; callId: string } | { kind: 'cooldown'; ms: number } | { kind: 'ok'; callId: string; date: string; seq: number };
     let outcome = { kind: 'busy', callId: '' } as Outcome;
     let previous: Resident['lastStaffCall'];
-    await store.updateResident(r.id, (cur) => {
+    await updateOwnResident(r.id, staff, (cur) => {
+      if (!cur.active) throw new HttpError(409, 'Calls are paused for this resident.', 'paused');
+      if (!permitsCall(cur.callConsent, consentRevision)) {
+        throw new HttpError(409, 'Call approval changed. Refresh the patient’s details before requesting a call.', 'consent_required');
+      }
       previous = cur.lastStaffCall;
       if (slotBusy(cur.callSlot, t)) {
         outcome = { kind: 'busy', callId: cur.callSlot!.callId };
@@ -553,7 +574,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return {
         ...cur,
         callSlot: claimSlot(undefined, callId, t, STAFF_REQUEST_HOLD_MS)!,
-        lastStaffCall: { callId, at: t.toISOString(), requestedBy: staff.uid },
+        lastStaffCall: { callId, at: t.toISOString(), requestedBy: staff.uid, ...(consentRevision ? { consentRevision } : {}) },
       };
     });
     if (outcome.kind === 'busy') {
@@ -569,7 +590,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
     const { callId, date, seq } = outcome;
     try {
-      await queue.enqueue(staffCallTask(r.id, date, seq, staff.uid));
+      await queue.enqueue(staffCallTask(r.id, date, seq, staff.uid, consentRevision));
     } catch (err) {
       // Nothing will dial, so neither the line nor the cooldown should hold anyone back.
       await store.updateResident(r.id, (cur) => {
@@ -594,13 +615,54 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return view;
   });
 
+  const getStaffCall = async (id: string, callId: string, staff: StaffPrincipal) => {
+    if (!ID.test(callId)) throw new NotFoundError('Call');
+    const r = await getResidentOr404(id, staff);
+    const call = await store.getCall(r.id, callId);
+    if (!call) throw new NotFoundError('Call');
+    return call;
+  };
+
+  const requireRetainedMedia = (call: CallRecord, retention: CallMediaRetention | undefined) => {
+    const media = callMediaState(call, retention, now());
+    if (media.expired) throw new HttpError(410, 'The retention period for this call has ended.', 'media_expired');
+    return media;
+  };
+
   app.get<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId/transcript', async (req) => {
     const staff = await requireStaff(req);
-    if (!ID.test(req.params.callId)) throw new NotFoundError('Call');
-    const r = await getResidentOr404(req.params.id, staff);
-    const call = await store.getCall(r.id, req.params.callId);
-    if (!call) throw new NotFoundError('Call');
+    const call = await getStaffCall(req.params.id, req.params.callId, staff);
+    requireRetainedMedia(call, staff.org.callMediaRetention);
     return { transcript: call.transcript ?? [] };
+  });
+
+  app.get<{ Params: { id: string; callId: string } }>('/api/residents/:id/calls/:callId/recording', async (req, reply) => {
+    const staff = await requireStaff(req);
+    const call = await getStaffCall(req.params.id, req.params.callId, staff);
+    requireRetainedMedia(call, staff.org.callMediaRetention);
+    if (!call.audioUri || !deps.recordings) throw new NotFoundError('Recording');
+    const stream = await deps.recordings.open(call.audioUri).catch((err: unknown) => {
+      if (Number((err as { code?: unknown })?.code) === 404) throw new NotFoundError('Recording');
+      throw err;
+    });
+    try {
+      const org = await store.getOrganization(staff.orgId);
+      if (!org || org.status !== 'active') throw new NotFoundError('Recording');
+      const { expiresAt } = requireRetainedMedia(call, org.callMediaRetention);
+      if (expiresAt) {
+        const remaining = Date.parse(expiresAt) - now().getTime();
+        if (remaining <= 0) throw new HttpError(410, 'The retention period for this call has ended.', 'media_expired');
+        if (remaining <= 2_147_483_647) {
+          const timer = setTimeout(() => stream.destroy(new Error('Recording retention ended')), remaining);
+          timer.unref();
+          stream.once('close', () => clearTimeout(timer));
+        }
+      }
+      return reply.type('audio/wav').send(stream);
+    } catch (err) {
+      stream.destroy();
+      throw err;
+    }
   });
 
   // ---- Staff: triage queue and cases (QUE-01..03) ----
@@ -637,7 +699,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       },
       legend: urgencyLegend(locale),
       unreached: buildUnreached(entries, t, locale),
-      incomplete: buildIncompleteAnalyses(entries, t, locale),
+      incomplete: buildIncompleteAnalyses(entries, t, locale, staff.org.callMediaRetention),
     };
   });
 
@@ -646,7 +708,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const staff = await requireStaff(req);
     const t = now();
     const entries = await recentCalls(await store.listResidents(staff.orgId), new Date(t.getTime() - INCOMPLETE_DAYS * 86_400_000));
-    return buildIncompleteAnalyses(entries, t, localeOf(req));
+    return buildIncompleteAnalyses(entries, t, localeOf(req), staff.org.callMediaRetention);
   });
 
   /**
@@ -664,9 +726,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!r.active) throw new HttpError(409, 'Calls are paused for this resident, so the call cannot be analyzed again until they are resumed');
     const existing = await store.getCall(r.id, req.params.callId);
     if (!existing) throw new NotFoundError('Call');
+    requireRetainedMedia(existing, staff.org.callMediaRetention);
     const requestedAt = now().toISOString();
     let outcome = 'requested' as 'requested' | 'already_pending' | 'complete';
     await store.updateCall(r.id, existing.id, (c) => {
+      requireRetainedMedia(c, staff.org.callMediaRetention);
       outcome = c.analysisPending ? 'already_pending' : analysisGaps(c).length === 0 ? 'complete' : 'requested';
       return outcome === 'requested' ? { ...c, analysisPending: true, reanalysis: { requestedAt, requestedBy: staff.uid } } : null;
     });
@@ -699,7 +763,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       store.listCalls(c.residentId, { limit: HISTORY_CALLS }),
       store.listCaseEvents(c.id),
     ]);
-    return buildCaseDetail(c, r, residentCases, calls, events, signer, now(), localeOf(req));
+    const evidenceCalls = new Map(calls.map((call) => [call.id, call]));
+    const linkedIds = [...new Set(c.detections.flatMap((d) => d.evidence.map((e) => e.callId)))];
+    const missing = linkedIds.filter((id) => !evidenceCalls.has(id) && ID.test(id));
+    for (const call of await Promise.all(missing.map((id) => store.getCall(r.id, id)))) {
+      if (call) evidenceCalls.set(call.id, call);
+    }
+    const org = await store.getOrganization(staff.orgId);
+    if (!org || org.status !== 'active') throw new NotFoundError('Case');
+    return buildCaseDetail(c, r, residentCases, calls, events, now(), localeOf(req), org.callMediaRetention, evidenceCalls);
   });
 
   app.post<{ Params: { id: string } }>('/api/cases/:id/claim', async (req) => {
@@ -732,7 +804,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       target: { type: 'case', id: req.params.id },
       detail: { fields: Object.keys(update).filter((k) => k !== 'reason').sort().join(',') },
     });
-    return saved;
+    // Case updates return metadata. The case read applies the retention rules to evidence.
+    const { detections: _detections, ...metadata } = saved;
+    return metadata;
   });
 
   // ---- Family dashboard (FAM-01..04) ----
@@ -767,7 +841,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const t = now();
     const since = new Date(t.getTime() - FAMILY_WINDOW_DAYS * 86_400_000).toISOString();
     const [calls, cases] = await Promise.all([store.listCalls(r.id, { since }), store.listCasesByResident(r.id)]);
-    return { ...buildFamilyDashboard(r, calls, cases, t, localeOf(req)), receivesAlerts: isFamilyContact(r, fam.contacts) };
+    const current = await store.getResident(r.id);
+    if (current?.orgId !== r.orgId || !current.familyLookup.some((c) => fam.contacts.includes(c))) {
+      throw new NotFoundError('Resident');
+    }
+    return { ...buildFamilyDashboard(current, calls, cases, now(), localeOf(req)), receivesAlerts: isFamilyContact(current, fam.contacts) };
   });
 
   // ---- Contact requests the resident made by phone (CNV-15, NTF-05) ----

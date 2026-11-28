@@ -7,6 +7,7 @@ import { CaseCalls } from '../components/CaseCalls';
 import { CaseDecision } from '../components/CaseDecision';
 import { CaseAbout, CaseHistory, CaseNotifications } from '../components/CaseRecords';
 import { ResidentAvatar } from '../components/ResidentAvatar';
+import { expiredMediaLabel, isMediaExpired, RecordingPlayer } from '../components/RecordingPlayer';
 import { ScreeningCard } from '../components/ScreeningCard';
 import { IndicatorBar, SeverityChip, SignalsLegend } from '../components/Signals';
 import { SpeechTrendCard } from '../components/SpeechTrendCard';
@@ -18,7 +19,8 @@ import { useDocumentTitle } from '../title';
 import type { CaseDetail, Evidence, IncompleteAnalyses } from '../types';
 import '../styles/case.css';
 
-function EvidenceAudio({ evidence }: { evidence: Evidence }) {
+function EvidenceAudio({ evidence, residentId }: { evidence: Evidence; residentId: string }) {
+  if (evidence.recordingAvailable) return <RecordingPlayer residentId={residentId} callId={evidence.callId} startMs={evidence.startMs} />;
   if (!evidence.audioUrl) return null;
   return (
     <audio controls preload="none" aria-label="Call recording" src={audioAt(evidence.audioUrl, evidence.startMs)}>
@@ -27,10 +29,12 @@ function EvidenceAudio({ evidence }: { evidence: Evidence }) {
   );
 }
 
-function CaseEvidence({ evidence, noResponse, observation }: {
+function CaseEvidence({ evidence, noResponse, observation, expired, residentId }: {
   evidence: Evidence | undefined;
   noResponse: CaseDetail['detections'][number]['noResponse'];
   observation: string | undefined;
+  expired: boolean;
+  residentId: string;
 }) {
   if (evidence?.quote.trim()) {
     return (
@@ -40,9 +44,10 @@ function CaseEvidence({ evidence, noResponse, observation }: {
       </blockquote>
     );
   }
-  if (evidence?.audioUrl) {
-    return <div className="quote case-evidence"><p className="meta">From the call</p><EvidenceAudio evidence={evidence} /></div>;
+  if (evidence?.recordingAvailable || evidence?.audioUrl) {
+    return <div className="quote case-evidence"><p className="meta">From the call</p><EvidenceAudio evidence={evidence} residentId={residentId} /></div>;
   }
+  if (expired) return <p className="meta">{expiredMediaLabel}</p>;
   if (noResponse) {
     return (
       <div className="quote case-evidence">
@@ -57,13 +62,16 @@ function CaseEvidence({ evidence, noResponse, observation }: {
   return <p className="meta">No call excerpt is available.</p>;
 }
 
-function EvidenceRecords({ detail }: { detail: CaseDetail }) {
+function EvidenceRecords({ detail, now }: { detail: CaseDetail; now: Date }) {
   const callById = new Map(detail.calls.map((call) => [call.id, call]));
-  const evidence = detail.detections.flatMap((d) => d.evidence).filter((e) => e.quote.trim() || e.audioUrl);
-  if (!evidence.length) return null;
+  const records = detail.detections.flatMap((d) => d.evidence);
+  const expired = records.some((e) => isMediaExpired(e.media, now));
+  const evidence = records.filter((e) => !isMediaExpired(e.media, now) && (e.quote.trim() || e.recordingAvailable || e.audioUrl));
+  if (!expired && !evidence.length) return null;
   return (
     <section className="stack" aria-labelledby="case-evidence-records">
       <h2 id="case-evidence-records">Evidence from calls</h2>
+      {expired && <p className="meta">{expiredMediaLabel}</p>}
       {evidence.map((e, i) => {
         const call = callById.get(e.callId);
         return (
@@ -72,7 +80,7 @@ function EvidenceRecords({ detail }: { detail: CaseDetail }) {
             <p className="meta">
               {[call && formatWhen(call.startedAt) + ' JST', e.startMs !== undefined && `${clock(e.startMs)} into the call`].filter(Boolean).join(' · ') || 'From the call'}
             </p>
-            <EvidenceAudio evidence={e} />
+            <EvidenceAudio evidence={e} residentId={detail.resident.id} />
           </blockquote>
         );
       })}
@@ -122,6 +130,7 @@ function CaseView({ id }: { id: string }) {
   const [claimError, setClaimError] = useState('');
   const [claimed, setClaimed] = useState(false);
   const [metricsSeen, setMetricsSeen] = useState(false);
+  const [mediaTick, setMediaTick] = useState(0);
   const decision = useRef<HTMLDetailsElement>(null);
   useDocumentTitle(detail ? `${detail.resident.name} · Case` : 'Case');
 
@@ -133,11 +142,32 @@ function CaseView({ id }: { id: string }) {
 
   useEffect(() => {
     const abort = new AbortController();
-    void load(abort.signal).catch((err: unknown) => {
-      if (!abort.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load this case');
-    });
-    return () => abort.abort();
+    const refresh = () => {
+      void load(abort.signal).catch((err: unknown) => {
+        if (!abort.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load this case');
+      });
+    };
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    refresh();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      abort.abort();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [load, attempt]);
+
+  useEffect(() => {
+    if (!detail) return;
+    const records = [...detail.calls, ...detail.detections.flatMap((d) => d.evidence)];
+    const now = Date.now();
+    const next = Math.min(...records.flatMap(({ media }) => {
+      const at = media?.expiresAt ? Date.parse(media.expiresAt) : 0;
+      return media?.expired || !Number.isFinite(at) || at <= now ? [] : [at];
+    }));
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setMediaTick((tick) => tick + 1), Math.min(next - now, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [detail, mediaTick]);
 
   const save = async (body: Record<string, unknown>) => {
     await api(path, await token(), { method: 'PATCH', body: JSON.stringify(body) });
@@ -176,8 +206,9 @@ function CaseView({ id }: { id: string }) {
   const now = new Date();
   const severity = urgencySeverity(c.urgency);
   const latest = [...detail.detections].sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))[0];
-  const evidence = latest?.evidence.find((e) => e.quote.trim() || e.audioUrl);
-  const reason = evidence || latest?.noResponse ? latest?.summary || c.ruleName : c.ruleName;
+  const evidence = latest?.evidence.find((e) => !isMediaExpired(e.media, now) && (e.quote.trim() || e.recordingAvailable || e.audioUrl));
+  const expired = !evidence && Boolean(latest?.evidence.some((e) => isMediaExpired(e.media, now)));
+  const reason = evidence || latest?.noResponse || expired ? latest?.summary || c.ruleName : c.ruleName;
   const quoted = new Set(detail.detections.flatMap((d) => d.evidence.map((e) => e.callId)));
   const canClaim = c.status !== 'closed' && !c.assignment;
   const openDecision = () => {
@@ -201,7 +232,8 @@ function CaseView({ id }: { id: string }) {
           <div className="stack stack-s">
             <h2 className="case-kicker">Why Hachi flagged this</h2>
             <p className="case-headline">{reason}</p>
-            <CaseEvidence evidence={evidence} noResponse={latest?.noResponse} observation={latest?.summary === reason ? undefined : latest?.summary} />
+            <CaseEvidence evidence={evidence} noResponse={latest?.noResponse} expired={expired}
+              residentId={resident.id} observation={latest?.summary === reason ? undefined : latest?.summary} />
           </div>
           <div className="case-next">
             {c.status !== 'open' && (
@@ -232,7 +264,7 @@ function CaseView({ id }: { id: string }) {
         <details className="disclosure case-section">
           <summary>Call history and transcripts</summary>
           <div className="disclosure-body stack">
-            <EvidenceRecords detail={detail} />
+            <EvidenceRecords detail={detail} now={now} />
             <CaseCalls calls={detail.calls} now={now} quotedCallIds={quoted} resident={resident} />
           </div>
         </details>

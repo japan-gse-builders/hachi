@@ -14,7 +14,7 @@ import {
   type SpendSettings,
   type TimingSource,
 } from '@hachi/core';
-import { NotFoundError, recordContactRequest, recordDetections, recordLonelinessNotice, type CallRecord, type Store } from '@hachi/store';
+import { callMediaState, NotFoundError, recordContactRequest, recordDetections, recordLonelinessNotice, type CallRecord, type Store } from '@hachi/store';
 import { analyse } from './analysis.js';
 import { ReviewError, type CallReviewer, type ModelReview } from './model.js';
 import { measureRecording, type RecordingSource, type SpeechListener } from './voice.js';
@@ -126,21 +126,24 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
 
   const found = await store.getCall(ref.residentId, ref.callId);
   if (!found) return { outcome: 'not_found' };
-  if (!found.analysisPending) return { outcome: 'done' };
+  if (!found.analysisPending || found.mediaExpiredAt) return { outcome: 'done' };
   if (found.conversation && now.getTime() - Date.parse(found.conversation.at) < config.settleSec * 1000) {
     return { outcome: 'retry', reason: 'settling' };
   }
 
   let claimed = false;
+  let lease = new Date(now.getTime() + config.leaseSec * 1000).toISOString();
   const call = await store.updateCall(ref.residentId, ref.callId, (c) => {
-    if (!c.analysisPending || leaseActive(c, nowIso)) return null;
+    claimed = false;
+    if (!c.analysisPending || c.mediaExpiredAt || leaseActive(c, nowIso)) return null;
     claimed = true;
-    return { ...c, analysisLease: new Date(now.getTime() + config.leaseSec * 1000).toISOString() };
+    return { ...c, analysisLease: lease };
   });
   if (!claimed) return call.analysisPending ? { outcome: 'busy' } : { outcome: 'done' };
 
   const release = (patch: Partial<CallRecord>, analysedTurns?: number) =>
     store.updateCall(ref.residentId, ref.callId, (c) => {
+      if (c.mediaExpiredAt || c.analysisLease !== lease) return null;
       const { analysisLease: _lease, ...rest } = c;
       const pending = analysedTurns === undefined ? c.analysisPending : (c.transcript?.length ?? 0) > analysedTurns;
       return { ...rest, ...patch, analysisPending: pending };
@@ -149,6 +152,14 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
   try {
     const resident = await store.getResident(ref.residentId);
     if (!resident) {
+      await release({}, Number.MAX_SAFE_INTEGER);
+      return { outcome: 'done' };
+    }
+    const mediaExpired = async () => {
+      const org = await store.getOrganization(resident.orgId);
+      return callMediaState(call, org?.callMediaRetention, deps.now()).expired;
+    };
+    if (await mediaExpired()) {
       await release({}, Number.MAX_SAFE_INTEGER);
       return { outcome: 'done' };
     }
@@ -220,6 +231,19 @@ export async function analyzeCall(deps: WorkerDeps, ref: CallRef, attempt = 0): 
     });
 
     const detections = await withoutRepeats(store, call, result.detections);
+    if (await mediaExpired()) {
+      await release({}, Number.MAX_SAFE_INTEGER);
+      return { outcome: 'done' };
+    }
+    // Keep the cleanup worker out while we publish case evidence and the final analysis update.
+    const nextLease = new Date(deps.now().getTime() + config.leaseSec * 1000).toISOString();
+    let renewed = false;
+    await store.updateCall(ref.residentId, ref.callId, (c) => {
+      renewed = !c.mediaExpiredAt && c.analysisLease === lease;
+      return renewed ? { ...c, analysisLease: nextLease } : null;
+    });
+    if (!renewed) return { outcome: 'done' };
+    lease = nextLease;
     if (detections.length) {
       const { outbox } = await recordDetections(store, resident, detections, {
         now,

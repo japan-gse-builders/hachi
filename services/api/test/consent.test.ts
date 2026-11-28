@@ -1,9 +1,73 @@
 import { hasCallConsent, PRIVACY_NOTICE } from '@hachi/core';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
-import { fakeSigner, FakeVerifier, makeResident, NOW, residentInput, setup } from './helpers.js';
+import { call, FakeVerifier, makeResident, NOW, residentInput, setup, wellbeing } from './helpers.js';
 
 const answer = { accepted: true, noticeVersion: PRIVACY_NOTICE.version };
+
+describe('independent consent withdrawal', () => {
+  it('stops call approval and records who withdrew it while family sharing still works', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    await store.addCalls([call()]);
+    const withdraw = (who: string) => app.inject({
+      method: 'PATCH', url: '/api/residents/res-1', ...as(who), payload: { withdrawCallConsent: true },
+    });
+    expect((await withdraw('otherStaff')).statusCode).toBe(403);
+    expect((await withdraw('outsider')).statusCode).toBe(404);
+    const saved = (await withdraw('admin')).json();
+    expect(saved.callConsent).toMatchObject({
+      accepted: false, recordedBy: 'staff-1',
+      lastWithdrawal: { by: 'staff-3', name: 'Ito', at: NOW.toISOString(), revision: 1 },
+    });
+    expect(saved.consent).toMatchObject({ shareMood: true });
+    expect(await store.listAudit('org-1', { limit: 1 })).toEqual([
+      expect.objectContaining({ actor: expect.objectContaining({ uid: 'staff-3' }), at: NOW.toISOString(), detail: expect.objectContaining({ withdrawal: 'calls' }) }),
+    ]);
+    const dashboard = (await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyEmail') })).json();
+    expect(dashboard.nextCallAt).toBeNull();
+    expect(dashboard.calls[0].summary).toMatchObject({ health: 'A little tired' });
+    expect((await withdraw('staff')).json().callConsent).toEqual(saved.callConsent);
+    const approve = (payload: object) => app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload });
+    expect((await approve({ callConsent: answer })).statusCode).toBe(409);
+    expect((await approve({ callConsent: { ...answer, revision: 1 } })).json().callConsent).toMatchObject({
+      accepted: true, lastWithdrawal: saved.callConsent.lastWithdrawal,
+    });
+    expect((await withdraw('admin')).statusCode).toBe(409);
+    expect((await approve({ withdrawCallConsent: true, callConsentRevision: 1 })).json().callConsent).toMatchObject({
+      accepted: false, lastWithdrawal: { revision: 2 },
+    });
+  });
+
+  it('withholds historic summaries, generated headlines and mood without stopping calls', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    await store.addCalls([call({ wellbeing: wellbeing([{ id: 'mood.lonely', turn: 1, basis: 'said', confidence: 0.99 }], 'Private headline') })]);
+    const patch = (payload: object) => app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload });
+    const saved = (await patch({ shareMood: false })).json();
+    expect(saved.consent).toMatchObject({ shareMood: false, lastWithdrawal: { by: 'staff-1', at: NOW.toISOString(), revision: 1 } });
+    expect(saved.callConsent.accepted).toBe(true);
+    const response = await app.inject({ method: 'GET', url: '/api/family/residents/res-1/dashboard', ...as('familyEmail') });
+    expect(response.json()).toMatchObject({ nextCallAt: expect.any(String), glance: { shareMood: false, latest: { headline: null, domains: { mood: 'unmentioned' } } } });
+    expect(response.json().calls[0]).toMatchObject({ connected: true, summary: null, headline: null, tags: [] });
+    expect(response.body).not.toContain('Private headline');
+    expect((await patch({ shareMood: true })).statusCode).toBe(409);
+    expect((await patch({ shareMood: true, familySharingRevision: 1 })).json().consent).toMatchObject({
+      shareMood: true, lastWithdrawal: saved.consent.lastWithdrawal,
+    });
+  });
+
+  it('preserves a family withdrawal through fresh call approval', async () => {
+    const { app, as, store } = setup();
+    await store.createResident(makeResident('res-1'));
+    const patch = (payload: object) => app.inject({ method: 'PATCH', url: '/api/residents/res-1', ...as('staff'), payload });
+    expect((await patch({ callConsent: answer, withdrawCallConsent: true })).statusCode).toBe(400);
+    await patch({ shareMood: false });
+    await patch({ withdrawCallConsent: true });
+    const res = await patch({ callConsent: { ...answer, revision: 1 } });
+    expect(res.json()).toMatchObject({ callConsent: { accepted: true }, consent: { shareMood: false } });
+  });
+});
 
 describe('privacy notice and first-use approval', () => {
   it('serves the shared notice without signing in, while resident data stays protected', async () => {
@@ -37,7 +101,7 @@ describe('privacy notice and first-use approval', () => {
   it('starts a new resident’s baseline and screening rotation at approval, even weeks after saving details', async () => {
     const { store, as } = setup();
     const clock = { now: NOW };
-    const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, now: () => clock.now, newId: () => 'res-1' });
+    const app = buildApp({ store, verifier: new FakeVerifier(), now: () => clock.now, newId: () => 'res-1' });
     const pending = await app.inject({ method: 'POST', url: '/api/residents', ...as('staff'), payload: residentInput() });
     expect(pending.json().serviceStartPending).toBe(true);
     clock.now = new Date(NOW.getTime() + 40 * 86_400_000);

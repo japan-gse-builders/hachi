@@ -1,7 +1,7 @@
 import { emptyLedger, healthyGateway, type GatewayBreaker, type SpendLedger } from '@hachi/core';
-import type { Firestore, Transaction } from 'firebase-admin/firestore';
+import { FieldPath, type Firestore, type Transaction } from 'firebase-admin/firestore';
 import { byJoined, membershipId, type AuditEntry, type Invitation, type Membership, type Organization } from './accounts.js';
-import type { CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
+import type { CallMediaCursor, CallRecord, CaseEvent, OutboxEntry, OutboxStatus, Resident, StoredCase } from './model.js';
 import { NotFoundError, type AccountStore, type CaseMutation, type ListCallsOptions, type Roster, type Store } from './types.js';
 
 const BATCH_LIMIT = 400;
@@ -104,6 +104,24 @@ export class FirestoreStore implements Store, AccountStore {
   }
 
   async addCalls(calls: CallRecord[]): Promise<void> {
+    if (calls.some((c) => c.source === 'imported')) {
+      // A backdated import can fall behind the cleanup cursor. Rewind it atomically with the
+      // import, and change its revision so a sweep already running cannot restore the old cursor.
+      for (let i = 0; i < calls.length; i += BATCH_LIMIT / 2) {
+        const chunk = calls.slice(i, i + BATCH_LIMIT / 2);
+        const refs = [...new Set(chunk.filter((c) => c.source === 'imported').map((c) => c.residentId))].map((id) => this.residentsCol().doc(id));
+        await this.db.runTransaction(async (tx) => {
+          const residents = refs.length ? await tx.getAll(...refs) : [];
+          for (const snap of residents) {
+            if (!snap.exists) continue;
+            const resident = snap.data() as Resident;
+            tx.update(snap.ref, { mediaScan: { importRevision: (resident.mediaScan?.importRevision ?? 0) + 1 } });
+          }
+          for (const c of chunk) tx.set(this.callsCol(c.residentId).doc(c.id), c);
+        });
+      }
+      return;
+    }
     for (let i = 0; i < calls.length; i += BATCH_LIMIT) {
       const batch = this.db.batch();
       for (const c of calls.slice(i, i + BATCH_LIMIT)) batch.set(this.callsCol(c.residentId).doc(c.id), c);
@@ -117,6 +135,23 @@ export class FirestoreStore implements Store, AccountStore {
     if (opts.limit) q = q.limit(opts.limit);
     const snap = await q.get();
     return snap.docs.map((d) => d.data() as CallRecord);
+  }
+
+  async listCallsForMediaExpiry(residentId: string, through: string, after: CallMediaCursor | undefined, limit: number): Promise<CallMediaCursor[]> {
+    let q = this.callsCol(residentId).where('startedAt', '<=', through).orderBy('startedAt').orderBy(FieldPath.documentId());
+    if (after) q = q.startAfter(after.startedAt, after.id);
+    const snap = await q.select('startedAt').limit(limit).get();
+    return snap.docs.map((doc) => ({ id: doc.id, startedAt: doc.get('startedAt') as string }));
+  }
+
+  async listDueMediaPurges(residentId: string, through: string, limit: number): Promise<CallRecord[]> {
+    const snap = await this.callsCol(residentId).where('mediaPurgeDueAt', '<=', through).orderBy('mediaPurgeDueAt').limit(limit).get();
+    return snap.docs.map((d) => d.data() as CallRecord);
+  }
+
+  async listOrganizationsWithMediaRetention(): Promise<Organization[]> {
+    const snap = await this.db.collection('organizations').where('callMediaRetention.days', '>=', 1).get();
+    return snap.docs.map((d) => d.data() as Organization);
   }
 
   async getCase(id: string): Promise<StoredCase | null> {

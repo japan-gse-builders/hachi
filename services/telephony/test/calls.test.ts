@@ -1,6 +1,6 @@
 import { callReservationMicros, claimProbe, committedMicros, liveCallMicros, parseSpendSettings, recordGatewayFailure, recordGatewaySuccess, spendMonth, USD } from '@hachi/core';
 import { MemoryStore, NotFoundError } from '@hachi/store';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { emergencyTransfer } from '../src/bridge.js';
 import {
   applyCallStatus,
@@ -15,6 +15,54 @@ import {
 import { BASE_URL, makeDeps, NOW, resident, retryable, unverified } from './fixtures.js';
 
 const INPUT = { residentId: 'res-1', localDate: '2026-10-02', attempt: 0 };
+
+const withdraw = { at: NOW.toISOString(), by: 'staff-1', revision: 1 };
+
+describe('withdrawn call approval', () => {
+  it('rejects queued daily and retry tasks even after a new approval', async () => {
+    const { deps, store, queue, telephony } = makeDeps();
+    await store.createResident(resident('res-1'));
+    await dispatchDueCalls(deps);
+    const queued = parsePlaceCallInput(queue.tasks[0]!.body, 3)!;
+    await store.updateResident('res-1', (r) => ({ ...r, callConsent: { ...r.callConsent!, accepted: false, lastWithdrawal: withdraw } }));
+    expect((await dispatchDueCalls(deps)).alreadyQueued).toBe(0);
+    expect(await placeCall(deps, queued, 0)).toEqual({ outcome: 'skipped', reason: 'consent_required' });
+    await store.updateResident('res-1', (r) => ({ ...r, callConsent: { ...r.callConsent!, accepted: true } }));
+    expect(await placeCall(deps, { ...queued, attempt: 1 }, 0)).toEqual({ outcome: 'skipped', reason: 'consent_required' });
+    expect(telephony.calls).toHaveLength(0);
+    expect((await placeCall(deps, { ...queued, consentRevision: 1 }, 0)).outcome).toBe('placed');
+    expect((await store.getCall('res-1', '2026-10-02-0'))?.consentRevision).toBe(1);
+  });
+
+  it('checks consent again after reserving spend and stops before Twilio', async () => {
+    const { deps, store, telephony } = makeDeps();
+    await store.createResident(resident('res-1'));
+    const mutateSpend = store.mutateSpendLedger.bind(store);
+    vi.spyOn(store, 'mutateSpendLedger').mockImplementationOnce(async (...args) => {
+      const reserved = await mutateSpend(...args);
+      await store.updateResident('res-1', (r) => ({ ...r, callConsent: { ...r.callConsent!, accepted: false, lastWithdrawal: withdraw } }));
+      return reserved;
+    });
+    expect(await placeCall(deps, INPUT, 0)).toEqual({ outcome: 'skipped', reason: 'consent_required' });
+    expect(telephony.calls).toHaveLength(0);
+    expect(await store.getCall('res-1', '2026-10-02-0')).toMatchObject({ status: 'failed', failure: { retryable: false, code: 'consent_required' } });
+    expect((await store.getResident('res-1'))?.callSlot).toBeUndefined();
+    expect(committedMicros((await store.getSpendLedger(spendMonth(NOW)))!)).toBe(0);
+  });
+
+  it('does not create another retry when Twilio reports a failed call after withdrawal', async () => {
+    const { deps, store, queue } = makeDeps();
+    await store.createResident(resident('res-1'));
+    const result = await placeCall(deps, INPUT, 0);
+    if (result.outcome !== 'placed') throw new Error('expected a placed call');
+    await store.updateResident('res-1', (r) => ({ ...r, callConsent: { ...r.callConsent!, accepted: false, lastWithdrawal: withdraw } }));
+    const status = await applyCallStatus(deps, { residentId: 'res-1', callId: '2026-10-02-0' }, {
+      CallStatus: 'failed', CallSid: result.providerCallId,
+    });
+    expect(status).toEqual({ status: 'failed', retryScheduled: false });
+    expect(queue.tasks).toHaveLength(0);
+  });
+});
 
 describe('dispatchDueCalls', () => {
   it('does not queue synthetic demo patients even in a verified company', async () => {

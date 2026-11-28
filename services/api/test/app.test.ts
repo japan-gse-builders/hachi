@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { CASE_CALLS } from '../src/views.js';
 import { MemoryStore } from '@hachi/store';
-import { call, detection, fakeSigner, FakeVerifier, makeResident, NOW, residentInput, said, seedAccounts, setup, storedCase, wellbeing } from './helpers.js';
+import { call, detection, FakeVerifier, makeResident, NOW, residentInput, said, seedAccounts, setup, storedCase, wellbeing } from './helpers.js';
 
 describe('health and authentication', () => {
   it('serves /healthz and /health without a token', async () => {
@@ -20,7 +20,6 @@ describe('health and authentication', () => {
     const app = buildApp({
       store,
       verifier: new FakeVerifier(),
-      signer: fakeSigner,
       corsOrigins: ['http://localhost:5173'],
     });
     const preflight = await app.inject({
@@ -76,7 +75,7 @@ describe('health and authentication', () => {
     store.listResidents = async () => {
       throw new Error('secret database detail');
     };
-    const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner });
+    const app = buildApp({ store, verifier: new FakeVerifier() });
     const res = await app.inject({ method: 'GET', url: '/api/residents', headers: { authorization: 'Bearer staff' } });
     expect(res.statusCode).toBe(500);
     expect(res.body).not.toContain('secret');
@@ -333,15 +332,17 @@ describe('triage queue and cases (QUE-01..03)', () => {
     expect(items.map((i: { caseId: string }) => i.caseId)).toEqual(['emergency', 'watch-boosted', 'watch']);
   });
 
-  it('shows case details with evidence audio and transcript (QUE-02)', async () => {
+  it('shows case evidence with staff-only audio and transcript actions (QUE-02)', async () => {
     const { app, as, store } = await seeded();
     await store.addCalls([call({ id: 'call-0', startedAt: '2026-09-30T01:00:00.000Z', audioUri: undefined })]);
     const res = await app.inject({ method: 'GET', url: '/api/cases/emergency', ...as('staff') });
     expect(res.statusCode).toBe(200);
     const d = res.json();
     expect(d.case).toMatchObject({ id: 'emergency', ruleName: '急な体調の異変', urgency: 'emergency', staffUrgency: null, staffScoreOffset: 0 });
-    expect(d.detections[0].evidence[0].audioUrl).toBe('https://signed.example/gs%3A%2F%2Fhachi-audio%2Fres-1%2Fcall-1.wav');
-    expect(d.calls.find((c: { id: string }) => c.id === 'call-1').transcript).toHaveLength(2);
+    expect(d.detections[0].evidence[0]).toMatchObject({ recordingAvailable: true, media: { expired: false, expiresAt: null } });
+    expect(d.calls.find((c: { id: string }) => c.id === 'call-1')).toMatchObject({ recordingAvailable: true, hasTranscript: true });
+    expect(res.body).not.toContain('gs://');
+    expect(d.calls.find((c: { id: string }) => c.id === 'call-1').transcript).toBeUndefined();
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').transcript).toBeUndefined();
     expect(d.calls.find((c: { id: string }) => c.id === 'call-0').hasTranscript).toBe(true);
     expect(d.resident.householdNotes).toBeNull();
@@ -970,7 +971,7 @@ describe('who is responsible for a resident, and which family can see them (FAM-
   });
 
   it('allows DELETE from the browser', async () => {
-    const app = buildApp({ store: new MemoryStore(), verifier: new FakeVerifier(), signer: fakeSigner, corsOrigins: ['http://localhost:5173'] });
+    const app = buildApp({ store: new MemoryStore(), verifier: new FakeVerifier(), corsOrigins: ['http://localhost:5173'] });
     const preflight = await app.inject({
       method: 'OPTIONS',
       url: '/api/residents/res-1/owner',

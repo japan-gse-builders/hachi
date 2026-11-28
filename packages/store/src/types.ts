@@ -1,6 +1,6 @@
 import type { GatewayBreaker, SpendLedger } from '@hachi/core';
 import type { AuditEntry, Invitation, Membership, Organization } from './accounts.js';
-import type { CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
+import type { CallMediaCursor, CallRecord, CaseEvent, OutboxEntry, Resident, StoredCase } from './model.js';
 
 export class NotFoundError extends Error {
   constructor(what: string) {
@@ -31,6 +31,7 @@ export interface Store {
   findResidentsByFamilyContact(contact: string): Promise<Resident[]>;
   /** Here as well as in `AccountStore`: the workers ask it whether they may reach people (`mayContactPeople`). */
   getOrganization(id: string): Promise<Organization | null>;
+  listOrganizationsWithMediaRetention(): Promise<Organization[]>;
 
   addCalls(calls: CallRecord[]): Promise<void>;
   /** Returns false (and writes nothing) if a call with the same id already exists. */
@@ -40,6 +41,9 @@ export interface Store {
   updateCall(residentId: string, callId: string, fn: (c: CallRecord) => CallRecord | null): Promise<CallRecord>;
   /** Newest first. */
   listCalls(residentId: string, opts?: ListCallsOptions): Promise<CallRecord[]>;
+  /** Scan oldest first, using the document id to break ties on startedAt. */
+  listCallsForMediaExpiry(residentId: string, through: string, after: CallMediaCursor | undefined, limit: number): Promise<CallMediaCursor[]>;
+  listDueMediaPurges(residentId: string, through: string, limit: number): Promise<CallRecord[]>;
 
   getCase(id: string): Promise<StoredCase | null>;
   putCase(c: StoredCase): Promise<void>;

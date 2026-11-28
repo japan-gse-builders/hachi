@@ -266,6 +266,8 @@
   .daily-call-schedule { scroll-margin-block-start: var(--space-5); }
   .daily-call-schedule input[type="time"] { max-inline-size: 16rem; font-variant-numeric: tabular-nums; }
   .daily-call-schedule .schedule-time { font-size: var(--heading-section); }
+  .resident-consent > section + section { margin-top: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+  .retention-setting input { max-inline-size: 14rem; font-variant-numeric: tabular-nums; }
   .details-head { justify-content: space-between; }
   .details-head > h2 { margin: 0; }
   .portrait-field { display: grid; gap: var(--space-2); margin-top: var(--space-3); }

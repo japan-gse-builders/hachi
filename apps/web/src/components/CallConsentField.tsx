@@ -1,12 +1,14 @@
 import { PRIVACY_NOTICE } from '../privacy';
 import { PrivacyNotice } from './PrivacyNotice';
 
-export function CallConsentField({ required = false }: { required?: boolean }) {
+export function CallConsentField({ required = false, renewal = false }: { required?: boolean; renewal?: boolean }) {
   return (
     <fieldset className="stack">
-      <legend>Before the first call</legend>
+      <legend>{renewal ? 'Before restarting calls' : 'Before the first call'}</legend>
       <p>Read this short explanation to the patient and answer their questions. They can reply in their own words; they do not need to read a script aloud.</p>
-      <blockquote>{PRIVACY_NOTICE.firstUsePrompt}</blockquote>
+      <blockquote>{renewal
+        ? 'Hachi is an AI that calls daily. Calls are recorded and analyzed with Google Gemini to help your care team. Hachi may contact your care team and family in an emergency. Your decision about regular family updates is separate. Do you agree to restart calls?'
+        : PRIVACY_NOTICE.firstUsePrompt}</blockquote>
       <p><strong>A brief reply is enough:</strong> “{PRIVACY_NOTICE.agreement}”</p>
       <details>
         <summary>Full privacy notice and support</summary>
