@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { applyDetections, planNotifications, type CaseChange, type ContactChannel, type Detection, type Locale } from '@hachi/core';
+import { applyDetections, familyEmergencyNotice, planNotifications, type CaseChange, type ContactChannel, type Detection, type Locale } from '@hachi/core';
 import type { OutboxEntry, Resident } from './model.js';
 import type { Store } from './types.js';
 
@@ -63,7 +63,20 @@ export async function recordDetections(
       locale: opts.locale,
     })
       .filter((m) => !skip.has(m.channel))
-      .map((m) => ({ ...m, id: outboxId(m.idempotencyKey), residentId: resident.id, orgId: resident.orgId, status: 'pending' as const, attempts: 0, createdAt })),
+      .map((m) => ({
+        ...m,
+        ...(m.recipient === 'family' ? {
+          familySharingRevision: resident.consent?.lastWithdrawal?.revision ?? 0,
+          familyAlertLocale: opts.locale,
+          ...(!resident.consent?.shareMood ? familyEmergencyNotice(resident.name, opts.locale, m.channel) : {}),
+        } : {}),
+        id: outboxId(m.idempotencyKey),
+        residentId: resident.id,
+        orgId: resident.orgId,
+        status: 'pending' as const,
+        attempts: 0,
+        createdAt,
+      })),
   );
   const outbox = await store.enqueueOutbox(entries);
   return { changes, outbox };

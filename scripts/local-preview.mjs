@@ -48,7 +48,7 @@ async function makeApi() {
   }
   await store.addCalls(data.calls);
   for (const c of data.cases) await store.putCase(c);
-  return buildApp({store, verifier, signer: {sign: async () => {throw new Error('No recordings in the local preview');}}});
+  return buildApp({store, verifier});
 }
 
 let api = await makeApi();

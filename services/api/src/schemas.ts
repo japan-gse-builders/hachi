@@ -1,4 +1,4 @@
-import { isValidTimeZone, PRIVACY_NOTICE, URGENCIES } from '@hachi/core';
+import { isValidTimeZone, MAX_CALL_MEDIA_RETENTION_DAYS, PRIVACY_NOTICE, URGENCIES } from '@hachi/core';
 import { RESIDENT_PORTRAITS } from '@hachi/store';
 import { z } from 'zod';
 
@@ -47,6 +47,7 @@ const callConsentSchema = z.object({
   accepted: z.literal(true),
   noticeVersion: z.literal(PRIVACY_NOTICE.version),
 }).strict();
+const consentRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
 /** USR-01, USR-02, USR-03 */
 export const residentInputSchema = z.object({
@@ -75,7 +76,14 @@ export const residentPatchSchema = z
     active: z.boolean().optional(),
     /** Staff record what the resident told them; `recordedAt` and `recordedBy` are the server's. */
     shareMood: z.boolean().optional(),
-    callConsent: callConsentSchema.optional(),
+    familySharingRevision: consentRevision.optional(),
+    callConsent: callConsentSchema.extend({ revision: consentRevision.optional() }).optional(),
+    withdrawCallConsent: z.literal(true).optional(),
+    callConsentRevision: consentRevision.optional(),
+  })
+  .refine((patch) => !patch.callConsent || !patch.withdrawCallConsent, {
+    message: 'Record agreement and withdrawal separately',
+    path: ['callConsent'],
   });
 export type ResidentPatch = z.infer<typeof residentPatchSchema>;
 
@@ -143,7 +151,12 @@ const displayName = shortText(100);
 export const organizationCreateSchema = z.object({ name: orgName, timeZone: timeZone.default('Asia/Tokyo') }).strict();
 
 export const organizationPatchSchema = z
-  .object({ name: orgName, timeZone, billingEmail: email.pipe(z.string().max(254)) })
+  .object({
+    name: orgName,
+    timeZone,
+    billingEmail: email.pipe(z.string().max(254)),
+    callMediaRetentionDays: z.number().int().min(1).max(MAX_CALL_MEDIA_RETENTION_DAYS),
+  })
   .partial()
   .strict()
   .refine((p) => Object.keys(p).length > 0, { message: 'Nothing to update' });

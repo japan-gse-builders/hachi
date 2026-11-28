@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { setCallMediaRetention } from '@hachi/core';
 import { mayContactPeople, NotFoundError, type AccountStore, type Membership, type StaffRef, type Store } from '@hachi/store';
 import {
   acceptance,
@@ -214,7 +215,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
   app.get('/api/organization', async (req) => {
     const staff = await requireStaff(req);
     const { org } = staff;
-    const base = { id: org.id, name: org.name, timeZone: org.timeZone, role: staff.role, verified: mayContactPeople(org) };
+    const base = {
+      id: org.id, name: org.name, timeZone: org.timeZone, role: staff.role, verified: mayContactPeople(org),
+      callMediaRetentionDays: org.callMediaRetention?.days ?? null,
+    };
     if (!(staff.role === 'owner' || staff.role === 'admin')) return base;
     const [residents, members, pending] = await Promise.all([store.listResidents(org.id), store.listMembers(org.id), store.listPendingInvitations(org.id)]);
     return {
@@ -237,6 +241,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.timeZone !== undefined ? { timeZone: patch.timeZone } : {}),
       ...(patch.billingEmail !== undefined ? { billing: { ...o.billing, email: patch.billingEmail } } : {}),
+      ...(patch.callMediaRetentionDays !== undefined
+        ? { callMediaRetention: setCallMediaRetention(o.callMediaRetention, patch.callMediaRetentionDays, now()) } : {}),
       updatedAt: at,
     }));
     if (patch.name !== undefined && patch.name !== staff.org.name) {
@@ -249,7 +255,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       target: { type: 'organization', id: saved.id, label: saved.name },
       detail: { fields: Object.keys(patch).sort().join(',') },
     });
-    return { id: saved.id, name: saved.name, timeZone: saved.timeZone, billing: { plan: saved.billing.plan, email: saved.billing.email, limits: saved.billing.limits } };
+    return {
+      id: saved.id, name: saved.name, timeZone: saved.timeZone, callMediaRetentionDays: saved.callMediaRetention?.days ?? null,
+      billing: { plan: saved.billing.plan, email: saved.billing.email, limits: saved.billing.limits },
+    };
   });
 
   // ---- Members ----

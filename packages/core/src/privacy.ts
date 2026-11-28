@@ -1,6 +1,6 @@
 /** Shared by the public page, staff enrollment and the API. Keep this module browser-safe. */
 export const PRIVACY_NOTICE = {
-  version: '2026-10-09.2',
+  version: '2026-11-28',
   title: 'Privacy and your choice',
   introduction: 'Hachi makes daily telephone check-ins to help your care team notice when you may need support. Your care team can explain the key points and answer questions before you decide whether to take part.',
   sections: [
@@ -21,7 +21,7 @@ export const PRIVACY_NOTICE = {
       title: 'What staff and family can see',
       paragraphs: [
         'Authorized care staff can see recordings, transcripts, analysis and care cases. Your registered family contact can see short plain-language summaries, call times, alerts, case status and your care team’s contact details. Family cannot access recordings, transcripts, direct quotes or speech analysis.',
-        'Your first-use approval includes short family updates about your mood and loneliness. There is no separate approval question. Ask your care team if you want to change what is shared with your family.',
+        'Your first-use approval includes short family updates about your mood and loneliness. You can ask your care team to withdraw permission for family updates separately from permission for calls.',
         'If Hachi notices a possible emergency, it may alert and phone your registered staff and family contacts without asking again during that call.',
       ],
     },
@@ -34,7 +34,7 @@ export const PRIVACY_NOTICE = {
     {
       title: 'Keeping your information',
       paragraphs: [
-        'Hachi does not automatically delete care records or recordings. They remain until the organization running your service deletes them under its retention policy. Ask your care team how long they keep them and how to request access, corrections or deletion.',
+        'Your care organization can set how long recordings and transcripts are kept. When that period ends, staff access ends and Hachi removes them automatically. Summaries and case records follow your care organization’s policy. Ask your care team how long they keep each kind of information.',
         'Stopping calls does not delete past records. A deletion request is a separate request to your care team.',
       ],
     },
@@ -42,7 +42,7 @@ export const PRIVACY_NOTICE = {
       title: 'Your choice',
       paragraphs: [
         'Taking part is optional. Before calls begin, your care team explains this notice and records your explicit agreement. You only need to give this approval when you first start using Hachi; it is not requested again on daily calls.',
-        'You can end any call by hanging up. To stop future Hachi calls, contact the care team that enrolled you and ask them to pause the service. Tell them separately if you want to change family sharing or request deletion.',
+        'You can end any call by hanging up. Contact the care team that enrolled you to withdraw permission for future calls, change family sharing or request deletion.',
       ],
     },
     {
@@ -57,12 +57,29 @@ export const PRIVACY_NOTICE = {
   agreement: 'Yes, I agree.',
 } as const;
 
-/** The resident's first-use approval, recorded by the staff member who heard it. */
+export interface ConsentWithdrawal {
+  at: string;
+  by: string;
+  name?: string;
+  /** Tasks created under an earlier consent stay invalid even if the resident approves again. */
+  revision: number;
+}
+
+/** The resident's approval, recorded by the staff member who heard it. */
 export interface CallConsent {
   accepted: boolean;
   noticeVersion: string;
   recordedAt: string;
   recordedBy: string;
+  lastWithdrawal?: ConsentWithdrawal;
+}
+
+export function callConsentRevision(consent: CallConsent | undefined): number {
+  return consent?.lastWithdrawal?.revision ?? 0;
+}
+
+export function permitsCall(consent: CallConsent | undefined, revision = 0): boolean {
+  return hasCallConsent(consent) && callConsentRevision(consent) === revision;
 }
 
 /** A newer notice does not make an existing first-use approval expire. */

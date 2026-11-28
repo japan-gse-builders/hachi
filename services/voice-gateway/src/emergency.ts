@@ -108,7 +108,9 @@ export class EmergencyService implements EmergencyRaiser {
       skipChannels: ['voice'],
     });
     const caseId = changes[0]!.caseId;
-    await store.updateCall(i.resident.id, i.callId, (c) => (c.emergency ? null : { ...c, emergency: { at, caseId, quote: i.quote } }));
+    await store.updateCall(i.resident.id, i.callId, (c) => c.emergency ? null : ({
+      ...c, emergency: { at, caseId, ...(c.mediaExpiredAt ? {} : { quote: i.quote }) },
+    }));
     await queue.enqueue({
       name: `emergency-${i.resident.id}-${i.callId}`,
       path: EMERGENCY_TRANSFER_PATH,

@@ -23,6 +23,7 @@ import {
   missedCheckIn,
   missedReason,
   nextCallAt,
+  permitsCall,
   overallStatus,
   prioritize,
   RULE_NAMES,
@@ -38,6 +39,7 @@ import {
   visibleToFamily,
   wellbeingTag,
   type AnalysisGap,
+  type CallMediaRetention,
   type CheckInAttempt,
   type DomainState,
   type LifeDomain,
@@ -48,12 +50,7 @@ import {
   type Turn,
   type WellbeingTagId,
 } from '@hachi/core';
-import { lonelinessFor, type CallRecord, type CallWellbeing, type CaseEvent, type Resident, type ResidentPortrait, type StoredCase } from '@hachi/store';
-
-export interface MediaSigner {
-  /** Returns a short-lived HTTPS URL for a gs:// recording. */
-  sign(gsUri: string): Promise<string>;
-}
+import { callMediaState, lonelinessFor, type CallRecord, type CallWellbeing, type CaseEvent, type Resident, type ResidentPortrait, type StoredCase } from '@hachi/store';
 
 function prioritizeStored(c: StoredCase, residentCases: StoredCase[], r: Resident, now: Date, locale: Locale): PrioritizedCase {
   const p = prioritize(c, residentCases, r.vulnerability, now, locale);
@@ -288,6 +285,7 @@ export interface IncompleteAnalysis {
   notChecked: string;
   checked: string;
   reanalysisRequested: boolean;
+  mediaExpired?: true;
 }
 
 export interface IncompleteView {
@@ -312,6 +310,7 @@ export function buildIncompleteAnalyses(
   entries: readonly { resident: Resident; calls: readonly CallRecord[] }[],
   now: Date,
   locale: Locale,
+  retention?: CallMediaRetention,
 ): IncompleteView {
   const since = now.getTime() - INCOMPLETE_DAYS * 86_400_000;
   const items: IncompleteAnalysis[] = [];
@@ -321,6 +320,7 @@ export function buildIncompleteAnalyses(
       const gaps = analysisGaps(c);
       const text = describeAnalysisGaps(gaps, locale);
       if (!text) continue;
+      const expired = callMediaState(c, retention, now).expired;
       items.push({
         residentId: r.id,
         residentName: r.name,
@@ -330,7 +330,8 @@ export function buildIncompleteAnalyses(
         parts: [...new Set(gaps.map((g) => g.part))],
         reasons: [...new Set(gaps.map((g) => ANALYSIS_FAILURE_LABELS[locale][g.failure]))],
         ...text,
-        reanalysisRequested: reanalysisRequested(c),
+        reanalysisRequested: !expired && reanalysisRequested(c),
+        ...(expired ? { mediaExpired: true } : {}),
       });
     }
   }
@@ -349,16 +350,17 @@ export function callProgressView(callId: string, c: CallRecord | null, r: Reside
     const asked = r.lastStaffCall?.callId === callId ? r.lastStaffCall : undefined;
     if (!asked) return null;
     const lapsed = now.getTime() - Date.parse(asked.at) > STAFF_REQUEST_HOLD_MS;
+    const revoked = !permitsCall(r.callConsent, asked.consentRevision);
     return {
       id: callId,
-      status: lapsed ? ('failed' as const) : ('requested' as const),
+      status: lapsed || revoked ? ('failed' as const) : ('requested' as const),
       trigger: 'staff' as const,
       requestedBy: asked.requestedBy,
       startedAt: asked.at,
       endedAt: null,
       durationSec: null,
       endedBy: null,
-      failureCode: lapsed ? 'not_placed' : null,
+      failureCode: revoked ? 'consent_required' : lapsed ? 'not_placed' : null,
     };
   }
   return {
@@ -378,28 +380,21 @@ export function callProgressView(callId: string, c: CallRecord | null, r: Reside
 export const CASE_CALLS = 60;
 
 /** QUE-02. `calls` are newest first, up to HISTORY_CALLS so the baseline matches the analyzer's. */
-export async function buildCaseDetail(
+export function buildCaseDetail(
   c: StoredCase,
   r: Resident,
   residentCases: StoredCase[],
   calls: CallRecord[],
   events: CaseEvent[],
-  signer: MediaSigner,
   now: Date,
   locale: Locale,
+  retention: CallMediaRetention | undefined,
+  evidenceCalls: Map<string, CallRecord>,
 ) {
   const open = residentCases.filter((x) => x.status !== 'closed');
   const p = prioritizeStored(c, open.some((x) => x.id === c.id) ? open : [...open, c], r, now, locale);
   const shown = calls.slice(0, CASE_CALLS);
-  const callById = new Map(shown.map((x) => [x.id, x]));
-  const evidenceCallIds = new Set(c.detections.flatMap((d) => d.evidence.map((e) => e.callId)));
-  const audioUrls = new Map<string, string>();
-  await Promise.all(
-    [...evidenceCallIds].map(async (id) => {
-      const uri = callById.get(id)?.audioUri;
-      if (uri) audioUrls.set(id, await signer.sign(uri));
-    }),
-  );
+  const states = new Map([...evidenceCalls.values()].map((call) => [call.id, callMediaState(call, retention, now)]));
   return {
     case: {
       id: c.id,
@@ -454,21 +449,29 @@ export async function buildCaseDetail(
     },
     detections: c.detections.map((d) => ({
       ...d,
-      evidence: d.evidence.map((e) => ({ ...e, audioUrl: audioUrls.get(e.callId) ?? null })),
+      evidence: d.evidence.map((e) => {
+        const call = evidenceCalls.get(e.callId);
+        const media = call ? states.get(call.id)! : { expired: Boolean(retention), expiresAt: null };
+        return { ...e, quote: media.expired ? '' : e.quote, recordingAvailable: Boolean(call?.audioUri && !media.expired), media };
+      }),
     })),
-    calls: shown.map((x) => ({
-      id: x.id,
-      startedAt: x.startedAt,
-      status: x.status,
-      // Staff asked for this call (issue #13); null for the daily check-in.
-      trigger: x.trigger ?? null,
-      requestedBy: x.requestedBy ?? null,
-      durationSec: x.durationSec ?? null,
-      summary: x.summary ?? null,
-      wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, x.transcript ?? [], locale) : null,
-      hasTranscript: Boolean(x.transcript?.length),
-      transcript: evidenceCallIds.has(x.id) ? (x.transcript ?? []) : undefined,
-    })),
+    calls: shown.map((x) => {
+      const media = states.get(x.id) ?? callMediaState(x, retention, now);
+      const transcript = media.expired ? [] : (x.transcript ?? []);
+      return {
+        id: x.id,
+        startedAt: x.startedAt,
+        status: x.status,
+        trigger: x.trigger ?? null,
+        requestedBy: x.requestedBy ?? null,
+        durationSec: x.durationSec ?? null,
+        summary: x.summary ?? null,
+        wellbeing: x.wellbeing ? staffWellbeing(x.wellbeing, transcript, locale) : null,
+        hasTranscript: transcript.length > 0,
+        recordingAvailable: Boolean(x.audioUri && !media.expired),
+        media,
+      };
+    }),
     // Unusable calls are kept, marked, so staff can see e.g. a cold rather than a gap.
     speechTrend: shown
       .filter((x) => x.speech)

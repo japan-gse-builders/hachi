@@ -1,4 +1,5 @@
 import { notificationTask, type TaskQueue } from '@hachi/cloud';
+import { familyEmergencyNotice } from '@hachi/core';
 import { NotFoundError, orgMayContactPeople, recordNotificationOnCase, type DeliveryFailure, type OutboxEntry, type Store } from '@hachi/store';
 import { DeliveryError, type Senders } from './channels.js';
 
@@ -46,6 +47,7 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
   let entry: OutboxEntry;
   try {
     entry = await store.updateOutbox(id, (e) => {
+      claimed = false;
       if (e.status !== 'pending') return null;
       if (e.leaseUntil && e.leaseUntil > nowIso) return null;
       claimed = true;
@@ -83,9 +85,30 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
     return { outcome: 'skipped', error };
   }
 
+  let outgoing = entry;
+  if (entry.recipient === 'family' && (entry.kind === 'loneliness' || (!entry.kind && entry.urgency === 'emergency'))) {
+    const resident = await store.getResident(entry.residentId);
+    if (!resident || resident.orgId !== orgId) {
+      const error = { code: 'resident_unavailable', message: 'The resident is no longer available for this notification', retryable: false };
+      await finish({ status: 'skipped', lastError: error });
+      return { outcome: 'skipped', error };
+    }
+    const consent = resident.consent;
+    const allowed = consent?.shareMood && (consent.lastWithdrawal?.revision ?? 0) === (entry.familySharingRevision ?? 0);
+    if (!allowed) {
+      if (entry.kind === 'loneliness') {
+        const error = { code: 'family_sharing_not_allowed', message: 'This update no longer has the resident’s sharing approval', retryable: false };
+        await finish({ status: 'skipped', lastError: error });
+        return { outcome: 'skipped', error };
+      }
+      const locale = entry.familyAlertLocale ?? (entry.subject.startsWith('【') ? 'ja' : 'en');
+      outgoing = { ...entry, ...familyEmergencyNotice(resident.name, locale, entry.channel) };
+    }
+  }
+
   let providerId: string | undefined;
   try {
-    ({ providerId } = await sender.send(entry));
+    ({ providerId } = await sender.send(outgoing));
   } catch (err) {
     const error = failure(err);
     if (error.code === 'destination_not_allowed') {
@@ -100,7 +123,10 @@ export async function deliver(deps: WorkerDeps, id: string): Promise<DeliveryOut
     return { outcome: 'failed', error };
   }
 
-  const sent = await finish({ status: 'sent', sentAt: deps.now().toISOString(), ...(providerId ? { providerId } : {}) });
+  const sent = await finish({
+    status: 'sent', sentAt: deps.now().toISOString(), ...(providerId ? { providerId } : {}),
+    ...(outgoing !== entry ? { subject: outgoing.subject, body: outgoing.body } : {}),
+  });
   await recordNotificationOnCase(store, sent);
   return { outcome: 'sent', ...(providerId ? { providerId } : {}) };
 }

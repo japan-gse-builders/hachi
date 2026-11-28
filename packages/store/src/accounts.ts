@@ -44,6 +44,7 @@ export interface Organization {
   verifiedAt?: string;
   /** The operator's account, or 'migration' for organizations that existed before self-serve. */
   verifiedBy?: string;
+  callMediaRetention?: import('@hachi/core').CallMediaRetention;
   billing: OrgBilling;
   createdAt: string;
   /** uid of the account that created it, or 'migration'. */

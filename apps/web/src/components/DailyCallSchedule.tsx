@@ -56,7 +56,8 @@ export function DailyCallSchedule({ resident, canEdit, token, onSaved }: {
         </>
       )}
       {resident.synthetic && <p className="notice" role="note">This is a demo patient; no real calls are placed.</p>}
-      {!hasCallConsent(resident.callConsent) && <p className="notice" role="note">First-use approval is needed before calls can start.</p>}
+      {!hasCallConsent(resident.callConsent) && <p className="notice" role="note">{resident.callConsent?.lastWithdrawal
+        ? 'Call consent was withdrawn. Calls require new approval.' : 'First-use approval is needed before calls can start.'}</p>}
       {!resident.active && <p className="notice" role="note">Calls are paused. This time will be used when calls resume.</p>}
     </section>
   );

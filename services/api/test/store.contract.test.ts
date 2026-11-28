@@ -121,6 +121,25 @@ function contract(name: string, make: () => Promise<Store & AccountStore>) {
       expect((await s.listCalls('res-1', { limit: 1 })).map((c) => c.id)).toEqual(['c3']);
     });
 
+    it('walks the retention cutoff across tied timestamps and detects a backdated import', async () => {
+      const s = await make();
+      await s.createResident(makeResident('res-1'));
+      const at = '2026-09-01T00:00:00.000Z';
+      const through = '2026-09-02T00:00:00.000Z';
+      await s.addCalls([call({ id: 'a', startedAt: at }), call({ id: 'b', startedAt: at }), call({ id: 'future' })]);
+      const [first] = await s.listCallsForMediaExpiry('res-1', through, undefined, 1);
+      expect(first).toEqual({ id: 'a', startedAt: at });
+      const [second] = await s.listCallsForMediaExpiry('res-1', through, first, 1);
+      expect(second).toEqual({ id: 'b', startedAt: at });
+      await s.updateResident('res-1', (r) => ({ ...r, mediaScan: { importRevision: 0, after: second! } }));
+      await s.addCalls([call({ id: 'backdated', source: 'imported', startedAt: '2026-08-31T23:00:00.000Z' })]);
+      expect((await s.getResident('res-1'))?.mediaScan).toEqual({ importRevision: 1 });
+      expect((await s.listCallsForMediaExpiry('res-1', through, undefined, 1))[0]?.id).toBe('backdated');
+      await s.updateCall('res-1', 'a', (c) => ({ ...c, mediaExpiredAt: at, mediaPurgeDueAt: through }));
+      await s.updateCall('res-1', 'b', (c) => ({ ...c, mediaExpiredAt: at, mediaPurgeDueAt: '2026-09-02T01:00:00.000Z' }));
+      expect((await s.listDueMediaPurges('res-1', through, 3)).map((c) => c.id)).toEqual(['a']);
+    });
+
     it('stores cases and lists open ones and by resident', async () => {
       const s = await make();
       await s.putCase(storedCase({ id: 'a' }));

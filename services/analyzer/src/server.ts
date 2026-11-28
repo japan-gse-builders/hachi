@@ -9,6 +9,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { OAuth2Client } from 'google-auth-library';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { GcsRecordingDeletion } from './gcsRetention.js';
 import { GeminiReviewer } from './model.js';
 import { GcsRecordings, GeminiListener } from './voice.js';
 
@@ -34,6 +35,7 @@ const app = buildApp({
   store: new FirestoreStore(db),
   reviewer: new GeminiReviewer(ai, config.gemini.model),
   recordings: new GcsRecordings(getStorage(firebase)),
+  ...(config.recordingsBucket ? { mediaDeletion: new GcsRecordingDeletion(getStorage(firebase), config.recordingsBucket) } : {}),
   listener: new GeminiListener(ai, config.gemini.model),
   queue: queue(config.tasks.queue, config.publicBaseUrl),
   ...(config.notifierBaseUrl ? { notifications: queue(config.tasks.notifyQueue, config.notifierBaseUrl) } : {}),

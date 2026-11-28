@@ -37,7 +37,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+async function request(path: string, token: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('authorization', `Bearer ${token}`);
   if (init.body) headers.set('content-type', 'application/json');
@@ -52,6 +52,15 @@ export async function api<T>(path: string, token: string, init: RequestInit = {}
     const detail = body?.issues?.map((i) => i.message).join(' ') || body?.error;
     throw new ApiError(detail || `Request failed (${res.status})`, res.status, body);
   }
+  return res;
+}
+
+export async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const res = await request(path, token, init);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+export async function apiBlob(path: string, token: string, init: RequestInit = {}): Promise<Blob> {
+  return (await request(path, token, init)).blob();
 }

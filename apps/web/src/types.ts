@@ -96,6 +96,7 @@ export interface IncompleteAnalysis {
   notChecked: string;
   checked: string;
   reanalysisRequested: boolean;
+  mediaExpired?: true;
 }
 
 export interface IncompleteAnalyses {
@@ -174,12 +175,19 @@ export interface ContactRequest {
   requestedAt: string;
 }
 
+export interface CallMedia {
+  expired: boolean;
+  expiresAt: string | null;
+}
+
 export interface Evidence {
   callId: string;
   quote: string;
   startMs?: number;
   endMs?: number;
-  audioUrl: string | null;
+  audioUrl?: string | null;
+  recordingAvailable?: boolean;
+  media?: CallMedia;
 }
 
 export interface CaseDetail {
@@ -243,6 +251,8 @@ export interface CaseDetail {
     /** Missing from older servers; null for calls analysed before tags existed. */
     wellbeing?: StaffWellbeing | null;
     hasTranscript?: boolean;
+    recordingAvailable?: boolean;
+    media?: CallMedia;
     transcript?: { speaker: 'resident' | 'agent'; text: string; startMs: number; endMs: number }[];
   }[];
   speechTrend: SpeechPoint[];
@@ -378,7 +388,7 @@ export interface Resident {
   /** The staff member in charge, who gets the alerts: copied from the responsible staff member's account. */
   staff?: { uid?: string; name: string; phone: string; sms?: string; email?: string };
   /** Absent until a staff member has recorded what the resident agreed to, which counts as "no". */
-  consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string };
+  consent?: { shareMood?: boolean; recordedAt?: string; recordedBy?: string; lastWithdrawal?: import('./privacy').ConsentWithdrawal };
   callConsent?: import('./privacy').CallConsent;
   /** The call holding this resident's line, if any; stale once `until` has passed (issue #13). */
   callSlot?: { callId: string; at: string; until: string };

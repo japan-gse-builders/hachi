@@ -1,5 +1,6 @@
-import { extractSpeechSample, hasCallConsent } from '@hachi/core';
+import { callConsentRevision, extractSpeechSample, hasCallConsent, type ConsentWithdrawal } from '@hachi/core';
 import { normalizeEmail, normalizePhone } from './auth.js';
+import { HttpError } from './errors.js';
 import type { CallRecord, FamilyAccess, FamilyContact, Resident, ResidentOwner, StaffContact } from '@hachi/store';
 import type { CallImport, ResidentInput, ResidentPatch } from './schemas.js';
 
@@ -104,25 +105,46 @@ export function buildResident(
   };
 }
 
-export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown'): Resident {
-  const { family, shareMood, callConsent, portrait, ...rest } = patch;
-  const next: Resident = { ...r, ...rest, updatedAt: now.toISOString() };
+export function patchResident(r: Resident, patch: ResidentPatch, now: Date, staffUid = 'unknown', staffName?: string): Resident {
+  const { family, shareMood, familySharingRevision, callConsent, withdrawCallConsent, callConsentRevision: expectedRevision, portrait, ...rest } = patch;
+  const at = now.toISOString();
+  const next: Resident = { ...r, ...rest, updatedAt: at };
+  const withdrawal = (previous?: ConsentWithdrawal): ConsentWithdrawal => ({
+    at, by: staffUid, ...(staffName ? { name: staffName } : {}), revision: (previous?.revision ?? 0) + 1,
+  });
   if (portrait === null) delete next.portrait;
   else if (portrait) next.portrait = portrait;
   // Who heard it and when is the point of recording consent at all, so it is written here, not sent.
-  if (shareMood !== undefined) next.consent = { shareMood, recordedAt: now.toISOString(), recordedBy: staffUid };
-  // Preserve the first approval, even when an old form is resubmitted or the notice has changed.
+  if (shareMood !== undefined && shareMood !== r.consent?.shareMood) {
+    const previous = r.consent?.lastWithdrawal;
+    if (previous && familySharingRevision !== previous.revision) {
+      throw new HttpError(409, 'Family sharing changed. Refresh the patient’s details before recording approval.', 'consent_changed');
+    }
+    const lastWithdrawal = !shareMood && r.consent?.shareMood ? withdrawal(previous) : previous;
+    next.consent = { shareMood, recordedAt: at, recordedBy: staffUid, ...(lastWithdrawal ? { lastWithdrawal } : {}) };
+  }
+  if (withdrawCallConsent && r.callConsent && hasCallConsent(r.callConsent)) {
+    if ((expectedRevision ?? 0) !== callConsentRevision(r.callConsent)) {
+      throw new HttpError(409, 'Call approval changed. Refresh the patient’s details before recording withdrawal.', 'consent_changed');
+    }
+    next.callConsent = { ...r.callConsent, accepted: false, lastWithdrawal: withdrawal(r.callConsent.lastWithdrawal) };
+  }
   if (callConsent && !hasCallConsent(r.callConsent)) {
-    next.callConsent = { ...callConsent, recordedAt: now.toISOString(), recordedBy: staffUid };
+    const lastWithdrawal = r.callConsent?.lastWithdrawal;
+    const { revision, ...approval } = callConsent;
+    if (lastWithdrawal && revision !== lastWithdrawal.revision) {
+      throw new HttpError(409, 'Call approval changed. Refresh the patient’s details before recording approval.', 'consent_changed');
+    }
+    next.callConsent = { ...approval, recordedAt: at, recordedBy: staffUid, ...(lastWithdrawal ? { lastWithdrawal } : {}) };
     // The current first-use explanation includes family mood/loneliness updates. Keep any
     // previously recorded choice, including an opt-out, and any explicit sharing change.
-    if (shareMood === undefined && !r.consent) {
-      next.consent = { shareMood: true, recordedAt: now.toISOString(), recordedBy: staffUid };
+    if (!r.callConsent && shareMood === undefined && !r.consent) {
+      next.consent = { shareMood: true, recordedAt: at, recordedBy: staffUid };
     }
     // A delayed enrollment must still get its full baseline and first screening rotation.
     // Legacy residents and explicitly backdated imports retain their existing service start.
     if (r.serviceStartPending) {
-      next.serviceStartedAt = now.toISOString();
+      next.serviceStartedAt = at;
       delete next.serviceStartPending;
     }
   }

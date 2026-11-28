@@ -1,25 +1,21 @@
+import type { Readable } from 'node:stream';
 import type { Storage } from 'firebase-admin/storage';
-import type { MediaSigner } from './views.js';
 
-/**
- * V4 signed URLs for recordings. On Cloud Run the service account needs
- * roles/iam.serviceAccountTokenCreator on itself to sign without a key file.
- */
-export class GcsMediaSigner implements MediaSigner {
-  constructor(
-    private readonly storage: Storage,
-    private readonly allowedBucket: string,
-    private readonly ttlMs = 15 * 60 * 1000,
-  ) {}
+export interface MediaReader {
+  /** Opens a recording from private storage. No storage URL is returned to the browser. */
+  open(gsUri: string): Promise<Readable>;
+}
 
-  async sign(gsUri: string): Promise<string> {
-    const m = /^gs:\/\/([^/]+)\/(.+)$/.exec(gsUri);
-    if (!m) throw new Error(`Not a gs:// URI: ${gsUri}`);
-    if (m[1] !== this.allowedBucket) throw new Error(`Refusing to sign outside ${this.allowedBucket}: ${gsUri}`);
-    const [url] = await this.storage
-      .bucket(m[1]!)
-      .file(m[2]!)
-      .getSignedUrl({ version: 'v4', action: 'read', expires: Date.now() + this.ttlMs });
-    return url;
+export class GcsMediaReader implements MediaReader {
+  constructor(private readonly storage: Pick<Storage, 'bucket'>, private readonly allowedBucket: string) {}
+
+  async open(gsUri: string): Promise<Readable> {
+    const match = /^gs:\/\/([^/]+)\/(.+)$/.exec(gsUri);
+    if (!match) throw new Error('Invalid gs:// recording reference');
+    if (match[1] !== this.allowedBucket) throw new Error('Recording is outside the configured recordings bucket');
+    const bucket = this.storage.bucket(this.allowedBucket);
+    const name = match[2]!;
+    const [metadata] = await bucket.file(name).getMetadata();
+    return bucket.file(name, { generation: metadata.generation }).createReadStream();
   }
 }

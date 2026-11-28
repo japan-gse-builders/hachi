@@ -7,7 +7,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { buildApp } from './app.js';
 import { FirebaseAuthAdmin, FirebaseTokenVerifier } from './auth.js';
 import { loadConfig } from './config.js';
-import { GcsMediaSigner } from './gcs.js';
+import { GcsMediaReader } from './gcs.js';
 import { FirestoreStore } from '@hachi/store';
 
 const config = loadConfig(process.env);
@@ -22,7 +22,7 @@ const app = buildApp({
   store: new FirestoreStore(db),
   verifier: new FirebaseTokenVerifier(auth),
   authAdmin: new FirebaseAuthAdmin(auth),
-  signer: new GcsMediaSigner(getStorage(firebase), config.recordingsBucket),
+  recordings: new GcsMediaReader(getStorage(firebase), config.recordingsBucket),
   corsOrigins: config.corsOrigins,
   spend: config.spend,
   gateway: config.gateway,

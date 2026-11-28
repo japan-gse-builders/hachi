@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { domainStates, PRIVACY_NOTICE, type CallTag, type Case, type Detection, type SpendSettings } from '@hachi/core';
 import { buildApp, ORG_HEADER, type AppDeps } from '../src/app.js';
 import type { AuthAdmin, TokenVerifier, VerifiedToken } from '../src/auth.js';
@@ -14,7 +15,7 @@ import {
 import { buildResident } from '../src/residents.js';
 import type { ResidentInput } from '../src/schemas.js';
 import { residentInputSchema } from '../src/schemas.js';
-import type { MediaSigner } from '../src/views.js';
+import type { MediaReader } from '../src/gcs.js';
 
 export const NOW = new Date('2026-10-01T03:00:00.000Z'); // 12:00 JST
 
@@ -51,8 +52,8 @@ export class FakeVerifier implements TokenVerifier {
   }
 }
 
-export const fakeSigner: MediaSigner = {
-  sign: async (uri) => `https://signed.example/${encodeURIComponent(uri)}`,
+export const fakeRecordings: MediaReader = {
+  open: async () => Readable.from([Buffer.from('fictional WAV bytes')]),
 };
 
 export function residentInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -216,11 +217,11 @@ export function fakeAuthAdmin(): FakeAuthAdmin {
   };
 }
 
-export function setup(opts: { spend?: SpendSettings; gateway?: AppDeps['gateway']; calls?: AppDeps['calls']; now?: () => Date } = {}) {
+export function setup(opts: { spend?: SpendSettings; gateway?: AppDeps['gateway']; calls?: AppDeps['calls']; recordings?: AppDeps['recordings']; now?: () => Date } = {}) {
   const store = new MemoryStore();
   seedAccounts(store);
   const authAdmin = fakeAuthAdmin();
-  const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, authAdmin, now: () => NOW, newId: idGen(), ...opts });
+  const app = buildApp({ store, verifier: new FakeVerifier(), recordings: fakeRecordings, authAdmin, now: () => NOW, newId: idGen(), ...opts });
   const as = (token: keyof typeof TOKENS | null, org?: string) => ({
     headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(org ? { [ORG_HEADER]: org } : {}) },
   });

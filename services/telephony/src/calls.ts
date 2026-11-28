@@ -1,5 +1,6 @@
 import {
   callReservationMicros,
+  callConsentRevision,
   callTaskId,
   claimCall,
   claimSlot,
@@ -8,6 +9,7 @@ import {
   liveCallMicros,
   localDate,
   nextCallAt,
+  permitsCall,
   reserve,
   settle,
   spendMonth,
@@ -54,6 +56,7 @@ export interface PlaceCallInput {
   residentId: string;
   localDate: string;
   attempt: number;
+  consentRevision?: number;
   /** Set when staff asked Hachi to call now (issue #13). `attempt` is then always 0 and unused. */
   staff?: { seq: number; requestedBy: string };
 }
@@ -75,11 +78,14 @@ export function parsePlaceCallInput(body: unknown, maxAttempts: number): PlaceCa
   if (typeof b.residentId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(b.residentId)) return null;
   if (typeof b.localDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(b.localDate)) return null;
   if (!Number.isInteger(b.attempt) || b.attempt! < 0 || b.attempt! >= maxAttempts) return null;
-  if (b.staff === undefined) return { residentId: b.residentId, localDate: b.localDate, attempt: b.attempt! };
+  const revision = b.consentRevision;
+  if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0)) return null;
+  const input = { residentId: b.residentId, localDate: b.localDate, attempt: b.attempt!, ...(revision ? { consentRevision: revision } : {}) };
+  if (b.staff === undefined) return input;
   const st = b.staff as Partial<NonNullable<PlaceCallInput['staff']>> | null;
   if (!st || !Number.isInteger(st.seq) || st.seq! < 1 || st.seq! > 999) return null;
   if (typeof st.requestedBy !== 'string' || !UID.test(st.requestedBy) || b.attempt !== 0) return null;
-  return { residentId: b.residentId, localDate: b.localDate, attempt: 0, staff: { seq: st.seq!, requestedBy: st.requestedBy } };
+  return { ...input, staff: { seq: st.seq!, requestedBy: st.requestedBy } };
 }
 
 
@@ -114,10 +120,11 @@ export async function dispatchDueCalls(deps: CallDeps): Promise<DispatchResult> 
       if (!isDue(r.callTime, r.timeZone, windowStart, now)) return;
       if (!(await mayCall(r.orgId))) return;
       const date = localDate(nextCallAt(r.callTime, r.timeZone, windowStart), r.timeZone);
+      const consentRevision = callConsentRevision(r.callConsent);
       const outcome = await deps.queue.enqueue({
         name: callTaskId(r.id, date, 0),
         path: PLACE_CALL_PATH,
-        body: { residentId: r.id, localDate: date, attempt: 0 } satisfies PlaceCallInput,
+        body: { residentId: r.id, localDate: date, attempt: 0, ...(consentRevision ? { consentRevision } : {}) } satisfies PlaceCallInput,
       });
       if (outcome === 'created') result.enqueued++;
       else result.alreadyQueued++;
@@ -243,6 +250,8 @@ async function deferDaily(deps: CallDeps, input: PlaceCallInput): Promise<void> 
 export async function scheduleRetry(deps: CallDeps, input: PlaceCallInput): Promise<boolean> {
   const next = input.attempt + 1;
   if (next >= deps.config.maxAttempts) return false;
+  const resident = await deps.store.getResident(input.residentId);
+  if (!resident?.active || !permitsCall(resident.callConsent, input.consentRevision)) return false;
   await deps.queue.enqueue({
     name: callTaskId(input.residentId, input.localDate, next),
     path: PLACE_CALL_PATH,
@@ -321,7 +330,7 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     : // Demo residents are not people; whatever number they carry is not theirs to be rung on.
       r.synthetic
       ? 'synthetic'
-      : !hasCallConsent(r.callConsent)
+      : !permitsCall(r.callConsent, input.consentRevision)
         ? 'consent_required'
         : !(await orgMayContactPeople(deps.store, r.orgId))
           ? 'organization_unverified'
@@ -351,6 +360,7 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     localDate: input.localDate,
     dialLease: { token, at },
     streamToken,
+    ...(input.consentRevision ? { consentRevision: input.consentRevision } : {}),
   });
 
   if (!created) {
@@ -413,16 +423,30 @@ export async function placeCall(deps: CallDeps, input: PlaceCallInput, taskRetry
     return { outcome: 'skipped', reason: 'budget_exhausted' };
   }
 
+  // Consent can change while the worker acquires the line, checks the gateway, or reserves spend.
+  const latest = await deps.store.getResident(r.id);
+  if (!latest?.active || !permitsCall(latest.callConsent, input.consentRevision)) {
+    const reason = latest?.active ? 'consent_required' : 'inactive';
+    await deps.store.updateCall(r.id, callId, (c) => ({
+      ...withoutLease(c),
+      status: 'failed',
+      endedAt: deps.now().toISOString(),
+      failure: { ...REFUSED[reason], retryable: false },
+    }));
+    await Promise.all([settleCallSpend(deps, r.id, callId, 0), releaseLine(deps, r.id, callId)]);
+    return { outcome: 'skipped', reason };
+  }
+
   const query = `residentId=${encodeURIComponent(r.id)}&callId=${encodeURIComponent(callId)}`;
 
   try {
     const { providerCallId } = await deps.telephony.placeCall({
-      to: r.phone,
+      to: latest.phone,
       from: deps.config.twilio.voiceFrom,
       twiml: buildCallTwiml({
         residentId: r.id,
         callId,
-        preferredName: r.preferredName,
+        preferredName: latest.preferredName,
         streamUrl: deps.config.voiceStreamUrl,
         streamToken,
         afterStreamUrl: `${deps.config.publicBaseUrl}/twilio/after-stream?${query}`,
@@ -518,7 +542,10 @@ export async function applyCallStatus(
   }
   let retryScheduled = false;
   if (becameFailed && updated.status === 'failed' && updated.attempt !== undefined && updated.localDate) {
-    retryScheduled = await scheduleRetry(deps, { residentId: ids.residentId, localDate: updated.localDate, attempt: updated.attempt });
+    retryScheduled = await scheduleRetry(deps, {
+      residentId: ids.residentId, localDate: updated.localDate, attempt: updated.attempt,
+      ...(updated.consentRevision ? { consentRevision: updated.consentRevision } : {}),
+    });
   }
   return { status: updated.status, retryScheduled };
 }

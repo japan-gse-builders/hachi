@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import {
   classifyGatewayFailure,
-  hasCallConsent,
+  permitsCall,
   isClosingReply,
   isSpokenFarewell,
   itemsForCall,
@@ -13,7 +13,7 @@ import {
   type ScreenItem,
   type Turn,
 } from '@hachi/core';
-import type { CallRecord, ConversationEnd, EndChecks, Resident, Store } from '@hachi/store';
+import { callMediaState, type CallRecord, type ConversationEnd, type EndChecks, type Resident, type Store } from '@hachi/store';
 import { concatPcm, decodeMuLaw, Downsampler, encodeMuLaw, Upsampler } from './audio.js';
 import type { EmergencyInput, EmergencyPresence, EmergencyRaiser } from './emergency.js';
 import type { LiveConnector, LiveHandlers, LiveSession, ToolCall, ToolScheduling } from './live.js';
@@ -284,7 +284,7 @@ export class CallSession {
     const [call, resident] = residentId && callId
       ? await Promise.all([this.deps.store.getCall(residentId, callId), this.deps.store.getResident(residentId)])
       : [null, null];
-    if (!call || !resident?.active || !hasCallConsent(resident.callConsent) || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
+    if (!call || call.mediaExpiredAt || !resident?.active || !permitsCall(resident.callConsent, call.consentRevision) || !tokensMatch(call.streamToken, p.streamToken) || (call.providerCallId && callSid && call.providerCallId !== callSid)) {
       this.deps.log.warn({ residentId, callId }, 'rejected media stream');
       this.state = 'done';
       this.socket.close();
@@ -839,21 +839,23 @@ export class CallSession {
     const transcript = [...this.previousTurns, ...this.transcript()];
     let saved = false;
     try {
-      await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => {
+      const org = this.resident ? await this.deps.store.getOrganization(this.resident.orgId) : null;
+      const updated = await this.deps.store.updateCall(ids.residentId, ids.callId, (c): CallRecord => {
         const checks = addEndChecks(c.conversation?.endChecks, this.endChecks);
+        const keep = !callMediaState(c, org?.callMediaRetention, new Date(at)).expired;
         return {
           ...c,
-          transcript,
+          ...(keep ? { transcript } : {}),
           conversation: {
             endedBy: reason,
             at,
             ...(checks ? { endChecks: checks } : {}),
             ...(this.silenceEscalated && (reason === 'silent_after_greeting' || reason === 'stopped_responding') ? { noResponseEscalated: true } : {}),
           },
-          analysisPending: true,
+          analysisPending: keep,
         };
       });
-      saved = true;
+      saved = updated.analysisPending;
     } catch (err) {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save transcript');
     }
@@ -882,10 +884,18 @@ export class CallSession {
     await this.reportGateway(reason);
 
     try {
+      const call = await this.deps.store.getCall(ids.residentId, ids.callId);
+      const org = this.resident ? await this.deps.store.getOrganization(this.resident.orgId) : null;
+      if (!call || callMediaState(call, org?.callMediaRetention, new Date()).expired) {
+        this.state = 'done';
+        return;
+      }
       const uri = await this.deps.recordings.save(`recordings/${ids.residentId}/${ids.callId}-s${this.streamNo}.wav`, this.recorder.toWav());
-      await this.deps.store.updateCall(ids.residentId, ids.callId, (c) =>
-        c.audioUri && c.audioUri !== uri ? { ...c, extraAudioUris: [...(c.extraAudioUris ?? []), uri] } : { ...c, audioUri: uri },
-      );
+      await this.deps.store.updateCall(ids.residentId, ids.callId, (c) => ({
+        ...c,
+        ...(c.audioUri && c.audioUri !== uri ? { extraAudioUris: [...new Set([...(c.extraAudioUris ?? []), uri])] } : { audioUri: uri }),
+        ...(c.mediaExpiredAt ? { mediaPurgeDueAt: new Date().toISOString() } : {}),
+      }));
     } catch (err) {
       this.deps.log.error({ ...ids, err: (err as Error).message }, 'failed to save recording');
     }

@@ -4,6 +4,7 @@ import { useAccount } from '../account';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { ResidentAvatar } from '../components/ResidentAvatar';
+import { ResidentConsentCard } from '../components/ResidentConsentCard';
 import { DailyCallSchedule } from '../components/DailyCallSchedule';
 import { LoadError, Loading } from '../components/States';
 import { formatWhen, phoneDisplay } from '../format';
@@ -53,6 +54,7 @@ export function ResidentDetailPage() {
   );
   if (loadError) return <div className="stack page">{back}<LoadError message={loadError} onRetry={() => setAttempt((n) => n + 1)} /></div>;
   if (!resident) return <div className="stack page">{back}<Loading layout="detail" label="Loading patient…" /></div>;
+  const canEdit = mayEditDetails(resident, user?.uid, current?.role);
 
   return (
     <div className="stack page">
@@ -69,9 +71,10 @@ export function ResidentDetailPage() {
       {saved && <p className="notice-success" role="status">Saved. The new details apply from the next call and the next alert.</p>}
       <div className="resident-detail">
         <DetailsCard resident={resident} uid={user?.uid} />
-        <DailyCallSchedule key={resident.id} resident={resident} canEdit={mayEditDetails(resident, user?.uid, current?.role)} token={token} onSaved={setResident} />
+        <DailyCallSchedule key={resident.id} resident={resident} canEdit={canEdit} token={token} onSaved={setResident} />
+        <ResidentConsentCard key={`consent-${resident.id}`} resident={resident} canEdit={canEdit} onSaved={setResident} />
         <Responsibility resident={resident} uid={user?.uid} onSaved={setResident} />
-        <FamilyAccessCard resident={resident} uid={user?.uid} onSaved={(familyAccess) => setResident({ ...resident, familyAccess })} />
+        <FamilyAccessCard resident={resident} uid={user?.uid} onSaved={(familyAccess) => setResident((previous) => previous && ({ ...previous, familyAccess }))} />
       </div>
     </div>
   );

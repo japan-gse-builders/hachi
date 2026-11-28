@@ -5,6 +5,7 @@ export interface AnalyzerConfig {
   /** HTTPS origin of this service; the OIDC audience of its tasks. */
   publicBaseUrl: string;
   project: string;
+  recordingsBucket?: string;
   gemini: { location: string; model: string };
   /** Staff/family web app origin for links in notifications. */
   appBaseUrl: string;
@@ -56,12 +57,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): AnalyzerConfig {
   const project = required(env, 'GOOGLE_CLOUD_PROJECT');
   const invoker = required(env, 'TASKS_INVOKER_SA');
   const notifier = env.NOTIFIER_BASE_URL?.trim();
+  const recordingsBucket = env.RECORDINGS_BUCKET?.trim();
   const staffLocale = env.STAFF_LOCALE?.trim() || 'en';
   if (staffLocale !== 'ja' && staffLocale !== 'en') throw new Error('STAFF_LOCALE must be ja or en');
   return {
     port: int(env, 'PORT', 8080, 1, 65535),
     publicBaseUrl: httpsOrigin('PUBLIC_BASE_URL', required(env, 'PUBLIC_BASE_URL')),
     project,
+    ...(recordingsBucket ? { recordingsBucket } : {}),
     gemini: {
       location: env.GEMINI_LOCATION?.trim() || 'global',
       model: env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash',

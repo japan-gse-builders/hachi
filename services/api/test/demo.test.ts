@@ -70,7 +70,7 @@ describe('fictional companies', () => {
     const store = new MemoryStore();
     store.seedAccounts(data);
     for (const r of data.residents) await store.createResident(r);
-    const app = buildApp({ store, now: () => NOW, signer: { sign: async () => '' }, verifier: {
+    const app = buildApp({ store, now: () => NOW, verifier: {
       verify: async (uid) => {
         const member = data.memberships.find((m) => m.uid === uid);
         if (!member) throw new Error('Unknown demo user');

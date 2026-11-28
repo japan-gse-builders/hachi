@@ -144,8 +144,8 @@ describe('which organization a staff request acts for', () => {
   it('lets the browser send the organization header', async () => {
     const { store } = setup();
     const { buildApp } = await import('../src/app.js');
-    const { FakeVerifier, fakeSigner } = await import('./helpers.js');
-    const app = buildApp({ store, verifier: new FakeVerifier(), signer: fakeSigner, corsOrigins: ['https://app.example'] });
+    const { FakeVerifier } = await import('./helpers.js');
+    const app = buildApp({ store, verifier: new FakeVerifier(), corsOrigins: ['https://app.example'] });
     const res = await app.inject({ method: 'OPTIONS', url: '/api/residents', headers: { origin: 'https://app.example' } });
     expect(res.headers['access-control-allow-headers']).toMatch(/x-hachi-org/i);
     expect(res.headers['access-control-allow-methods']).toMatch(/PUT/);
@@ -628,6 +628,7 @@ describe('organization settings', () => {
       timeZone: 'Asia/Tokyo',
       role: 'member',
       verified: true,
+      callMediaRetentionDays: null,
     });
     const admin = (await app.inject({ method: 'GET', url: '/api/organization', ...as('admin') })).json();
     expect(admin.billing).toEqual({ plan: 'internal', email: 'billing@example.org', limits: { residents: 50, members: 10 } });

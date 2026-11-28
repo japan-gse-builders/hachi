@@ -1,4 +1,3 @@
-import type { Resident } from '@hachi/store';
 import { describe, expect, it } from 'vitest';
 import { deliver } from '../src/worker.js';
 import { entry, setup } from './fixtures.js';
@@ -29,34 +28,15 @@ describe('messages for an organization Hachi has not verified', () => {
   });
 
   it('without an organization of their own (written by an older service), follow their resident’s', async () => {
-    const resident = (orgId: string): Resident => ({
-      id: 'res-1',
-      orgId,
-      name: 'Margaret Smith',
-      preferredName: 'Maggie',
-      phone: '+819000000001',
-      channel: 'pstn',
-      callTime: '10:00',
-      timeZone: 'Asia/Tokyo',
-      vulnerability: { livesAlone: true, hasCloseSupporter: false, needsCare: false, chronicConditions: [] },
-      staff: { name: 'Tanaka', phone: '+81300000000' },
-      familyLookup: [],
-      serviceStartedAt: '2026-09-01T00:00:00.000Z',
-      active: true,
-      createdAt: '2026-09-01T00:00:00.000Z',
-      updatedAt: '2026-09-01T00:00:00.000Z',
-    });
     const legacy = entry({ orgId: undefined as unknown as string });
 
     const verified = await setup({ entries: [legacy] });
-    await verified.store.createResident(resident('org-1'));
     expect((await deliver(verified.deps, legacy.id)).outcome).toBe('sent');
 
     const unverified = await setup({ entries: [legacy], organization: { verifiedAt: undefined } });
-    await unverified.store.createResident(resident('org-1'));
     expect((await deliver(unverified.deps, legacy.id)).outcome).toBe('skipped');
 
-    const orphan = await setup({ entries: [legacy] });
+    const orphan = await setup({ entries: [legacy], withResident: false });
     expect((await deliver(orphan.deps, legacy.id)).outcome).toBe('skipped');
     expect(orphan.sms.sent).toHaveLength(0);
   });
